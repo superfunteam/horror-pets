@@ -1,0 +1,29 @@
+{
+  "style": "Cinematic stylized 3D-rendered environment in the look of a premium collectible-figure diorama: glossy, detailed, softly lit like a high-end animated film. Soft frontal key light, moody colored rim light, gentle atmospheric haze and depth of field in the far background. Absolutely no people, no characters, no figures, no creatures, no silhouettes, no text, no lettering, no logos, no signage. A wide, clear, mostly flat floor area spans the lower third of the frame with nothing standing in the middle of it, so a small character can stand there later. The center of the frame is calm and uncluttered; the most interesting detail sits toward the sides but stays within the central 4:3 area. Eye-level camera, landscape composition, horror mood but inviting, rich color.",
+  "scenes": [
+    {"pet": "jason", "id": "dock", "title": "Crystal Lake Dock",
+     "prompt": "A weathered wooden dock on a misty summer-camp lake at dusk in 1980. Overturned red and green canoes on the shore at the sides, the planks of the dock form the floor in the foreground. Pine trees and a distant tree line across still water, last orange light on the horizon, a few fireflies."},
+    {"pet": "jason", "id": "cabin", "title": "Counselor Cabin",
+     "prompt": "The interior of a rundown wooden 1980 summer-camp counselor cabin at night. Bunk beds with rumpled blankets against the side walls, a kerosene lantern glowing on a crate, a window with moonlight, old camp gear. Worn wooden floorboards form the open floor in the foreground."},
+    {"pet": "jason", "id": "woods", "title": "Lakeside Woods",
+     "prompt": "A foggy pine forest at night beside a lake, moonlight slicing through the trees, ferns and fallen logs at the sides, a narrow dirt clearing with pine needles forming the open floor in the foreground, eerie blue fog low to the ground."},
+    {"pet": "freddy", "id": "boiler", "title": "Boiler Room",
+     "prompt": "A dreamlike industrial boiler room: rusted pipes, valves and catwalks, hissing steam, a furnace glowing red-orange at one side, chain-link and grime. Dark metal grating forms the open floor in the foreground. Surreal nightmare atmosphere."},
+    {"pet": "freddy", "id": "bedroom", "title": "Elm Street Bedroom",
+     "prompt": "A 1984 suburban teenage girl's bedroom at night: a bed with a quilt at one side, a nightstand lamp casting warm light, posters without any readable text, a window with blue moonlight and curtains moving. Carpet forms the open floor in the foreground."},
+    {"pet": "freddy", "id": "house", "title": "1428 Elm St",
+     "prompt": "The front of a two-story white suburban house with red front door and a porch at night, overgrown lawn and a cracked front walk, a big old tree at one side, a single porch light glowing, mist. The front walk and lawn form the open floor in the foreground. Do not show any house numbers or signs."},
+    {"pet": "pinhead", "id": "attic", "title": "The Attic",
+     "prompt": "A dusty wooden attic with sloped rafters, shafts of cold light through a small window, old furniture under sheets at the sides. A small ornate gold-and-black lacquered puzzle box sits on the floorboards to one side, glowing faintly. Wide floorboards form the open floor in the foreground."},
+    {"pet": "pinhead", "id": "labyrinth", "title": "The Labyrinth",
+     "prompt": "Endless towering stone labyrinth corridors stretching into darkness, impossible geometry, cold blue light from above, carved stone walls. A smooth stone walkway forms the open floor in the foreground."},
+    {"pet": "pinhead", "id": "chamber", "title": "Chamber of Chains",
+     "prompt": "A vast gothic-industrial hell chamber: hanging chains and hooks swaying from the dark ceiling at the sides, a rotating stone pillar in the far background, bluish industrial light and drifting embers. A dark polished stone floor forms the open area in the foreground."},
+    {"pet": "ghostface", "id": "school", "title": "Woodsboro High",
+     "prompt": "The front of a 1990s small-town Northern California public high school at dusk: a long two-story stucco and brick building with rows of windows, a few lit, palm and eucalyptus trees, an empty flagpole. A wide concrete front walkway forms the open floor in the foreground. No banners, no text, no names."},
+    {"pet": "ghostface", "id": "house", "title": "The House",
+     "prompt": "A large two-story gray clapboard Victorian house with dark green trim, steep gables, dormers and glowing warm windows, at foggy blue dusk. A plain white vintage 1980s panel van with no markings is parked to the right on the driveway with its driver door open and headlights on. Agapanthus flowers and a stone bench at the left. An asphalt driveway forms the open floor in the foreground."},
+    {"pet": "ghostface", "id": "kitchen", "title": "The Kitchen",
+     "prompt": "A bright 1990s suburban kitchen at night: white cabinets, glass-front cupboards, a white tile backsplash with a decorative border, two blue glass pendant lamps hanging over a kitchen island at one side, a microwave and a few bowls on the counter. A light tiled floor forms the open area in the foreground."}
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "jason/dock": {
+    "floorY": 0.8,
+    "tint": "#FF8479",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF7A3D"
+  },
+  "jason/cabin": {
+    "floorY": 0.8,
+    "tint": "#FF774B",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FFB15C"
+  },
+  "jason/woods": {
+    "floorY": 0.8,
+    "tint": "#98BEFF",
+    "tintStrength": 0.15,
+    "shadowOpacity": 0.55,
+    "accent": "#7FA8FF"
+  },
+  "freddy/boiler": {
+    "floorY": 0.8,
+    "tint": "#FF7E6F",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF5A1F"
+  },
+  "freddy/bedroom": {
+    "floorY": 0.8,
+    "tint": "#FF8DC9",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF5FA2"
+  },
+  "freddy/house": {
+    "floorY": 0.8,
+    "tint": "#E6E4FF",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#E0262F"
+  },
+  "pinhead/attic": {
+    "floorY": 0.8,
+    "tint": "#FFBDC4",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FFB347"
+  },
+  "pinhead/labyrinth": {
+    "floorY": 0.8,
+    "tint": "#85B2FF",
+    "tintStrength": 0.15,
+    "shadowOpacity": 0.55,
+    "accent": "#6FA8FF"
+  },
+  "pinhead/chamber": {
+    "floorY": 0.8,
+    "tint": "#FFB9E8",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF4D2E"
+  },
+  "ghostface/school": {
+    "floorY": 0.8,
+    "tint": "#FF7B6C",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF8A5C"
+  },
+  "ghostface/house": {
+    "floorY": 0.8,
+    "tint": "#D1D9FF",
+    "tintStrength": 0.15,
+    "shadowOpacity": 0.55,
+    "accent": "#FFC46B"
+  },
+  "ghostface/kitchen": {
+    "floorY": 0.8,
+    "tint": "#FFBAB7",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.6,
+    "accent": "#4F8CFF"
+  }
+}

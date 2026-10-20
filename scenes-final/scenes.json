@@ -1,0 +1,130 @@
+{
+  "jason": [
+    {
+      "id": "dock",
+      "title": "Crystal Lake Dock",
+      "file": "jason/dock.webp",
+      "floorY": 0.8,
+      "tint": "#FF8479",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF7A3D"
+    },
+    {
+      "id": "cabin",
+      "title": "Counselor Cabin",
+      "file": "jason/cabin.webp",
+      "floorY": 0.8,
+      "tint": "#FF774B",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FFB15C"
+    },
+    {
+      "id": "woods",
+      "title": "Lakeside Woods",
+      "file": "jason/woods.webp",
+      "floorY": 0.8,
+      "tint": "#98BEFF",
+      "tintStrength": 0.15,
+      "shadowOpacity": 0.55,
+      "accent": "#7FA8FF"
+    }
+  ],
+  "freddy": [
+    {
+      "id": "boiler",
+      "title": "Boiler Room",
+      "file": "freddy/boiler.webp",
+      "floorY": 0.8,
+      "tint": "#FF7E6F",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF5A1F"
+    },
+    {
+      "id": "bedroom",
+      "title": "Elm Street Bedroom",
+      "file": "freddy/bedroom.webp",
+      "floorY": 0.8,
+      "tint": "#FF8DC9",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF5FA2"
+    },
+    {
+      "id": "house",
+      "title": "1428 Elm St",
+      "file": "freddy/house.webp",
+      "floorY": 0.8,
+      "tint": "#E6E4FF",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#E0262F"
+    }
+  ],
+  "pinhead": [
+    {
+      "id": "attic",
+      "title": "The Attic",
+      "file": "pinhead/attic.webp",
+      "floorY": 0.8,
+      "tint": "#FFBDC4",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FFB347"
+    },
+    {
+      "id": "labyrinth",
+      "title": "The Labyrinth",
+      "file": "pinhead/labyrinth.webp",
+      "floorY": 0.8,
+      "tint": "#85B2FF",
+      "tintStrength": 0.15,
+      "shadowOpacity": 0.55,
+      "accent": "#6FA8FF"
+    },
+    {
+      "id": "chamber",
+      "title": "Chamber of Chains",
+      "file": "pinhead/chamber.webp",
+      "floorY": 0.8,
+      "tint": "#FFB9E8",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF4D2E"
+    }
+  ],
+  "ghostface": [
+    {
+      "id": "school",
+      "title": "Woodsboro High",
+      "file": "ghostface/school.webp",
+      "floorY": 0.8,
+      "tint": "#FF7B6C",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF8A5C"
+    },
+    {
+      "id": "house",
+      "title": "The House",
+      "file": "ghostface/house.webp",
+      "floorY": 0.8,
+      "tint": "#D1D9FF",
+      "tintStrength": 0.15,
+      "shadowOpacity": 0.55,
+      "accent": "#FFC46B"
+    },
+    {
+      "id": "kitchen",
+      "title": "The Kitchen",
+      "file": "ghostface/kitchen.webp",
+      "floorY": 0.8,
+      "tint": "#FFBAB7",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.6,
+      "accent": "#4F8CFF"
+    }
+  ]
+}
