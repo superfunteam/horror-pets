@@ -1,0 +1,175 @@
+{
+  "pet": "ghostface",
+  "cell": [
+    384,
+    416
+  ],
+  "baselineY": 401,
+  "anchorX": 192,
+  "feed": "work",
+  "animations": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 6,
+      "durationsMs": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loop": true
+    },
+    "run-right": {
+      "file": "run-right.png",
+      "frames": 8,
+      "durationsMs": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ],
+      "loop": true
+    },
+    "run-left": {
+      "file": "run-left.png",
+      "frames": 8,
+      "durationsMs": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ],
+      "loop": true
+    },
+    "wave": {
+      "file": "wave.png",
+      "frames": 4,
+      "durationsMs": [
+        160,
+        160,
+        160,
+        160
+      ],
+      "loop": false
+    },
+    "jump": {
+      "file": "jump.png",
+      "frames": 5,
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120
+      ],
+      "loop": false
+    },
+    "fail": {
+      "file": "fail.png",
+      "frames": 8,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140
+      ],
+      "loop": false
+    },
+    "wait": {
+      "file": "wait.png",
+      "frames": 6,
+      "durationsMs": [
+        160,
+        160,
+        160,
+        160,
+        160,
+        160
+      ],
+      "loop": true
+    },
+    "work": {
+      "file": "work.png",
+      "frames": 6,
+      "durationsMs": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loop": false
+    },
+    "review": {
+      "file": "review.png",
+      "frames": 6,
+      "durationsMs": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loop": false
+    },
+    "look-a": {
+      "file": "look-a.png",
+      "frames": 8,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140
+      ],
+      "loop": true
+    },
+    "look-b": {
+      "file": "look-b.png",
+      "frames": 8,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140
+      ],
+      "loop": true
+    },
+    "attack": {
+      "file": "attack.png",
+      "frames": 6,
+      "durationsMs": [
+        300,
+        140,
+        180,
+        75,
+        140,
+        360
+      ],
+      "loop": false
+    }
+  }
+}
