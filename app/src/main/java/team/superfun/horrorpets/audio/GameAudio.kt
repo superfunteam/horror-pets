@@ -220,7 +220,8 @@ class GameAudio(context: Context) : SoundSink {
                             count++
                         }
                     }
-                } catch (e: IOException) {
+                } catch (e: Exception) {
+                    // Any one bad clip (unreadable, odd header, refused by the pool) only loses that clip.
                     Log.e(TAG, "Could not preload $path", e)
                 }
             }
@@ -455,7 +456,8 @@ class GameAudio(context: Context) : SoundSink {
 
 /**
  * The length of a WAV file's audio in milliseconds, read from the start of the file ([header]) and its
- * full size ([fileLength]); null when it is not a PCM RIFF/WAVE file this can make sense of.
+ * full size ([fileLength]); null when it is not a PCM RIFF/WAVE file this can make sense of. Never
+ * negative, even for a file length that is unknown (-1) or shorter than the header.
  */
 internal fun parseWavDurationMs(header: ByteArray, fileLength: Long): Long? {
     fun tag(at: Int) = String(header, at, 4, Charsets.US_ASCII)
@@ -478,7 +480,7 @@ internal fun parseWavDurationMs(header: ByteArray, fileLength: Long): Long? {
                 val available = fileLength - body
                 // A streaming writer may leave the size at 0 or 0xFFFFFFFF: trust the file length then.
                 val bytes = if (size in 1..available) size else available
-                return bytes * 1000 / byteRate
+                return (bytes * 1000 / byteRate).coerceAtLeast(0L)
             }
         }
         val next = body + size + (size and 1L) // chunks are padded to an even length
