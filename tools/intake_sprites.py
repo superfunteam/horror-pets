@@ -17,17 +17,16 @@ from spritekit import (  # noqa: E402
     alpha_bbox,
     fringe_ratio,
     iou_vs_reference,
-    _resize_rgba,
     key_magenta,
     register_to_reference,
+    resize_rgba,
     split_components,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 MIN_IOU = 0.88
 MAX_FRINGE = 0.001
-MAX_BASELINE_DRIFT = 4
-MAX_BASELINE_FIX = 12
+MAX_BASELINE_FIX = 12  # largest vertical shift (px, in 2x cell space) applied to line an animation up with idle
 
 
 class IntakeError(Exception):
@@ -62,7 +61,7 @@ def build_candidate(path: Path, refs: list[np.ndarray], cell: tuple[int, int]) -
 
 
 def upscale_fallback(ref: np.ndarray, cell: tuple[int, int]) -> np.ndarray:
-    return _resize_rgba(ref, cell)
+    return resize_rgba(ref, cell)
 
 
 def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_cell, done: dict, log: list) -> dict:
@@ -72,6 +71,7 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
         ref_sheet = sheet
     refs = ref_cells(ref_sheet, spec.get("row"), spec["frames"], ref_cell)
 
+    whole_row = False  # True when no hi-res candidate worked and every frame is the upscaled reference
     if "derive" in spec:
         kind, src = spec["derive"].split(":")
         assert kind == "mirror", spec["derive"]
@@ -92,14 +92,18 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
         if best is None:
             log.append(f"  NO HIRES {pet}/{name}: every candidate failed, upscaling the whole row")
             cells = [upscale_fallback(r, cell) for r in refs]
-            ious = [1.0] * len(refs)
+            ious = [iou_vs_reference(c, r) for c, r in zip(cells, refs)]
             chosen = "fallback (all frames)"
+            whole_row = True
         else:
             _, cells, ious, chosen = best
 
     fallback = []
-    for i, (c, r, s) in enumerate(zip(cells, refs, ious)):
-        if s < MIN_IOU:
+    for i, (r, s) in enumerate(zip(refs, ious)):
+        if whole_row:
+            fallback.append(i)
+            log.append(f"  FALLBACK {pet}/{name}/{i}: no hi-res candidate, iou {s:.3f}")
+        elif s < MIN_IOU:
             cells[i] = upscale_fallback(r, cell)
             fallback.append(i)
             log.append(f"  FALLBACK {pet}/{name}/{i}: iou {s:.3f}")
@@ -116,25 +120,42 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
     return {"cells": cells, "ious": ious, "fallback": fallback, "spec": spec}
 
 
-def ground_row(cells: list[np.ndarray]) -> int:
-    """Lowest point reached across an animation: where the feet meet the floor (jumps included)."""
-    return max(foot_row(c) for c in cells)
+def ground_row(name: str, cells: list[np.ndarray]) -> int:
+    """Row where the feet meet the floor: the lowest point across a jump (it is airborne in most
+    frames), the median foot row for every other animation (robust to a single odd frame)."""
+    rows = [foot_row(c) for c in cells]
+    return max(rows) if name == "jump" else int(round(float(np.median(rows))))
+
+
+def shift_down(cell: np.ndarray, dy: int) -> np.ndarray:
+    """Move a cell `dy` rows down (negative = up), filling the vacated rows with transparency.
+
+    Rows pushed past the edge are dropped; nothing wraps around to the opposite side.
+    """
+    out = np.zeros_like(cell)
+    if dy > 0:
+        out[dy:] = cell[:-dy]
+    elif dy < 0:
+        out[:dy] = cell[-dy:]
+    else:
+        out[:] = cell
+    return out
 
 
 def align_baselines(pet: str, anims: dict, log: list) -> int:
-    baseline = ground_row(anims["idle"]["cells"])
+    """Shift every animation so its ground row matches idle's; fail if that needs more than MAX_BASELINE_FIX px."""
+    baseline = ground_row("idle", anims["idle"]["cells"])
     for name, a in anims.items():
-        drift = baseline - ground_row(a["cells"])
+        drift = baseline - ground_row(name, a["cells"])
         if drift == 0:
             continue
         if abs(drift) > MAX_BASELINE_FIX:
             raise IntakeError(f"{pet}/{name} baseline drift {drift}px is too large to correct")
-        a["cells"] = [np.roll(c, drift, axis=0) for c in a["cells"]]
+        shifted = [shift_down(c, drift) for c in a["cells"]]
+        if any((s[..., 3] > 64).sum() != (c[..., 3] > 64).sum() for s, c in zip(shifted, a["cells"])):
+            log.append(f"  CLIPPED {pet}/{name}: the {drift:+d}px shift pushed visible pixels off the cell")
+        a["cells"] = shifted
         log.append(f"  {pet}/{name}: shifted {drift:+d}px onto baseline {baseline}")
-    for name, a in anims.items():
-        ground = ground_row(a["cells"])
-        if abs(ground - baseline) > MAX_BASELINE_DRIFT:
-            raise IntakeError(f"{pet}/{name} baseline {ground} vs {baseline}")
     return baseline
 
 
@@ -181,6 +202,7 @@ def main() -> int:
     ref_cell = tuple(cfg["refCell"])
     log: list[str] = []
     failed = False
+    all_anims: list[dict] = []
     for pet, pcfg in cfg["pets"].items():
         if args.only and pet != args.only:
             continue
@@ -191,12 +213,18 @@ def main() -> int:
             for name, spec in pcfg["animations"].items():
                 anims[name] = process_anim(pet, name, spec, sheet, cell, ref_cell, anims, log)
             baseline = align_baselines(pet, anims, log)
+            all_anims.extend(anims.values())
             write_outputs(pet, anims, baseline, pcfg["feed"], cell, ROOT / args.out, ROOT / args.qa)
         except IntakeError as e:
             log.append(f"  ERROR {pet}: {e}")
             failed = True
         print("\n".join(log))
         log.clear()
+    frames = sum(len(a["cells"]) for a in all_anims)
+    fallbacks = sum(len(a["fallback"]) for a in all_anims)
+    ious = [i for a in all_anims for i in a["ious"]]
+    print(f"SUMMARY: {len(all_anims)} animations, {frames} frames, {fallbacks} fallback frames, "
+          f"mean iou {np.mean(ious) if ious else 0:.3f}")
     return 1 if failed else 0
 
 

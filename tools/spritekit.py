@@ -103,7 +103,7 @@ def split_components(rgba: np.ndarray, expected: int, min_area: int = 2000) -> l
     return crops
 
 
-def _resize_rgba(rgba: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+def resize_rgba(rgba: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     """Lanczos resize on premultiplied alpha so edges don't pick up dark halos."""
     img = Image.fromarray(rgba, "RGBA").convert("RGBa")
     out = np.asarray(img.resize(size, Image.LANCZOS).convert("RGBA")).copy()
@@ -151,7 +151,7 @@ def register_to_reference(hi: list[np.ndarray], ref_cells: list[np.ndarray],
         hx0, hy0, hx1, hy1 = alpha_bbox(h)
         body = h[hy0:hy1, hx0:hx1]
         size = (max(1, round(body.shape[1] * scale)), max(1, round(body.shape[0] * scale)))
-        scaled = _resize_rgba(body, size)
+        scaled = resize_rgba(body, size)
 
         rx0, _, rx1, ry1 = alpha_bbox(r)
         x = round((rx0 + rx1) / 2 * fx - size[0] / 2)

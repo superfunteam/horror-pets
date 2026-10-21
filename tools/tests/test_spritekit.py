@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from spritekit import (  # noqa: E402
     alpha_bbox,
+    fringe_ratio,
     iou_vs_reference,
     key_magenta,
     register_to_reference,
@@ -49,12 +50,15 @@ def test_split_components_orders_left_to_right_and_merges_specks():
     img = keyed_canvas(200, 520)
     for x in (10, 200, 400):
         img[40:160, x:x + 60] = (90, 90, 90, 255)
-    img[100:105, 262:267] = (90, 90, 90, 255)  # speck just right of the 2nd block (200..260)
-    img[100:105, 215:220] = (90, 90, 90, 255)  # speck inside the 2nd block's x-range
+    # a separate speck in the gap right of the 2nd block (200..260), outside every block's x-range:
+    # it must be merged into the nearest frame, widening that crop from 60 to 67 px
+    img[100:105, 262:267] = (90, 90, 90, 255)
     crops = split_components(img, expected=3)
     assert len(crops) == 3
-    # crops come back left→right; the middle one must include the in-range speck
-    assert crops[1].shape[1] >= 60
+    # crops come back left→right: outer blocks keep their width, the middle one absorbed the speck
+    assert crops[0].shape[1] == 60
+    assert crops[2].shape[1] == 60
+    assert crops[1].shape[1] >= 67
 
 
 def test_split_components_merges_speck_by_x_overlap():
@@ -89,4 +93,20 @@ def test_register_matches_reference():
     assert iou_vs_reference(cell, ref) >= 0.95
     _, _, _, bottom = alpha_bbox(cell)
     _, _, _, ref_bottom = alpha_bbox(ref)
-    assert abs(bottom - 2 * ref_bottom) <= 2
+    assert abs(bottom - 2 * ref_bottom) <= 1
+
+
+def test_alpha_bbox_exclusive_bounds():
+    img = np.zeros((20, 20, 4), dtype=np.uint8)
+    img[7:9, 5:8] = (255, 255, 255, 255)  # 3 wide, 2 tall, top-left at x=5, y=7
+    assert alpha_bbox(img) == (5, 7, 8, 9)
+
+
+def test_fringe_ratio_counts_magenta():
+    img = np.zeros((2, 4, 4), dtype=np.uint8)
+    img[..., :3] = (40, 60, 30)
+    img[..., 3] = 255
+    img[0, :, :3] = (200, 60, 200)  # half of the visible pixels read as magenta
+    assert fringe_ratio(img) == pytest.approx(0.5)
+    img[0, :, :3] = (40, 60, 30)
+    assert fringe_ratio(img) == 0.0
