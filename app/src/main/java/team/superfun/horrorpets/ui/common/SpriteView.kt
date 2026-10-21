@@ -201,7 +201,7 @@ private const val LUMA_B = 0.072f
  * `android.graphics.ColorMatrix`; alpha passes through untouched, so the transparent cell around the pet
  * stays transparent.
  */
-private fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, saturation: Float, flashWhite: Float): ColorFilter? {
+internal fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, saturation: Float, flashWhite: Float): ColorFilter? {
     val s = if (tint == null) 0f else tintStrength.coerceIn(0f, 1f)
     val d = dim.coerceIn(0f, 1f)
     val sat = saturation.coerceIn(0f, 1f)

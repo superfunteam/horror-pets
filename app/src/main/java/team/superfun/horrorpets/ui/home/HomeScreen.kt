@@ -35,6 +35,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +87,8 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.FEED_MUNCHES
+import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.GameBackHandler
@@ -100,6 +103,7 @@ import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.rememberOkReady
 import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
+import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
@@ -207,6 +211,7 @@ fun HomeScreen(
         val play = if (manifest.has(Anim.DANCE)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
         withContext(Dispatchers.IO) {
             for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
+            for (food in Food.entries) loader.food(food)
         }
     }
 
@@ -226,11 +231,16 @@ fun HomeScreen(
     var cardRightPx by remember { mutableFloatStateOf(0f) }
     var homeLeftPx by remember { mutableFloatStateOf(0f) }
     var showSceneTitle by remember { mutableStateOf(false) }
+    // The food a feed dropped, from the press until its last crumbs land (see FoodDrop), and the request
+    // whose food has landed: that request's munch waits for it.
+    var feeding by remember { mutableStateOf<Feeding?>(null) }
+    var landedToken by remember { mutableStateOf<Long?>(null) }
 
     val request = state.petAnim
     LaunchedEffect(request?.token) {
         if (request == null) return@LaunchedEffect
         variety = null
+        request.food?.let { feeding = Feeding(it, request.token) }
         if (state.refuse != null) {
             bubble = Bubble(refusalText(state.refuse, lastWasFight))
         }
@@ -318,10 +328,13 @@ fun HomeScreen(
     // run under the request's token from the press until the pet has run into the next scene, so the run
     // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
     // A stroll is local too: its run plays under its own key and never reports to the view model.
-    val shownAnim = request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
-    val playKey: Any = request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
+    // A feed's first munch waits for its food to land; until then the pet idles where it stands.
+    val dropping = request?.food != null && landedToken != request.token
+    val shownAnim = if (dropping) Anim.IDLE else request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
+    val playKey: Any = if (dropping) DropKey else request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
     val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
+        dropping -> null
         request != null -> {
             { onAnimFinished(request.token) }
         }
@@ -434,6 +447,26 @@ fun HomeScreen(
                     .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
+            feeding?.let { f ->
+                key(f.token) {
+                    val munchMs = FEED_MUNCHES * manifest.spec(manifest.feedAnim()).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
+                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
+                    FoodDrop(
+                        food = f.food,
+                        image = remember(f.food) { loader.food(f.food) },
+                        petX = (homeX.value + walkX.value) * screenW,
+                        bodyHalf = drawnCellW * BODY_HALF_OF_CELL,
+                        screenW = screenW,
+                        inset = insetPx,
+                        floorY = floorY,
+                        sizePx = petHeightPx * FOOD_SIZE,
+                        munchMs = munchMs,
+                        filter = filter,
+                        onLanded = { landedToken = f.token },
+                        onDone = { if (feeding === f) feeding = null },
+                    )
+                }
+            }
             RefusalBubble(
                 text = bubble?.text,
                 headX = { (homeX.value + walkX.value) * screenW },
@@ -543,6 +576,13 @@ private suspend fun strollOnce(
 }
 
 private object IdleKey
+
+/** The playback key while a feed's food is still falling: the pet idles, and its munch starts fresh after. */
+private object DropKey
+
+/** The food [food] a feed dropped with its first request ([token]), showing until its last crumbs land. */
+@Immutable
+private class Feeding(val food: Food, val token: Long)
 
 /** The coroutine running the current walk-out or walk-in, so the next one can cancel it. */
 private class JobSlot {

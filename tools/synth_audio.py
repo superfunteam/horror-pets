@@ -625,6 +625,20 @@ def sfx_all() -> dict[str, np.ndarray]:
     pull = bandpass(noise(lf, int(0.2 * SR)), 300, 1500) * env_exp(int(0.2 * SR), 0.06)
     place(saw_fx, pull, 0.0, 0.6)
     s["special_leatherface"] = saw_fx
+    fd = rng_for("food")  # its own stream too, so the food sounds leave the rest of the bank unchanged
+    m = int(0.6 * SR)
+    t = np.arange(m) / SR
+    hz = 1900 * (480 / 1900) ** (t / t[-1]) * (1 + 0.025 * np.sin(2 * np.pi * 6 * t))  # a falling slide whistle
+    whistle = (sine(hz, m) + 0.15 * sine(2 * hz, m)) * env_adsr(m, 0.03, 0.1, 0.8, 0.05) * 0.6
+    mm = int(0.25 * SR)
+    plop = sine(70 + 220 * np.exp(-np.arange(mm) / SR / 0.05), mm) * env_exp(mm, 0.07)
+    plop += 0.35 * bandpass(noise(fd, mm), 150, 900) * env_exp(mm, 0.03)
+    drop = np.zeros(int(0.9 * SR))
+    place(drop, whistle, 0.0)
+    place(drop, plop, 0.6, 0.9)
+    s["food_drop"] = drop  # lands (the plop) 0.6 s in: FoodDrop's fall takes exactly that long
+    mm = int(0.16 * SR)
+    s["bite"] = bandpass(noise(fd, mm), 300, 2200) * env_exp(mm, 0.035) + 0.6 * punch(fd, 0.35)[:mm]
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
     s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)

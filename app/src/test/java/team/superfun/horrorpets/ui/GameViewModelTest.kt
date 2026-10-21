@@ -524,9 +524,9 @@ class GameViewModelTest {
         rig.vm.onCare(CareAction.FEED)
         assertEquals(25.0, rig.jason.hunger, 1e-9)
         assertTrue(rig.ui.busy)
-        assertEquals(listOf("chomp"), rig.ui.sfx)
+        assertEquals(listOf("food_drop"), rig.ui.sfx)
 
-        rig.finishAnim()
+        rig.finishAllAnims()
         assertFalse(rig.ui.busy)
         assertNull(rig.ui.petAnim)
         assertEquals(25.0, rig.jason.hunger, 1e-9)
@@ -659,6 +659,11 @@ class GameViewModelTest {
         assertEquals(token, rig.ui.petAnim!!.token)
 
         rig.vm.onAnimFinished(token)
+        val second = rig.ui.petAnim!!
+        assertNotEquals(token, second.token)
+        rig.vm.onAnimFinished(token) // the finished token cannot end the feed's second munch
+        assertEquals(second, rig.ui.petAnim)
+        rig.vm.onAnimFinished(second.token)
         assertFalse(rig.ui.busy)
 
         // The finished token cannot end the next action.
@@ -1218,6 +1223,8 @@ class GameViewModelTest {
         assertTrue(rig.ui.busy)
 
         rig.finishAnim()
+        assertEquals("not between the munches", Screen.Home, rig.ui.screen)
+        rig.finishAnim()
         assertEquals(Screen.FakeDeath(PetId.JASON), rig.ui.screen)
         assertFalse(rig.ui.busy)
     }
@@ -1243,7 +1250,7 @@ class GameViewModelTest {
         assertEquals(Screen.Home, rig.ui.screen)
 
         rig.vm.onCare(CareAction.FEED)
-        rig.finishAnim()
+        rig.finishAllAnims()
         rig.clock.now += HOUR
         rig.vm.tick()
         rig.vm.onWalk(1)
@@ -1289,17 +1296,58 @@ class GameViewModelTest {
         assertEquals(vm.state.value.game, store.saved.last())
     }
 
+    @Test
+    fun feedDropsFoodWithItsFirstMunchOnly() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        val first = rig.ui.petAnim!!
+        assertEquals(Anim.REVIEW, first.anim)
+        assertNotNull(first.food)
+
+        rig.finishAnim()
+        val second = rig.ui.petAnim!!
+        assertEquals(Anim.REVIEW, second.anim)
+        assertNull(second.food)
+        assertTrue(rig.ui.busy)
+
+        rig.finishAnim()
+        assertFalse(rig.ui.busy)
+        assertNull(rig.ui.petAnim)
+    }
+
+    @Test
+    fun twoFeedsInARowDropDifferentFood() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 100.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        val first = rig.ui.petAnim!!.food
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.FEED)
+        val second = rig.ui.petAnim!!.food
+        assertNotNull(second)
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun otherCareDropsNoFood() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        assertNull(rig.ui.petAnim!!.food)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertNull(rig.ui.petAnim!!.food)
+    }
+
     // ---- sounds and toast --------------------------------------------------------------------
 
     @Test
     fun consumeSoundsClearsBothQueues() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
         rig.vm.onCare(CareAction.FEED)
-        rig.finishAnim()
+        rig.finishAllAnims()
         rig.vm.onFightPressed()
         rig.vm.onSwitcherPick(PetId.GHOSTFACE)
         // Unconsumed sounds pile up in order.
-        assertEquals(listOf("chomp"), rig.ui.sfx)
+        assertEquals(listOf("food_drop"), rig.ui.sfx)
         assertEquals(listOf("jason", "versus", "ghostface"), rig.ui.voice)
 
         rig.vm.consumeSounds()

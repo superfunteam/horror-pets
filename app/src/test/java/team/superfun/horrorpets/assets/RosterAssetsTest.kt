@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.fight.Moment
@@ -126,5 +127,14 @@ class RosterAssetsTest {
             val path = "audio-final/voice/$line.wav"
             assertTrue(path, file(path).isFile)
         }
+    }
+
+    @Test
+    fun everyFoodHasItsArtAndSounds() {
+        for (food in Food.entries) {
+            val path = "sprites-final/food/${food.file}"
+            assertTrue(path, file(path).isFile)
+        }
+        for (sfx in listOf("food_drop", "bite")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
     }
 }

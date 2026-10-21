@@ -31,9 +31,12 @@ import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.canFight
 import team.superfun.horrorpets.game.perform
 import team.superfun.horrorpets.model.AwaySummary
+import team.superfun.horrorpets.model.FEED_MUNCHES
+import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.nextFood
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -54,12 +57,14 @@ import team.superfun.horrorpets.model.PetState
  * and nothing is saved for the rest of the session, so the real save is still there next launch.
  *
  * @param scope where loading and saving run; null uses `viewModelScope`.
- * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry).
+ * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry). FEED plays it
+ *   [FEED_MUNCHES] times, the first with the dropped [Food] (see [PetAnimRequest.food]).
  * @param canDance whether a pet's sprites ship the optional DANCE (its manifest has `dance`): such a pet
  *   plays it for PLAY instead of JUMP then WAVE.
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
+ * @param foodRng picks the food a feed drops. Kept apart from [rng], so feeding never shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -70,6 +75,7 @@ class GameViewModel(
     private val canDance: (PetId) -> Boolean = { false },
     private val onError: (Throwable) -> Unit = {},
     private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
+    private val foodRng: Random = Random.Default,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -78,6 +84,7 @@ class GameViewModel(
 
     private var started = false
     private var nextToken = 1L
+    private var lastFood: Food? = null
 
     /** The action whose animations are playing, if any. [UiState.petAnim] is its current step. */
     private var running: Running? = null
@@ -166,18 +173,19 @@ class GameViewModel(
             is CareResult.Done -> {
                 val game = s.game.withPet(result.pet)
                 val anims = when (a) {
-                    CareAction.FEED -> listOf(feedAnim(pet.id))
+                    CareAction.FEED -> List(FEED_MUNCHES) { feedAnim(pet.id) }
                     CareAction.PLAY -> if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
                     CareAction.TRAIN -> listOf(Anim.ATTACK, Anim.ATTACK)
                 }
                 val sfx = listOf(
                     when (a) {
-                        CareAction.FEED -> "chomp"
+                        CareAction.FEED -> "food_drop"
                         CareAction.PLAY -> "play"
                         CareAction.TRAIN -> "train"
                     },
                 ) + if (result.levelsGained > 0) listOf("levelup") else emptyList()
-                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims)
+                val food = if (a == CareAction.FEED) nextFood(lastFood, foodRng).also { lastFood = it } else null
+                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, food = food)
                 persist(game)
             }
         }
@@ -296,7 +304,7 @@ class GameViewModel(
         val turn = resolveTurn(fight, m, cpuPicked ?: Move.BLOCK, rng)
         _state.value = s.copy(
             screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuPicked),
-        ).beginAction(listOf(Anim.ATTACK), ::finishTurn)
+        ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 
     /** The turn's animation is over. A finished fight turns into its results and the pet is paid. */
@@ -362,9 +370,9 @@ class GameViewModel(
     }
 
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */
-    private fun UiState.beginAction(anims: List<Anim>, finish: (UiState) -> UiState = { it }): UiState {
+    private fun UiState.beginAction(anims: List<Anim>, food: Food? = null, finish: (UiState) -> UiState = { it }): UiState {
         running = Running(ArrayDeque(anims.drop(1)), finish)
-        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++))
+        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++, food))
     }
 
     private fun refuse(s: UiState, reason: RefuseReason) {
