@@ -18,7 +18,8 @@ import team.superfun.horrorpets.model.PetState
  * - A clock that went backwards counts as zero elapsed time and never moves `lastSeenMs` back.
  * - Elapsed time is capped at [Tuning.MAX_ELAPSED_MS]; `lastSeenMs` still advances to the real now.
  * - Decay is linear and clamped, so applying two intervals back to back equals applying their sum.
- * - After [Tuning.FAKE_DEATH_AFTER_MS] away, every pet fake-dies (applied after the decay).
+ * - After [Tuning.FAKE_DEATH_AFTER_MS] away, every pet fake-dies (applied after the decay). The strength
+ *   penalty is skipped for a pet whose fake death is already pending (not yet viewed).
  */
 fun applyElapsed(state: GameState, nowMs: Long): Pair<GameState, AwaySummary> {
     if (nowMs < Tuning.MIN_VALID_EPOCH_MS) return state to AwaySummary(0L, null, 0, emptySet())
@@ -59,11 +60,15 @@ private fun decay(p: PetState, hours: Double): PetState = p.copy(
 private fun moveTowardZero(v: Double, amount: Double): Double =
     if (v >= 0.0) max(0.0, v - amount) else min(0.0, v + amount)
 
+/**
+ * The strength penalty applies once per un-viewed fake death: a pet that is already pending (decay
+ * keeps the flag) still gets the hunger/fun reset but is not penalized a second time.
+ */
 private fun fakeDie(p: PetState): PetState = p.copy(
     fakeDeathPending = true,
     hunger = Tuning.FAKE_DEATH_HUNGER,
     funLevel = Tuning.FAKE_DEATH_FUN,
-    strength = clampStat(p.strength * Tuning.FAKE_DEATH_STRENGTH_FACTOR),
+    strength = if (p.fakeDeathPending) p.strength else clampStat(p.strength * Tuning.FAKE_DEATH_STRENGTH_FACTOR),
 )
 
 private fun summarize(before: GameState, after: GameState, elapsedMs: Long, fakeDeath: Set<PetId>): AwaySummary {

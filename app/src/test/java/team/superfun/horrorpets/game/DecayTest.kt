@@ -175,6 +175,46 @@ class DecayTest {
     }
 
     @Test
+    fun secondFakeDeathBeforeViewingDoesNotCompoundStrength() {
+        val strong = seen().let { s -> s.copy(pets = s.pets.mapValues { (_, p) -> p.copy(strength = 80.0) }) }
+
+        val (first, _) = applyElapsed(strong, t0 + 7 * day)
+        val s1 = (80.0 - 168.0 / 6) * 0.8
+        for (id in PetId.entries) {
+            assertTrue(first.pets.getValue(id).fakeDeathPending)
+            assertEquals(s1, first.pets.getValue(id).strength, 1e-9)
+        }
+
+        // The fake death has not been viewed yet (pending is still true) when another 7 days pass.
+        val (second, summary) = applyElapsed(first, t0 + 14 * day)
+        assertEquals(PetId.entries.toSet(), summary.fakeDeath)
+        for (id in PetId.entries) {
+            val p = second.pets.getValue(id)
+            assertTrue(p.fakeDeathPending)
+            // Decay and the hunger/fun reset still apply...
+            assertEquals(90.0, p.hunger, 0.0)
+            assertEquals(10.0, p.funLevel, 0.0)
+            // ...but strength only loses the 7 days of decay, with no second x0.8.
+            assertEquals(s1 - 168.0 / 6, p.strength, 1e-9)
+        }
+    }
+
+    @Test
+    fun fakeDeathStillPenalizesPetsThatAreNotPending() {
+        val base = seen()
+        val mixed = base.copy(
+            pets = base.pets.mapValues { (id, p) ->
+                p.copy(strength = 80.0, fakeDeathPending = id == PetId.JASON)
+            },
+        )
+        val (next, _) = applyElapsed(mixed, t0 + 7 * day)
+        val decayed = 80.0 - 168.0 / 6
+        assertEquals(decayed, next.pets.getValue(PetId.JASON).strength, 1e-9)
+        assertEquals(decayed * 0.8, next.pets.getValue(PetId.FREDDY).strength, 1e-9)
+        assertTrue(next.pets.getValue(PetId.FREDDY).fakeDeathPending)
+    }
+
+    @Test
     fun justUnderSevenDaysNoFakeDeath() {
         val (next, summary) = applyElapsed(seen(), t0 + 7 * day - 1)
         assertTrue(summary.fakeDeath.isEmpty())
