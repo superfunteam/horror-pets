@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -43,7 +45,8 @@ private const val TOAST_ANIM_MS = 300
 
 /**
  * The welcome-back toast, top-right: slides in when [message] arrives, stays [TOAST_SHOW_MS], slides
- * out and then calls [onDismissed] (where the caller clears the message in the view model).
+ * out and then calls [onDismissed] (where the caller clears the message in the view model). The message
+ * is one line that shrinks to fit the width [modifier] allows.
  */
 @Composable
 fun WelcomeToast(message: String?, onDismissed: () -> Unit, modifier: Modifier = Modifier) {
@@ -85,7 +88,13 @@ fun WelcomeToast(message: String?, onDismissed: () -> Unit, modifier: Modifier =
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("WELCOME BACK", style = displayStyle(17.sp, color = TextLo, tracking = 0.14f))
-                    Text(text, style = bodyStyle(18.sp, color = TextHi), maxLines = 1)
+                    // One line: when the caller caps the toast's width, a long message steps down to fit it.
+                    BasicText(
+                        text,
+                        style = bodyStyle(18.sp, color = TextHi),
+                        maxLines = 1,
+                        autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 18.sp, stepSize = 0.5.sp),
+                    )
                 }
             }
         }

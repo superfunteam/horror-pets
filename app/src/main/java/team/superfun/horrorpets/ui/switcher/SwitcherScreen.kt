@@ -117,8 +117,13 @@ private const val OFF_SATURATION = 0.4f
 private const val OFF_LABEL_ALPHA = 0.5f
 private const val OFF_LABEL_SCALE = 0.86f
 
-/** Pet names under the spotlights; a long one steps down to fit its slot. */
+/**
+ * Pet names under the spotlights; a long one steps down to fit its slot. The floor is low enough that the
+ * nine letters of GHOSTFACE fit the narrowest label (an edge slot on 4:3, see [labelWidthPx]) at any font
+ * scale the game honors (up to 1.15x, see `cappedFontScale`).
+ */
 private val NAME_SIZE = 40.sp
+private val NAME_MIN_SIZE = 18.sp
 
 /** Idle loops start this far apart, so the four pets breathe out of step. */
 private const val IDLE_STAGGER_MS = 230L
@@ -352,7 +357,7 @@ private fun PetSlot(
                 text = pet.id.displayName.uppercase(),
                 style = displayStyle(NAME_SIZE, tracking = 0.06f, lineHeight = NAME_SIZE).copy(textAlign = TextAlign.Center),
                 maxLines = 1,
-                autoSize = TextAutoSize.StepBased(minFontSize = 26.sp, maxFontSize = NAME_SIZE, stepSize = 1.sp),
+                autoSize = TextAutoSize.StepBased(minFontSize = NAME_MIN_SIZE, maxFontSize = NAME_SIZE, stepSize = 1.sp),
             )
         }
         Spacer(Modifier.height(6.dp))

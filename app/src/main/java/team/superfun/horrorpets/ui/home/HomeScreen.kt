@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -66,6 +67,7 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
+import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -276,6 +278,7 @@ fun HomeScreen(
         val petHeightPx = screenH * HOME_PET_HEIGHT
         val cardWidth = (maxWidth * 0.27f).coerceIn(216.dp, 252.dp)
         val inset = safeInsetPadding()
+        val toastMax = toastMaxWidth(maxWidth, scenes.size)
 
         SceneBackdrop(loader = loader, scene = scene) { floorY ->
             SpriteView(
@@ -320,7 +323,11 @@ fun HomeScreen(
                 showTitle = showSceneTitle,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
-            WelcomeToast(state.toast, onDismissed = onToastDone, modifier = Modifier.align(Alignment.TopEnd))
+            WelcomeToast(
+                state.toast,
+                onDismissed = onToastDone,
+                modifier = Modifier.align(Alignment.TopEnd).widthIn(max = toastMax),
+            )
             ActionBar(
                 prevSceneTitle = scenes[(sceneIndex - 1).mod(scenes.size)].title,
                 nextSceneTitle = scenes[(sceneIndex + 1).mod(scenes.size)].title,
@@ -374,11 +381,25 @@ private class JobSlot {
     }
 }
 
+/** The scene dots: the active one is this wide, the others 10dp, and [SceneDotGap] apart. */
+private val ActiveSceneDot = 14.dp
+private val SceneDotGap = 12.dp
+
+/**
+ * How wide the welcome-back toast (top right) may be on a [screenWidth]-wide screen: from the safe inset
+ * in to a little short of the [sceneCount] scene dots at the top centre. A long toast (the 6-day, 3-digit
+ * kind) steps its text down to fit instead of covering the dots, at any font scale.
+ */
+private fun toastMaxWidth(screenWidth: Dp, sceneCount: Int): Dp {
+    val dotsHalf = ((10.dp + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
+    return screenWidth * (0.5f - SAFE_INSET_FRACTION) - dotsHalf - 16.dp
+}
+
 /** Scene dots at the top centre; after a walk, the new scene's name fades in under them for a few seconds. */
 @Composable
 private fun SceneMarker(count: Int, index: Int, title: String, showTitle: Boolean, modifier: Modifier = Modifier) {
     Column(modifier.padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(SceneDotGap), verticalAlignment = Alignment.CenterVertically) {
             repeat(count) { i -> SceneDot(active = i == index) }
         }
         AnimatedVisibility(
@@ -398,7 +419,7 @@ private fun SceneMarker(count: Int, index: Int, title: String, showTitle: Boolea
 
 @Composable
 private fun SceneDot(active: Boolean) {
-    val size by animateDpAsState(if (active) 14.dp else 10.dp, tween(250), label = "dotSize")
+    val size by animateDpAsState(if (active) ActiveSceneDot else 10.dp, tween(250), label = "dotSize")
     val color by animateColorAsState(if (active) TextHi else TextHi.copy(alpha = 0.35f), tween(250), label = "dotColor")
     Box(
         Modifier
