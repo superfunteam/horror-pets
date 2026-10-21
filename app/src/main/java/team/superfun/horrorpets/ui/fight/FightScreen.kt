@@ -78,6 +78,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.SceneSpec
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.fight.FightEvent
@@ -123,7 +124,10 @@ private const val CPU_X = 0.70f
 /** How far an attacker steps toward the other fighter, as a fraction of the screen width. */
 private const val STEP = 0.12f
 
-/** Floating numbers start this far up the defender's cell (about its chest). */
+/**
+ * Floating numbers start this far up the defender's cell (about its chest). Like the two below, it is a
+ * fraction of the cell as drawn, display scale included, so on a half-height Chucky they find his body.
+ */
 private const val FLOAT_AT = 0.42f
 
 /** The bottom of a move callout sits just over the fighter's head, this far up its cell. */
@@ -220,7 +224,14 @@ fun FightScreen(
     val sink = LocalSoundSink.current
     val arena = remember(loader, cpuId, arenaRoll) { arenaScene(loader, cpuId, arenaRoll) }
     val tint = remember(arena) { hexColor(arena.tint) }
-    val stage = remember { FightStage(screen, turnPending = petAnim != null) }
+    val stage = remember {
+        FightStage(
+            screen,
+            turnPending = petAnim != null,
+            playerBody = loader.manifest(playerId).bodyScale,
+            cpuBody = loader.manifest(cpuId).bodyScale,
+        )
+    }
     val finished by rememberUpdatedState(onAnimFinished)
     val entry by rememberUpdatedState(focusEntry)
 
@@ -333,8 +344,8 @@ fun FightScreen(
                     val rig = stage.rig(side)
                     key(side) {
                         ShieldRing(
-                            center = { Offset(w * homeFraction(side) + rig.dir * rig.step.value * w, floorY - cellH * BODY_AT) },
-                            radius = cellH * 0.44f,
+                            center = { Offset(w * homeFraction(side) + rig.dir * rig.step.value * w, floorY - cellH * rig.body * BODY_AT) },
+                            radius = cellH * rig.body * 0.44f,
                             progress = { rig.shield.value },
                         )
                     }
@@ -367,7 +378,7 @@ fun FightScreen(
                         move = move,
                         progress = { rig.callout.value },
                         x = { w * homeFraction(side) },
-                        y = { stage.floor - cellH * CALLOUT_AT },
+                        y = { stage.floor - cellH * rig.body * CALLOUT_AT },
                         top = belowHud,
                         maxWidth = halfWidth,
                     )
@@ -508,7 +519,7 @@ private class Pose(val anim: Anim) {
  * recomposes the screen frame by frame.
  */
 @Stable
-private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float) {
+private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, val body: Float) {
     /** +1 when stepping toward the other fighter moves right (the player), -1 for the CPU. */
     val dir = if (side == Side.PLAYER) 1f else -1f
 
@@ -600,7 +611,7 @@ private fun FighterView(
 
 /** Everything the turn playback animates, remembered for the life of one fight screen. */
 @Stable
-private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
+private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerBody: Float, cpuBody: Float) {
     val player: FighterRig
     val cpu: FighterRig
 
@@ -610,8 +621,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
         // recreated while a turn played) replays that turn, so it starts from the values before it.
         val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
         val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
-        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat())
-        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat())
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerBody)
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuBody)
     }
 
     val shake = Animatable(0f)
@@ -650,14 +661,15 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
     private fun homeX(side: Side): Float = width * homeFraction(side)
 
     fun float(kind: FloatKind, text: String, labels: List<String>, side: Side) {
-        floats += FloatText(nextFloat++, kind, text, labels, homeX(side), floor - cellH * FLOAT_AT)
+        floats += FloatText(nextFloat++, kind, text, labels, homeX(side), floor - cellH * rig(side).body * FLOAT_AT)
     }
 
-    fun bodyCenter(side: Side): Offset = Offset(homeX(side), floor - cellH * BODY_AT)
+    /** The middle of [side]'s body as drawn (a half-height Chucky's is lower). */
+    fun bodyCenter(side: Side): Offset = Offset(homeX(side), floor - cellH * rig(side).body * BODY_AT)
 
     fun specialOn(pet: PetId, target: Side): SpecialFx {
         val c = bodyCenter(target)
-        return SpecialFx(pet.spec.special, c.x, c.y, cellH)
+        return SpecialFx(pet.spec.special, c.x, c.y, cellH * rig(target).body)
     }
 
     /** How much a sprite of [rig] playing [anim] may take before the turn stops waiting for it. */
@@ -831,7 +843,7 @@ private suspend fun FightStage.lunge(
 
     return scope.launch {
         launch {
-            val up = -cellHeight() * 0.05f
+            val up = -cellHeight() * a.body * 0.05f
             a.hop.animateTo(up, tween(STEP_BACK_MS / 2, easing = FastOutSlowInEasing))
             a.hop.animateTo(0f, tween(STEP_BACK_MS / 2, easing = FastOutLinearInEasing))
         }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.frameAt
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.model.PetId
@@ -44,8 +45,14 @@ private const val SHADOW_ASPECT = 0.2f
  *
  * **Placement:** the composable's bottom-centre is the pet's feet (the manifest's `baselineY` and
  * `anchorX`), so a caller plants a pet by putting that point on a floor line. The composable is
- * `cellWidth x baselineY` scaled to [heightPx] (the drawn height of the whole cell); the strip's few rows
+ * `cellWidth x baselineY` scaled to [heightPx] (the height of a full-size cell); the strip's few rows
  * below the feet and the contact shadow draw just outside its bounds.
+ *
+ * **Display scale:** a pet whose manifest has a `displayScale` below 1 (Chucky, 0.5) is drawn that much
+ * smaller inside the same bounds, its feet on the same spot, and its contact shadow shrinks with it. The
+ * bounds stay full-size, so every caller's placement is unchanged; a caller that anchors something to
+ * the body itself (a number over the head, an effect on the chest) scales by
+ * [bodyScale][team.superfun.horrorpets.assets.bodyScale] too.
  *
  * **Playback** restarts whenever [pet], [anim] or [playKey] changes; pass the view model's request token
  * as [playKey] so the same animation requested twice plays twice. [onStarted] is called when its first
@@ -85,6 +92,8 @@ fun SpriteView(
     val cellW = manifest.cell[0]
     val cellH = manifest.cell[1]
     val scale = heightPx / cellH
+    // The pet's own size inside the full-size bounds.
+    val drawScale = scale * manifest.bodyScale
 
     // What is on screen: the strip being drawn and its current frame. Both change together on the main
     // thread, so a frame index never meets the wrong strip.
@@ -136,7 +145,7 @@ fun SpriteView(
                 // Everything here depends only on the size and the parameters, so the shadow's gradient
                 // is built once per change instead of on every frame of the animation.
                 val feet = Offset(size.width / 2f, size.height)
-                val shadowRadius = cellW * scale * SHADOW_WIDTH_OF_CELL / 2f
+                val shadowRadius = cellW * drawScale * SHADOW_WIDTH_OF_CELL / 2f
                 val shadowBrush = if (shadowOpacity > 0f) {
                     Brush.radialGradient(
                         0f to Color.Black.copy(alpha = shadowOpacity),
@@ -148,9 +157,9 @@ fun SpriteView(
                 } else {
                     null
                 }
-                val left = (feet.x - manifest.anchorX * scale).roundToInt()
-                val top = (feet.y - manifest.baselineY * scale).roundToInt()
-                val dstSize = IntSize((cellW * scale).roundToInt(), (cellH * scale).roundToInt())
+                val left = (feet.x - manifest.anchorX * drawScale).roundToInt()
+                val top = (feet.y - manifest.baselineY * drawScale).roundToInt()
+                val dstSize = IntSize((cellW * drawScale).roundToInt(), (cellH * drawScale).roundToInt())
 
                 onDrawBehind {
                     // Nothing, not even the shadow, until the strip is decoded: a lone shadow would

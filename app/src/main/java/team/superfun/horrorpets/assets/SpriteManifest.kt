@@ -40,6 +40,8 @@ data class AnimSpec(
  * A pet's `sprites/<pet>/manifest.json`. [cell] is the [width, height] of one frame in pixels;
  * [baselineY] is the row of the feet inside a cell and [anchorX] the column of the body centre, so
  * a pet can be planted on a floor line. [feed] is the key of the animation played while eating.
+ * [displayScale] is how tall the pet stands next to the others (1.0, or 0.5 for Chucky, who is half
+ * as tall): its sprite is drawn that much smaller, feet on the same spot. Absent means 1.0; use [bodyScale].
  */
 @Serializable
 data class SpriteManifest(
@@ -49,7 +51,12 @@ data class SpriteManifest(
     val anchorX: Int,
     val feed: String,
     val animations: Map<String, AnimSpec>,
+    val displayScale: Float = 1f,
 )
+
+/** [SpriteManifest.displayScale], with anything that is not a positive, finite number read as full size (1). */
+val SpriteManifest.bodyScale: Float
+    get() = displayScale.takeIf { it.isFinite() && it > 0f } ?: 1f
 
 private val manifestFormat = Json { ignoreUnknownKeys = true }
 

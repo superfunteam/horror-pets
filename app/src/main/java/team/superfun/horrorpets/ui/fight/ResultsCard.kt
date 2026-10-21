@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.SceneSpec
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.PetState
@@ -196,16 +197,21 @@ private fun Portrait(loader: AssetLoader, pet: PetState, screen: Screen.Results,
         }
     }
     val anim = script.getOrNull(step) ?: Anim.IDLE
+    // The portrait keeps a full-size cell's room; a half-height Chucky stands at its foot, and the light
+    // pools around his body rather than above his head.
+    val body = remember(loader, pet.id) { loader.manifest(pet.id).bodyScale }
     Box(
         Modifier.drawWithCache {
+            val center = Offset(size.width / 2f, size.height * (1f - 0.45f * body))
+            val radius = size.height * 0.62f * body
             val glow = Brush.radialGradient(
                 0f to Color.White.copy(alpha = 0.12f),
                 0.6f to Color.White.copy(alpha = 0.03f),
                 1f to Color.Transparent,
-                center = Offset(size.width / 2f, size.height * 0.55f),
-                radius = size.height * 0.62f,
+                center = center,
+                radius = radius,
             )
-            onDrawBehind { drawCircle(glow, radius = size.height * 0.62f, center = Offset(size.width / 2f, size.height * 0.55f)) }
+            onDrawBehind { drawCircle(glow, radius = radius, center = center) }
         },
     ) {
         SpriteView(

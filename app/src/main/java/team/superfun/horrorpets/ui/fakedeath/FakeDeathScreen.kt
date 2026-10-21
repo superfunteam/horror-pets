@@ -70,6 +70,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -158,6 +159,7 @@ fun FakeDeathScreen(
     val scenes = remember(loader, pet) { loader.scenes().getValue(pet) }
     val scene = scenes[(game.pets[pet]?.sceneIndex ?: 0).mod(scenes.size)]
     val tint = remember(scene) { hexColor(scene.tint) }
+    val petBody = remember(loader, pet) { loader.manifest(pet).bodyScale }
     val name = pet.displayName.uppercase()
     val focus = remember { FocusRequester() }
     val interaction = remember { MutableInteractionSource() }
@@ -281,7 +283,8 @@ fun FakeDeathScreen(
                         backlight = { backlight.value },
                         floorY = floorY,
                         stoneW = h * STONE_WIDTH,
-                        petH = h * PET_HEIGHT,
+                        // The red glow behind the pet as it rises: around its body, as tall as it is drawn.
+                        petH = h * PET_HEIGHT * petBody,
                     )
                     if (stage >= Stage.REVEAL) {
                         RisingPet(
@@ -620,13 +623,15 @@ private fun RisingPet(
 ) {
     var jumped by remember(pet) { mutableStateOf(false) }
     val groundSlackPx = with(LocalDensity.current) { 3.dp.toPx() }
+    // The pet's height as drawn: a half-height Chucky climbs out of a smaller hole, and as quickly.
+    val bodyPx = heightPx * remember(loader, pet) { loader.manifest(pet).bodyScale }
     Box(
         Modifier
             .fillMaxSize()
             .drawWithCache {
                 // The broken earth it climbs out of, in front of it, so the cut-off at the ground reads
                 // as a hole rather than a clipping line. It sinks away once the pet is out.
-                val lipRadius = heightPx * 0.34f
+                val lipRadius = bodyPx * 0.34f
                 val lip = Brush.radialGradient(
                     0f to Earth,
                     0.55f to Earth.copy(alpha = 0.92f),
@@ -664,7 +669,7 @@ private fun RisingPet(
                 .placeAt(x = { x }, y = { feetY })
                 .graphicsLayer {
                     val p = ((clock() - REVEAL_AT) / RISE_MS.toFloat()).coerceIn(0f, 1f)
-                    translationY = (1f - easeOut(p)) * heightPx * 0.95f
+                    translationY = (1f - easeOut(p)) * bodyPx * 0.95f
                 },
         )
     }

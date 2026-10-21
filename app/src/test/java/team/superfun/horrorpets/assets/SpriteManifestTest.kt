@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SpriteManifestTest {
-    private val pets = listOf("jason", "freddy", "pinhead", "ghostface")
+    private val pets = listOf("jason", "freddy", "pinhead", "ghostface", "chucky", "michael")
 
     @Test
     fun parsesAllTwelveAnims() {
@@ -57,6 +57,36 @@ class SpriteManifestTest {
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("pinhead")).feedAnim())
         assertEquals(Anim.WORK, parseManifest(AssetFixtures.manifest("freddy")).feedAnim())
         assertEquals(Anim.WORK, parseManifest(AssetFixtures.manifest("ghostface")).feedAnim())
+        assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("chucky")).feedAnim())
+        assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("michael")).feedAnim())
+    }
+
+    @Test
+    fun displayScaleComesFromTheManifest() {
+        assertEquals(0.5f, parseManifest(AssetFixtures.manifest("chucky")).displayScale, 0f)
+        for (pet in pets - "chucky") {
+            assertEquals(pet, 1f, parseManifest(AssetFixtures.manifest(pet)).displayScale, 0f)
+        }
+    }
+
+    @Test
+    fun aManifestWithoutDisplayScaleIsFullSize() {
+        val m = parseManifest(
+            """{"pet":"x","cell":[384,416],"baselineY":404,"anchorX":192,"feed":"work",
+               "animations":{"idle":{"file":"idle.png","frames":1,"durationsMs":[50],"loop":true}}}""",
+        )
+        assertEquals(1f, m.displayScale, 0f)
+        assertEquals(1f, m.bodyScale, 0f)
+    }
+
+    @Test
+    fun bodyScaleIgnoresNonsenseScales() {
+        val m = parseManifest(AssetFixtures.manifest("chucky"))
+        assertEquals(0.5f, m.bodyScale, 0f)
+        for (bad in listOf(0f, -0.5f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertEquals("$bad", 1f, m.copy(displayScale = bad).bodyScale, 0f)
+        }
+        assertEquals(1.25f, m.copy(displayScale = 1.25f).bodyScale, 0f)
     }
 
     @Test

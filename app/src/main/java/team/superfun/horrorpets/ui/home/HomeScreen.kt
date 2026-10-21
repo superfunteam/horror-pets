@@ -60,6 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
@@ -302,7 +303,7 @@ fun HomeScreen(
                 // the stat card, which on 4:3 sits close to the pet.
                 modifier = Modifier.placeAt(
                     x = { screenW / 2f + walkX.value * screenW - tailPx },
-                    y = { floorY - petHeightPx * BUBBLE_ABOVE_FEET },
+                    y = { floorY - petHeightPx * manifest.bodyScale * BUBBLE_ABOVE_FEET },
                     pivotX = 0f,
                 ),
             )
