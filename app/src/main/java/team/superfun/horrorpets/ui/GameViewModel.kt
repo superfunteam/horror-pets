@@ -6,6 +6,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,9 +50,14 @@ import team.superfun.horrorpets.model.PetState
  * held or mashed remote key apply an action exactly once. Looping animations (the run strips)
  * never end on their own, so the UI must report them finished after one pass.
  *
+ * Loading: a load that fails is tried once more. If that fails too, the game starts fresh in memory
+ * and nothing is saved for the rest of the session, so the real save is still there next launch.
+ *
  * @param scope where loading and saving run; null uses `viewModelScope`.
  * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry).
- * @param onError receives every failed save or load. The game keeps running from memory.
+ * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
+ * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
+ *   install / update time, so a stale boot clock can neither decay the pets nor stamp the save.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -60,6 +66,7 @@ class GameViewModel(
     scope: CoroutineScope?,
     private val feedAnim: (PetId) -> Anim,
     private val onError: (Throwable) -> Unit = {},
+    private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -74,6 +81,9 @@ class GameViewModel(
 
     private val saveLock = Mutex()
 
+    /** Set when the save could not be read: this session must never overwrite it. */
+    private var savingDisabled = false
+
     /** What is left of the running action: the animations still to play, and what happens after the last. */
     private class Running(val remaining: ArrayDeque<Anim>, val finish: (UiState) -> UiState)
 
@@ -84,39 +94,63 @@ class GameViewModel(
         if (started) return
         started = true
         scope.launch {
-            val loaded = try {
-                store.load()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                onError(e)
-                GameState()
-            }
-            val (game, away) = applyElapsed(loaded, clock.nowMs())
+            val loaded = loadOrNull() ?: GameState().also { savingDisabled = true }
+            val (game, away) = applyElapsed(loaded, clock.nowMs(), clockFloorMs)
             val base = _state.value.copy(game = game)
             _state.value = if (game.selected == null) {
                 base.copy(screen = Screen.Switcher(SwitcherMode.ONBOARD), voice = base.voice + "choose_your_killer")
             } else {
-                val routed = base.copy(screen = Screen.Home).routeFakeDeath()
-                if (routed.screen == Screen.Home) routed.copy(toast = awayToast(away)) else routed
+                base.copy(screen = Screen.Home).routeFakeDeath().withAwayToast(away)
             }
             persist(game)
         }
     }
 
-    /** The app came back to the foreground. */
-    fun onResume() = advanceClock()
+    /** The save, or null when it could not be read twice in a row (the second failure is reported). */
+    private suspend fun loadOrNull(): GameState? {
+        val firstFailure = try {
+            return store.load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e
+        }
+        delay(LOAD_RETRY_DELAY_MS) // a moment for a transient I/O problem to clear
+        return try {
+            store.load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.addSuppressed(firstFailure)
+            onError(e)
+            null
+        }
+    }
 
-    /** Call about once a minute while the app is foregrounded, so a TV left on keeps getting hungrier. */
-    fun tick() = advanceClock()
+    /**
+     * The app came back to the foreground. Usually the launcher resumes the Activity that is still
+     * running (no [start]), so this is where a returning player gets the welcome-back toast.
+     */
+    fun onResume() = advanceClock(welcomeBack = true)
 
-    private fun advanceClock() {
+    /** Call about once a minute while the app is foregrounded, so a TV left on keeps getting hungrier. Never toasts. */
+    fun tick() = advanceClock(welcomeBack = false)
+
+    private fun advanceClock(welcomeBack: Boolean) {
         val s = _state.value
         if (s.screen == Screen.Loading) return // the save has not been read yet: never overwrite it
-        val (game, _) = applyElapsed(s.game, clock.nowMs())
+        val (game, away) = applyElapsed(s.game, clock.nowMs(), clockFloorMs)
         if (game == s.game) return
-        _state.value = s.copy(game = game).routeFakeDeath()
+        val routed = s.copy(game = game).routeFakeDeath()
+        _state.value = if (welcomeBack) routed.withAwayToast(away) else routed
         persist(game)
+    }
+
+    /** Shows the welcome-back toast for [away] when Home is on screen and the absence is worth one (see [awayToast]). */
+    private fun UiState.withAwayToast(away: AwaySummary): UiState {
+        if (screen != Screen.Home) return this
+        val toast = awayToast(away) ?: return this
+        return copy(toast = toast)
     }
 
     // ---- home: care and walking --------------------------------------------------------------
@@ -223,6 +257,13 @@ class GameViewModel(
     }
 
     // ---- fight -------------------------------------------------------------------------------
+
+    /** Back on the VS card: no fight exists yet, so it simply returns to the opponent switcher. */
+    fun onVersusBack() {
+        val s = _state.value
+        if (s.screen !is Screen.Versus) return
+        _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT))
+    }
 
     /** The VS card is done: the fight starts with the selected pet against the picked opponent. */
     fun onVersusDone() {
@@ -342,8 +383,12 @@ class GameViewModel(
 
     private fun GameState.withPet(p: PetState): GameState = copy(pets = pets + (p.id to p))
 
-    /** Saves [game] after the saves already queued. A failed save is reported and the game carries on. */
+    /**
+     * Saves [game] after the saves already queued. A failed save is reported and the game carries on.
+     * Does nothing in a session whose save could not be loaded.
+     */
     private fun persist(game: GameState) {
+        if (savingDisabled) return
         scope.launch {
             saveLock.withLock {
                 try {
@@ -357,6 +402,9 @@ class GameViewModel(
         }
     }
 }
+
+/** The pause before the one retry of a failed load. */
+private const val LOAD_RETRY_DELAY_MS = 250L
 
 /** A pet's name as the announcer audio files spell it ("jason", "freddy", ...). */
 private fun PetId.soundName(): String = name.lowercase()

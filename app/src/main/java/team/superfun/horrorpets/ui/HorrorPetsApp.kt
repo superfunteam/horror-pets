@@ -139,6 +139,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     loader = loader,
                     arenaRoll = arenaRoll,
                     onDone = vm::onVersusDone,
+                    onBack = vm::onVersusBack,
                     focusEntry = focusEntry,
                 )
 

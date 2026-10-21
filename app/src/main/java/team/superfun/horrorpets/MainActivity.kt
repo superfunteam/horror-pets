@@ -3,6 +3,8 @@ package team.superfun.horrorpets
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
@@ -17,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlin.math.max
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -28,6 +31,7 @@ import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
+import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
@@ -50,6 +54,7 @@ class MainActivity : ComponentActivity() {
                     scope = null, // viewModelScope: main-confined, as the view model requires
                     feedAnim = { loader.manifest(it).feedAnim() },
                     onError = { Log.e(TAG, "Save or load failed; carrying on from memory", it) },
+                    clockFloorMs = clockFloorMs(appContext),
                 )
             }
         }
@@ -243,6 +248,28 @@ class MainActivity : ComponentActivity() {
 
         @Volatile
         private var sharedLoader: AssetLoader? = null
+
+        /**
+         * The earliest believable wall-clock time: when this build was installed or last updated, and
+         * never below [Tuning.MIN_VALID_EPOCH_MS]. A TV stick with no clock battery boots to its
+         * firmware's build date until the network clock syncs; that date is past 2024 but before the
+         * install, so this floor recognises it as stale.
+         */
+        fun clockFloorMs(context: Context): Long {
+            val installedAt = try {
+                val pm = context.packageManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0)).lastUpdateTime
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(context.packageName, 0).lastUpdateTime
+                }
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w(TAG, "No package info for the clock floor; using the default", e)
+                0L
+            }
+            return max(Tuning.MIN_VALID_EPOCH_MS, installedAt)
+        }
 
         fun assetLoader(context: Context): AssetLoader =
             sharedLoader ?: synchronized(this) {

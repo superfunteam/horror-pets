@@ -109,8 +109,10 @@ private const val SEAM_LEAN = 0.07f
  * into the centre with a 300ms screen shake; then FIGHT! (with the announcer's `fight`) and [onDone].
  *
  * The announcer's "<player> VERSUS <opponent>" was queued by the view model as the card opened, and VS
- * lands with its "versus". OK skips straight to the fight. [onDone] is called exactly once. Back does
- * nothing: the bout is about to start. [focusEntry] gates OK and Back (see `RequestFocusOnEntry`).
+ * lands with its "versus". OK skips straight to the fight; Back calls [onBack] (no fight exists yet, so
+ * the player just goes back to choosing an opponent). The first of the two ends the card: [onDone] or
+ * [onBack] is called exactly once, and the timeline stops. [focusEntry] gates OK and Back (see
+ * `RequestFocusOnEntry`); a held Back's repeats are dropped by `MainActivity`.
  *
  * While the card plays, the fight's strips and the arena scene are decoded, so the first turn starts at once.
  */
@@ -122,12 +124,14 @@ fun VersusScreen(
     loader: AssetLoader,
     arenaRoll: Int,
     onDone: () -> Unit,
+    onBack: () -> Unit,
     focusEntry: Any? = Unit,
 ) {
     val sounds = LocalSoundSink.current
     val focus = remember { FocusRequester() }
     val interaction = remember { MutableInteractionSource() }
     val latestOnDone by rememberUpdatedState(onDone)
+    val latestOnBack by rememberUpdatedState(onBack)
     val playerScenes = remember(loader, player) { loader.scenes().getValue(player) }
     val playerScene = playerScenes[(game.pets[player]?.sceneIndex ?: 0).mod(playerScenes.size)]
     val arena = remember(loader, opponent, arenaRoll) { arenaScene(loader, opponent, arenaRoll) }
@@ -147,10 +151,20 @@ fun VersusScreen(
         latestOnDone()
     }
 
-    BackHandler(enabled = focusEntry != null) { /* the bout is about to start; OK skips */ }
+    BackHandler(enabled = focusEntry != null) {
+        if (!done[0]) {
+            done[0] = true // stops the timeline: no "fight!" call, no onDone, as the card fades out
+            latestOnBack()
+        }
+    }
     RequestFocusOnEntry(focus, focusEntry)
 
-    LaunchedEffect(Unit) {
+    // One run of the card per entry. The router can bring back a card that is still fading out (Back, then
+    // a quick re-pick of an opponent): that one has to play again from the top instead of staying finished.
+    LaunchedEffect(focusEntry) {
+        if (focusEntry == null) return@LaunchedEffect // leaving: the card has already ended
+        done[0] = false
+        clock.longValue = 0L
         var t = 0L
         var last = withFrameMillis { it }
         var called = false

@@ -66,13 +66,24 @@ private class FakeClock(var now: Long) : Clock {
 private class FakeStore(var initial: GameState) : SaveStore {
     val saves = mutableListOf<GameState>()
     var failSaves = false
+
+    /** Every load fails. */
     var failLoad = false
+
+    /** This many of the next loads fail, then they work again. */
+    var failNextLoads = 0
+    var loadAttempts = 0
     var saveAttempts = 0
 
     val last: GameState get() = saves.last()
 
     override suspend fun load(): GameState {
+        loadAttempts++
         if (failLoad) throw IOException("read failed")
+        if (failNextLoads > 0) {
+            failNextLoads--
+            throw IOException("transient read failure")
+        }
         return initial
     }
 
@@ -102,6 +113,7 @@ private class Rig(
     rng: Random = Random(7),
     val store: FakeStore = FakeStore(initial),
     val clock: FakeClock = FakeClock(T0),
+    clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
 ) {
     val errors = mutableListOf<Throwable>()
     val scope = TestScope(StandardTestDispatcher())
@@ -112,6 +124,7 @@ private class Rig(
         scope = scope,
         feedAnim = { if (it == PetId.FREDDY || it == PetId.GHOSTFACE) Anim.WORK else Anim.REVIEW },
         onError = { errors += it },
+        clockFloorMs = clockFloorMs,
     )
 
     val ui: UiState get() = vm.state.value
@@ -206,12 +219,43 @@ class GameViewModelTest {
     }
 
     @Test
-    fun loadFailureStartsAFreshGameInsteadOfCrashing() {
+    fun aLoadThatFailsOnceIsRetriedAndTheGameSavesNormally() {
+        val store = FakeStore(gameOf(lastSeenMs = T0 - 3 * HOUR)).apply { failNextLoads = 1 }
+        val rig = Rig(gameOf(), store = store).started()
+        assertEquals(2, store.loadAttempts)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(PetId.JASON, rig.game.selected)
+        assertNotNull("the real save loaded, so it is a normal welcome back", rig.ui.toast)
+        assertTrue("a load that recovered is not an error", rig.errors.isEmpty())
+        // Saving works as usual.
+        assertEquals(rig.game, store.last)
+        rig.vm.onCare(CareAction.PLAY)
+        rig.settle()
+        assertEquals(rig.game, store.last)
+    }
+
+    @Test
+    fun aLoadThatKeepsFailingPlaysFreshInMemoryAndNeverSaves() {
         val store = FakeStore(gameOf()).apply { failLoad = true }
         val rig = Rig(gameOf(), store = store).started()
+        assertEquals("retried once", 2, store.loadAttempts)
         assertEquals(Screen.Switcher(SwitcherMode.ONBOARD), rig.ui.screen)
         assertEquals(1, rig.errors.size)
         assertTrue(rig.errors[0] is IOException)
+
+        // The session plays on from defaults, but nothing reaches the store: the real save must
+        // survive for the next launch.
+        rig.vm.onSwitcherPick(PetId.FREDDY)
+        rig.vm.onCare(CareAction.PLAY)
+        rig.finishAllAnims()
+        rig.clock.now += 2 * HOUR
+        rig.vm.tick()
+        rig.vm.onResume()
+        rig.settle()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(PetId.FREDDY, rig.game.selected)
+        assertEquals(0, store.saveAttempts)
+        assertTrue(store.saves.isEmpty())
     }
 
     @Test
@@ -296,6 +340,45 @@ class GameViewModelTest {
         rig.vm.onFightPressed()
         rig.vm.onSwitcherBack()
         assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun backOnTheVersusCardReturnsToTheOpponentSwitcher() {
+        val rig = Rig(gameOf()).started()
+        val savesBefore = rig.store.saves.size
+        rig.vm.onFightPressed()
+        rig.vm.onSwitcherPick(PetId.FREDDY)
+        assertEquals(Screen.Versus(PetId.FREDDY), rig.ui.screen)
+        val game = rig.game
+
+        rig.vm.onVersusBack()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+        assertEquals("no fight happened, so nothing is paid or lost", game, rig.game)
+        assertFalse(rig.ui.busy)
+
+        // A second Back, or the card's timeline ending as it fades out, changes nothing.
+        rig.vm.onVersusBack()
+        rig.vm.onVersusDone()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+
+        // Another opponent can be picked straight away, and Back from there still goes Home.
+        rig.vm.onSwitcherPick(PetId.PINHEAD)
+        assertEquals(Screen.Versus(PetId.PINHEAD), rig.ui.screen)
+        rig.vm.onVersusBack()
+        rig.vm.onSwitcherBack()
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.settle()
+        assertEquals(savesBefore, rig.store.saves.size)
+    }
+
+    @Test
+    fun versusBackIsIgnoredOffTheVersusCard() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.onVersusBack()
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.vm.onFightPressed()
+        rig.vm.onVersusBack()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
     }
 
     // ---- care --------------------------------------------------------------------------------
@@ -857,13 +940,89 @@ class GameViewModelTest {
     }
 
     @Test
-    fun resumeAfterAShortNapJustDecays() {
+    fun resumeAfterANapDecaysAndWelcomesBack() {
+        // The launcher brings back the running Activity: no start(), just onResume().
         val rig = Rig(gameOf()).started()
+        assertNull(rig.ui.toast)
         rig.clock.now += 5 * HOUR
         rig.vm.onResume()
         assertEquals(Screen.Home, rig.ui.screen)
         assertEquals(40.0, rig.jason.hunger, 1e-9)
+        assertEquals("Away 5h · Hunger +20", rig.ui.toast)
+    }
+
+    @Test
+    fun resumeAfterTenMinutesOnHomeShowsTheToast() {
+        val rig = Rig(gameOf()).started()
+        rig.clock.now += 10 * MINUTE
+        rig.vm.onResume()
+        assertEquals("Away 10m · Hunger +1", rig.ui.toast)
+    }
+
+    @Test
+    fun resumeUnderTenMinutesDecaysWithoutAToast() {
+        val rig = Rig(gameOf()).started()
+        rig.clock.now += 9 * MINUTE
+        rig.vm.onResume()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(20.6, rig.jason.hunger, 1e-9)
         assertNull(rig.ui.toast)
+    }
+
+    @Test
+    fun resumeOffTheHomeScreenShowsNoToast() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.openSwitcher()
+        rig.clock.now += 5 * HOUR
+        rig.vm.onResume()
+        assertEquals(Screen.Switcher(SwitcherMode.SELECT), rig.ui.screen)
+        assertEquals(40.0, rig.jason.hunger, 1e-9)
+        assertNull(rig.ui.toast)
+    }
+
+    @Test
+    fun tickStaysSilentEvenAfterALongGap() {
+        val rig = Rig(gameOf()).started()
+        rig.clock.now += 5 * HOUR
+        rig.vm.tick()
+        assertEquals(40.0, rig.jason.hunger, 1e-9)
+        assertNull(rig.ui.toast)
+    }
+
+    @Test
+    fun aClockBelowTheFloorIsTreatedAsUnknown() {
+        // Installed at `floor`; this boot's clock is stale (T0, a month earlier), as is the saved lastSeen.
+        val floor = T0 + 30 * DAY
+        val rig = Rig(gameOf(lastSeenMs = T0 - 3 * HOUR), clockFloorMs = floor).started()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals("no decay", 20.0, rig.jason.hunger, 1e-9)
+        assertNull(rig.ui.toast)
+        assertEquals("no lastSeen write", T0 - 3 * HOUR, rig.game.lastSeenMs)
+
+        rig.clock.now += 2 * HOUR
+        rig.vm.onResume()
+        rig.vm.tick()
+        assertEquals(20.0, rig.jason.hunger, 1e-9)
+        assertEquals(T0 - 3 * HOUR, rig.game.lastSeenMs)
+    }
+
+    @Test
+    fun aLastSeenBelowTheFloorCountsAsAFirstRun() {
+        // The clock has synced, but the save was last written under the stale clock: that gap is not
+        // a real absence, so no 30-day jump and no fake death.
+        val floor = T0 - 10 * DAY
+        val rig = Rig(gameOf(lastSeenMs = floor - 20 * DAY), clockFloorMs = floor).started()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(20.0, rig.jason.hunger, 1e-9)
+        assertFalse(rig.jason.fakeDeathPending)
+        assertNull(rig.ui.toast)
+        assertEquals(T0, rig.game.lastSeenMs)
+        rig.settle()
+        assertEquals(T0, rig.store.last.lastSeenMs)
+
+        rig.clock.now += 3 * HOUR
+        rig.vm.tick()
+        assertEquals(32.0, rig.jason.hunger, 1e-9)
     }
 
     @Test
