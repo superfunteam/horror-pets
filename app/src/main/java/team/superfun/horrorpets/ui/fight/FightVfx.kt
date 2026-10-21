@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import kotlin.math.PI
@@ -89,6 +90,9 @@ private val VoodooPale = Color(0xFFF1E6FF)
  *   quick white stab streaks drive into it, each one flaring the glyph.
  * - Michael, The Shape: the dark closes in slowly around the target, then one big overhead diagonal
  *   slash cuts down across it.
+ * - Leatherface, Saw Dance: three white-hot chainsaw blades whirl around the target on two tilted orbits,
+ *   trailing orange arcs (dimmer where they pass behind it) and biting as they sweep across its front,
+ *   while a shower of orange-yellow sparks flies off the blades and falls.
  * Everything is lines, arcs, circles and ovals placed by [hash01], with brushes and strokes built once
  * per showing, so a frame allocates nothing.
  */
@@ -120,6 +124,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                 val linkShadow = Stroke(7.5f * unit)
                 val voodoo = VoodooKit(unit, fx)
                 val shape = ShapeKit(w, h, fx)
+                val saw = SawKit(fx)
                 onDrawBehind {
                     val p = progress()
                     if (p <= 0f || p >= 1f) return@onDrawBehind
@@ -131,6 +136,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                         SpecialStyle.KNIFE_FLURRY -> knives(f, p, unit, vignette)
                         SpecialStyle.VOODOO_STAB -> voodooStab(f, p, unit, voodoo)
                         SpecialStyle.THE_SHAPE -> theShape(f, p, unit, shape)
+                        SpecialStyle.SAW_DANCE -> sawDance(f, p, unit, saw)
                     }
                 }
             },
@@ -508,4 +514,160 @@ private fun DrawScope.theShape(f: SpecialFx, p: Float, unit: Float, kit: ShapeKi
     val lag = Offset(-f.bodyH * 0.06f, -f.bodyH * 0.03f)
     streak(from + lag, to + lag, cut * 0.92f, fade * 0.35f, ShapeGlow, Blood, ShapeSteel, 9f * unit)
     streak(from, to, cut, fade, ShapeGlow, ShapeSteel, Color.White, 15f * unit)
+}
+
+// ---- Leatherface: Saw Dance ----
+
+private val SawHot = Color(0xFFFFF6DC)
+private val SawYellow = Color(0xFFFFD23F)
+private val SawOrange = Color(0xFFFF8A1F)
+private val SawEmber = Color(0xFFD9381E)
+
+/** Points along each blade's trail, from the white-hot leading edge back to the ember tail. */
+private const val SAW_TRAIL_STEPS = 10
+
+/** How far round its orbit a blade's trail reaches behind it, in radians (about 110 degrees). */
+private const val SAW_TRAIL_RAD = 1.9f
+
+/** How many times the blades go round over the effect. */
+private const val SAW_TURNS = 2.3f
+
+private const val SAW_SPARKS = 46
+
+/**
+ * The blades' orbits, flattened ellipses round the target's body: centre height and radii as fractions of the
+ * body height, tilt in degrees, spin direction (1 runs left to right across the front), and blades on it.
+ */
+private val SawOrbitY = floatArrayOf(-0.06f, 0.17f)
+private val SawOrbitRx = floatArrayOf(0.44f, 0.36f)
+private val SawOrbitRy = floatArrayOf(0.13f, 0.1f)
+private val SawOrbitTilt = floatArrayOf(-14f, 9f)
+private val SawOrbitDir = floatArrayOf(1f, -1f)
+private val SawOrbitBlades = intArrayOf(2, 1)
+
+/** Each blade as (orbit, starting angle in radians). Three blades: two opposite on the upper orbit, one below. */
+private val SawBladeOrbit = intArrayOf(0, 0, 1)
+private val SawBladeStart = floatArrayOf(0.4f, 0.4f + PI.toFloat(), 2.1f)
+
+/** Saw Dance's warm glow and its trail colours, built once per showing. */
+private class SawKit(fx: SpecialFx?) {
+    val glow: Brush = Brush.radialGradient(
+        0f to SawOrange.copy(alpha = 0.36f),
+        0.5f to SawYellow.copy(alpha = 0.1f),
+        1f to Color.Transparent,
+        center = Offset(fx?.cx ?: 0f, fx?.cy ?: 0f),
+        radius = (fx?.bodyH ?: 1f) * 0.8f,
+    )
+
+    /** The trail's colour at each step: white-hot at the blade, through yellow and orange to an ember. */
+    val trail: List<Color> = List(SAW_TRAIL_STEPS) { j ->
+        val t = j / (SAW_TRAIL_STEPS - 1f)
+        when {
+            t < 0.2f -> lerpColor(SawHot, SawYellow, t / 0.2f)
+            t < 0.6f -> lerpColor(SawYellow, SawOrange, (t - 0.2f) / 0.4f)
+            else -> lerpColor(SawOrange, SawEmber, (t - 0.6f) / 0.4f)
+        }
+    }
+
+    /** A spark's colour through its life, in four steps: it cools from white-yellow to a red-orange. */
+    val spark: List<Color> = listOf(SawHot, SawYellow, SawOrange, SawEmber)
+}
+
+/** The angle (radians) of [blade]'s leading edge at [p]. */
+private fun sawAngle(blade: Int, p: Float): Float {
+    val orbit = SawBladeOrbit[blade]
+    return SawBladeStart[blade] + SawOrbitDir[orbit] * 2f * PI.toFloat() * SAW_TURNS * p
+}
+
+/** The x of the point at angle [theta] on [orbit] round a body centred on ([cx], [cy]) and [bodyH] tall. */
+private fun sawX(orbit: Int, theta: Float, cx: Float, bodyH: Float): Float {
+    val tilt = SawOrbitTilt[orbit] * DEG
+    return cx + SawOrbitRx[orbit] * bodyH * cos(theta) * cos(tilt) - SawOrbitRy[orbit] * bodyH * sin(theta) * sin(tilt)
+}
+
+/** The y of the point at angle [theta] on [orbit]; see [sawX]. */
+private fun sawY(orbit: Int, theta: Float, cy: Float, bodyH: Float): Float {
+    val tilt = SawOrbitTilt[orbit] * DEG
+    return cy + SawOrbitY[orbit] * bodyH + SawOrbitRx[orbit] * bodyH * cos(theta) * sin(tilt) +
+        SawOrbitRy[orbit] * bodyH * sin(theta) * cos(tilt)
+}
+
+private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit) {
+    // The saw revs up (the blades sweep in) and lets go at the end.
+    val appear = easeOut((p / 0.12f).coerceAtMost(1f))
+    val fade = if (p < 0.8f) 1f else 1f - (p - 0.8f) / 0.2f
+    val a = appear * fade
+    // The engine's flicker in the glow.
+    val flicker = 0.75f + 0.25f * sin(p * 90f)
+    drawRect(SawOrange, alpha = 0.06f * a)
+    drawCircle(kit.glow, radius = f.bodyH * 0.8f, center = Offset(f.cx, f.cy), alpha = a * flicker)
+
+    // The blades: each a tapered arc trailing round its orbit, dimmer and thinner where it passes behind
+    // the body (the back half of the orbit), with a glow under its hot leading half.
+    for (b in SawBladeOrbit.indices) {
+        val orbit = SawBladeOrbit[b]
+        val dir = SawOrbitDir[orbit]
+        val lead = sawAngle(b, p)
+        // A sweep that has barely started is a short trail: it grows to full length as the saw revs up.
+        val reach = SAW_TRAIL_RAD * appear
+        var px = sawX(orbit, lead, f.cx, f.bodyH)
+        var py = sawY(orbit, lead, f.cy, f.bodyH)
+        for (j in 1 until SAW_TRAIL_STEPS) {
+            val t = j / (SAW_TRAIL_STEPS - 1f)
+            val theta = lead - dir * reach * t
+            val x = sawX(orbit, theta, f.cx, f.bodyH)
+            val y = sawY(orbit, theta, f.cy, f.bodyH)
+            val mid = theta + dir * reach * 0.5f / (SAW_TRAIL_STEPS - 1f)
+            val front = sin(mid) > 0f
+            val depth = if (front) 1f else 0.4f
+            val taper = (1f - t)
+            val width = (2f + 8f * taper * if (front) 1f else 0.6f) * unit
+            val alpha = a * depth * taper.coerceAtLeast(0.15f)
+            if (t <= 0.5f) {
+                drawLine(SawOrange, Offset(px, py), Offset(x, y), strokeWidth = width * 2.6f, cap = StrokeCap.Round, alpha = 0.28f * alpha)
+            }
+            drawLine(kit.trail[j], Offset(px, py), Offset(x, y), strokeWidth = width, cap = StrokeCap.Round, alpha = alpha)
+            px = x
+            py = y
+        }
+        // The blade's edge: a hot glint, and a bite where it sweeps across the front of the body.
+        val tipX = sawX(orbit, lead, f.cx, f.bodyH)
+        val tipY = sawY(orbit, lead, f.cy, f.bodyH)
+        val front = sin(lead)
+        val tipAlpha = a * if (front > 0f) 1f else 0.4f
+        drawCircle(SawYellow, 9f * unit, Offset(tipX, tipY), alpha = 0.35f * tipAlpha)
+        drawCircle(SawHot, 4.5f * unit, Offset(tipX, tipY), alpha = tipAlpha)
+        val bite = front.coerceAtLeast(0f).let { it * it * it * it * it * it }
+        if (bite > 0.05f) {
+            drawCircle(SawYellow, (12f + 18f * bite) * unit, Offset(tipX, tipY), alpha = 0.3f * bite * a)
+            drawCircle(SawHot, (5f + 7f * bite) * unit, Offset(tipX, tipY), alpha = 0.85f * bite * a)
+        }
+    }
+
+    // The shower: sparks thrown off the blades' edges, flying out and up, then falling.
+    for (i in 0 until SAW_SPARKS) {
+        val born = 0.05f + 0.72f * hash01(i, 51)
+        val life = 0.16f + 0.14f * hash01(i, 52)
+        val age = (p - born) / life
+        if (age <= 0f || age >= 1f) continue
+        val b = i % SawBladeOrbit.size
+        val orbit = SawBladeOrbit[b]
+        val theta = sawAngle(b, born)
+        val ox = sawX(orbit, theta, f.cx, f.bodyH)
+        val oy = sawY(orbit, theta, f.cy, f.bodyH)
+        // Flung along the blade's way round (its tangent) and outward, with a kick upward.
+        val tangent = -sin(theta) * SawOrbitDir[orbit]
+        val vx = ((hash01(i, 53) - 0.5f) * 1.1f + tangent * 0.45f) * f.bodyH
+        val vy = -(0.18f + 0.5f * hash01(i, 54)) * f.bodyH
+        val fall = f.bodyH * (0.9f + 0.6f * hash01(i, 55))
+        val tail = (age - 0.14f).coerceAtLeast(0f)
+        val hx = ox + vx * age
+        val hy = oy + vy * age + fall * age * age
+        val tx = ox + vx * tail
+        val ty = oy + vy * tail + fall * tail * tail
+        val color = kit.spark[(age * kit.spark.size).toInt().coerceAtMost(kit.spark.size - 1)]
+        val alpha = (1f - age) * fade
+        drawLine(color, Offset(tx, ty), Offset(hx, hy), strokeWidth = (2f + 1.5f * (1f - age)) * unit, cap = StrokeCap.Round, alpha = alpha)
+        if (age < 0.5f) drawCircle(SawHot, 2.5f * unit, Offset(hx, hy), alpha = alpha)
+    }
 }

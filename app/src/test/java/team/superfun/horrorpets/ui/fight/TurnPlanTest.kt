@@ -106,6 +106,11 @@ class TurnSoundsTest {
     fun specialsUseTheAttackersPetSound() {
         assertEquals(listOf("special_jason"), sounds(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)).sfx)
         assertEquals(listOf("special_freddy"), sounds(FightEvent.Hit(Side.CPU, Move.SPECIAL, 40, crit = false)).sfx)
+        val sawDance = FightState(
+            player = Fighter(PetId.LEATHERFACE, 1, 100, 100, 20.0, 50, 0),
+            cpu = Fighter(PetId.MICHAEL, 1, 100, 100, 20.0, 50, 0),
+        )
+        assertEquals(listOf("special_leatherface"), TurnSounds(sawDance).of(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)).sfx)
     }
 
     @Test

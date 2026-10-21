@@ -77,8 +77,8 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *
  * ## Damage, crits, misses, meter
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
- * 1.15 for Chucky; HEAVY 1.8; counter 0.5, or 1.0 for Pinhead; SPECIAL 2.5) times 1.75 on a crit, times
- * 0.85 when the defender is Michael, rounded once at the end and never below 1. Specials and counters
+ * 1.15 for Chucky; HEAVY 1.8, times 1.2 for Leatherface; counter 0.5, or 1.0 for Pinhead; SPECIAL 2.5) times
+ * 1.75 on a crit, times 0.85 when the defender is Michael, rounded once at the end and never below 1. Specials and counters
  * can crit but never miss. Attacks against GHOSTFACE miss 0.07 more often (STRIKE and HEAVY only).
  * Every per-pet number comes from the pet's [Passive][team.superfun.horrorpets.model.Passive] in the roster.
  * Each landed hit (counters included, specials excluded) adds 25 to the attacker's meter, capped
@@ -214,7 +214,7 @@ private fun critChance(attacker: Fighter): Double {
 
 private fun moveMultiplier(attacker: Fighter, move: Move, counter: Boolean): Double = when {
     counter -> attacker.id.spec.passive.counterMult
-    move == Move.HEAVY -> FightTuning.HEAVY_MULT
+    move == Move.HEAVY -> FightTuning.HEAVY_MULT * attacker.id.spec.passive.heavyMult
     move == Move.SPECIAL -> FightTuning.SPECIAL_MULT
     else -> FightTuning.STRIKE_MULT * attacker.id.spec.passive.strikeMult
 }

@@ -63,6 +63,8 @@ class RosterAssetsTest {
             assertTrue("$id: roster ${id.spec.specialHitMs} ms, clip $measured ms", abs(measured - id.spec.specialHitMs) <= 20L)
         }
         assertEquals(420L, PetId.MICHAEL.spec.specialHitMs)
+        // special_leatherface is a pull-start and rev: it is loudest from its very first pull.
+        assertEquals(0L, PetId.LEATHERFACE.spec.specialHitMs)
     }
 
     /**

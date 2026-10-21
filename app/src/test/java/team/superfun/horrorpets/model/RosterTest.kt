@@ -15,13 +15,13 @@ class RosterTest {
 
     @Test
     fun theNewKillersComeLastInOrder() {
-        assertEquals(listOf(PetId.CHUCKY, PetId.MICHAEL), PetId.entries.drop(4))
+        assertEquals(listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE), PetId.entries.drop(4))
     }
 
     @Test
     fun specialNamesAreTheSignatureMoves() {
         assertEquals(
-            listOf("Machete Frenzy", "Dream Claws", "Chains", "Knife Flurry", "Voodoo Stab", "The Shape"),
+            listOf("Machete Frenzy", "Dream Claws", "Chains", "Knife Flurry", "Voodoo Stab", "The Shape", "Saw Dance"),
             PetId.entries.map { it.spec.special.displayName },
         )
     }
@@ -39,14 +39,17 @@ class RosterTest {
         assertEquals(FightTuning.GHOSTFACE_EVADE_BONUS, PetId.GHOSTFACE.spec.passive.evadeBonus, 0.0)
         assertEquals(FightTuning.CHUCKY_STRIKE_MULT, PetId.CHUCKY.spec.passive.strikeMult, 0.0)
         assertEquals(FightTuning.MICHAEL_DAMAGE_TAKEN_MULT, PetId.MICHAEL.spec.passive.damageTakenMult, 0.0)
+        assertEquals(FightTuning.LEATHERFACE_HEAVY_MULT, PetId.LEATHERFACE.spec.passive.heavyMult, 0.0)
         assertEquals(1.15, FightTuning.CHUCKY_STRIKE_MULT, 0.0)
         assertEquals(0.85, FightTuning.MICHAEL_DAMAGE_TAKEN_MULT, 0.0)
+        assertEquals(1.2, FightTuning.LEATHERFACE_HEAVY_MULT, 0.0)
     }
 
     @Test
     fun theNewPassivesAreNamed() {
         assertEquals("Scrappy", PetId.CHUCKY.spec.passive.name)
         assertEquals("Relentless", PetId.MICHAEL.spec.passive.name)
+        assertEquals("Chainsaw", PetId.LEATHERFACE.spec.passive.name)
         assertTrue(PetId.entries.all { it.spec.passive.name.isNotBlank() })
     }
 
@@ -59,15 +62,19 @@ class RosterTest {
             counterMult != neutral.counterMult,
             evadeBonus != neutral.evadeBonus,
             strikeMult != neutral.strikeMult,
+            heavyMult != neutral.heavyMult,
             damageTakenMult != neutral.damageTakenMult,
         ).count { it }
         for (id in PetId.entries) assertEquals("$id", 1, id.spec.passive.changes())
         assertEquals(FightTuning.COUNTER_MULT, neutral.counterMult, 0.0)
+        assertEquals(1.0, neutral.heavyMult, 0.0)
     }
 
     @Test
-    fun michaelWalksSlowerThanEveryoneElse() {
+    fun michaelAndLeatherfaceWalkSlowerThanEveryoneElse() {
         assertEquals(0.6f, PetId.MICHAEL.spec.walkSpeed, 0f)
-        for (id in PetId.entries - PetId.MICHAEL) assertEquals("$id", 1f, id.spec.walkSpeed, 0f)
+        // Leatherface lumbers: a little slower than the usual stride, not as slow as The Shape.
+        assertEquals(0.9f, PetId.LEATHERFACE.spec.walkSpeed, 0f)
+        for (id in PetId.entries - PetId.MICHAEL - PetId.LEATHERFACE) assertEquals("$id", 1f, id.spec.walkSpeed, 0f)
     }
 }

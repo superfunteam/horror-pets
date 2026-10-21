@@ -8,9 +8,9 @@ import org.junit.Test
 
 class ModelTest {
     @Test
-    fun sixPetsWithDisplayNames() {
+    fun sevenPetsWithDisplayNames() {
         assertEquals(
-            listOf("Jason", "Freddy", "Pinhead", "Ghostface", "Chucky", "Michael"),
+            listOf("Jason", "Freddy", "Pinhead", "Ghostface", "Chucky", "Michael", "Leatherface"),
             PetId.entries.map { it.displayName },
         )
     }
@@ -21,7 +21,8 @@ class ModelTest {
         assertEquals(PetId.entries.toSet(), s.pets.keys)
         assertEquals(PetState(PetId.GHOSTFACE), s.pets.getValue(PetId.GHOSTFACE))
         assertEquals(PetState(PetId.MICHAEL), s.pets.getValue(PetId.MICHAEL))
-        assertEquals(6, s.pets.size)
+        assertEquals(PetState(PetId.LEATHERFACE), s.pets.getValue(PetId.LEATHERFACE))
+        assertEquals(7, s.pets.size)
         assertEquals(1, s.version)
         assertEquals(null, s.selected)
         assertEquals(null, s.lastSeenMs)

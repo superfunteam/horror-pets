@@ -30,7 +30,7 @@ class CpuBrainTest {
 
     @Test
     fun theNewKillersNeverRunNorSpecialWithoutAFullMeter() {
-        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE)) {
             for (meter in listOf(0, 25, 50, 75)) {
                 val s = stateOf(player = fighter(id = id), cpu = fighter(id = id, meter = meter), history = listOf(Move.STRIKE, Move.HEAVY))
                 val moves = picks(s)
