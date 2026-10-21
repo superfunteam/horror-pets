@@ -23,8 +23,13 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.openai.com/v1"
-GUESS_FLOOR_Y = 0.80
+GUESS_FLOOR_Y = 0.80  # fraction of the 16:9 crop's height (see floorY16x9 in scene_meta.json)
 PET_HEIGHT_FRACTION = 0.46
+
+
+def redact(text: str, key: str) -> str:
+    """Strip the API key from text that is about to be printed."""
+    return text.replace(key, "[redacted]")
 
 
 def newest_image_model(key: str) -> str:
@@ -100,7 +105,11 @@ def main() -> int:
     if not key:
         print("OPENAI_API_KEY is not set", file=sys.stderr)
         return 2
-    model = args.model or newest_image_model(key)
+    try:
+        model = args.model or newest_image_model(key)
+    except requests.RequestException as e:
+        print(f"could not list models: {redact(str(e), key)}", file=sys.stderr)
+        return 1
     print(f"model: {model}  size: {args.size}  quality: {args.quality}")
 
     cfg = json.loads((ROOT / "tools/scene_prompts.json").read_text())
@@ -115,7 +124,7 @@ def main() -> int:
         try:
             img = generate(key, model, prompt, args.size, args.quality)
         except Exception as e:  # noqa: BLE001 - report and keep the batch going
-            return f"FAIL {s['pet']}/{s['id']} #{k}: {e}"
+            return f"FAIL {s['pet']}/{s['id']} #{k}: {redact(str(e), key)}"
         d = out / s["pet"]
         d.mkdir(parents=True, exist_ok=True)
         stem = f"{s['id']}{tag}-{k}"
@@ -123,9 +132,14 @@ def main() -> int:
         composite(img, s["pet"]).save(d / f"{stem}-composite.jpg", quality=88)
         return f"ok {s['pet']}/{stem} {img.size[0]}x{img.size[1]}"
 
+    failed = 0
     with ThreadPoolExecutor(max_workers=6) as pool:
         for line in pool.map(run, jobs):
             print(line, flush=True)
+            failed += line.startswith("FAIL")
+    if failed:
+        print(f"{failed} of {len(jobs)} jobs failed", file=sys.stderr)
+        return 1
     return 0
 
 

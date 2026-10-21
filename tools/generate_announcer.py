@@ -43,6 +43,11 @@ LINES = {
 }
 
 
+def redact(text: str, key: str) -> str:
+    """Strip the API key from text that is about to be printed."""
+    return text.replace(key, "[redacted]")
+
+
 def newest_tts_model(key: str) -> str:
     r = requests.get(f"{API}/models", headers={"Authorization": f"Bearer {key}"}, timeout=60)
     r.raise_for_status()
@@ -59,7 +64,11 @@ def main() -> int:
     if not key:
         print("OPENAI_API_KEY is not set", file=sys.stderr)
         return 2
-    model = newest_tts_model(key)
+    try:
+        model = newest_tts_model(key)
+    except requests.RequestException as e:
+        print(f"could not list models: {redact(str(e), key)}", file=sys.stderr)
+        return 1
     print(f"model: {model}  voice: {VOICE}")
     raw_dir = ROOT / "art-work/voice"
     out_dir = ROOT / "audio-final/voice"
@@ -75,7 +84,7 @@ def main() -> int:
                 body["instructions"] = INSTRUCTIONS
             r = requests.post(f"{API}/audio/speech", headers={"Authorization": f"Bearer {key}"}, json=body, timeout=120)
             if r.status_code != 200:
-                print(f"FAIL {name}: {r.status_code} {r.text[:300]}", file=sys.stderr)
+                print(f"FAIL {name}: {r.status_code} {redact(r.text[:300], key)}", file=sys.stderr)
                 return 1
             raw = raw_dir / f"{name}-{take}.wav"
             raw.write_bytes(r.content)
