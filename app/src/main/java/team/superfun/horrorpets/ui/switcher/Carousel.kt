@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.ui.switcher
 
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -71,6 +72,23 @@ fun bodyUnderSpot(bodies: List<Float>, spot: Float): Float {
     val next = (i + 1).coerceAtMost(bodies.lastIndex)
     return lerp(bodies[i], bodies[next], s - i)
 }
+
+/**
+ * How far from the spotlight (in pets) a pet is still on stage. Beyond it a pet is wholly off screen even on
+ * 16:9 (where pets two away peek in at the edges), so the switcher neither composes it nor decodes its strip.
+ */
+const val CAROUSEL_REACH = 2.5f
+
+/** Whether pet [i] is on stage with the row at [row]: less than [CAROUSEL_REACH] from the spotlight. */
+fun carouselInView(i: Int, row: Float): Boolean = abs(i - row) < CAROUSEL_REACH
+
+/** The first of [count] pets on stage with the row at [row] (see [carouselInView]); allocation-free. */
+fun carouselFirstInView(row: Float, count: Int): Int =
+    (floor(row - CAROUSEL_REACH).toInt() + 1).coerceIn(0, (count - 1).coerceAtLeast(0))
+
+/** The last of [count] pets on stage with the row at [row] (see [carouselInView]); allocation-free. */
+fun carouselLastInView(row: Float, count: Int): Int =
+    (ceil(row + CAROUSEL_REACH).toInt() - 1).coerceIn(0, (count - 1).coerceAtLeast(0))
 
 /** [v] (0..1) snapped to [steps] steps, so a look that follows a slide changes a handful of times, not every frame. */
 fun quantize(v: Float, steps: Int): Float = (v * steps).roundToInt() / steps.toFloat()

@@ -111,7 +111,7 @@ private const val BEAM_BOTTOM = 0.71f
  * The most room a pet gets in the lineup, on the 540-dp canvas: on 16:9 that is the centre pet, a whole
  * neighbour each side and the next two peeking in at the edges (see [carouselPitch]).
  */
-private val MAX_PITCH = 240.dp
+internal val MAX_PITCH = 240.dp
 
 // ---- motion ----
 
@@ -265,8 +265,12 @@ fun SwitcherScreen(
         Stage(count = pets.size, bodies = bodies, pitch = pitch, cellH = cellH, row = row)
         Dust(pitch = pitch, time = { clock.longValue })
 
+        // Only the pets near the spotlight are on stage: composed, their idle strips decoded. The bounds follow
+        // the row but change only when it crosses a pet, so a slide recomposes this a couple of times at most.
+        val first by remember(row, pets.size) { derivedStateOf { carouselFirstInView(row(), pets.size) } }
+        val last by remember(row, pets.size) { derivedStateOf { carouselLastInView(row(), pets.size) } }
         pets.forEachIndexed { i, pet ->
-            key(pet) {
+            if (i in first..last) key(pet) {
                 LineupPet(
                     loader = loader,
                     pet = game.pets[pet] ?: PetState(pet),

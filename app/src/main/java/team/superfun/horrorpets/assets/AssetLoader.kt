@@ -90,7 +90,10 @@ class AssetLoader(context: Context) {
         /**
          * At worst every slot holds an 8-frame strip: 384 x 416 px x 8 frames x 4 bytes = 5.1 MB, so
          * 12 slots are about 61 MB decoded. Sized for 2 GB TV sticks, where bitmaps on API 22-25 live
-         * on the Java heap. Home keeps 8 strips warm (see HomeScreen) and idle variety needs 3 more.
+         * on the Java heap. Home keeps 8 strips warm (see HomeScreen) and idle variety needs 3 more. The
+         * pet switcher decodes only the IDLE strips of the pets on stage (the centred one and two either
+         * side, at most 5; see SwitcherScreen), so a scroll through the whole lineup churns a few slots and
+         * never the whole cache. A fight warms all 12 (see warmFightStrips).
          */
         const val MAX_STRIPS = 12
         const val MAX_SCENES = 2

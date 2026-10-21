@@ -62,14 +62,15 @@ class CarouselTest {
 
     @Test
     fun pitchShowsThreeAcrossOn16x9AndKeepsNeighbourLabelsInsideTheInsetOn4x3() {
-        // On the 540-dp-tall canvas: 16:9 is 960 dp wide, 4:3 is 720 dp.
-        val wide = carouselPitch(width = 960f, inset = 48f, maxPitch = 240f)
-        assertEquals(240f, wide, 1e-3f)
+        // On the 540-dp-tall canvas: 16:9 is 960 dp wide, 4:3 is 720 dp. The switcher's own MAX_PITCH.
+        val max = MAX_PITCH.value
+        val wide = carouselPitch(width = 960f, inset = 48f, maxPitch = max)
+        assertEquals(max, wide, 1e-3f)
         // Two pitches out from the centre lands on the screen edge: the next pets peek in half-way.
         assertEquals(960f, 480f + 2 * wide, 1e-3f)
 
-        val square = carouselPitch(width = 720f, inset = 36f, maxPitch = 240f)
-        assertTrue("4:3 pitch $square", square < 240f)
+        val square = carouselPitch(width = 720f, inset = 36f, maxPitch = max)
+        assertTrue("4:3 pitch $square", square < max)
         // A neighbour's label (CAROUSEL_LABEL_SHARE of the pitch) stays inside the safe inset.
         val labelHalf = square * CAROUSEL_LABEL_SHARE / 2f
         assertTrue(360f - square - labelHalf >= 36f - 1e-3f)
@@ -86,6 +87,24 @@ class CarouselTest {
         assertEquals(1f, bodyUnderSpot(bodies, -0.2f), 0f) // a bump past the first pet
         assertEquals(1f, bodyUnderSpot(bodies, 5.1f), 0f) // a bump past the last
         assertEquals(1f, bodyUnderSpot(emptyList(), 0f), 0f)
+    }
+
+    @Test
+    fun onlyThePetsNearTheSpotlightAreOnStage() {
+        // The centre pet and two either side; anything further out is entirely off screen and not composed.
+        assertEquals(listOf(0, 1, 2, 3, 4), (0..5).filter { carouselInView(it, 2f) })
+        assertEquals(listOf(1, 2, 3, 4), (0..5).filter { carouselInView(it, 2.5f) }) // mid-slide
+        assertEquals(listOf(3, 4, 5), (0..5).filter { carouselInView(it, 5.08f) }) // the end-of-row nudge
+        // The allocation-free bounds the switcher composes agree with it, through a whole scroll and its nudges.
+        for (step in -10..60) {
+            val row = step / 10f
+            val shown = (0..5).filter { carouselInView(it, row) }
+            assertEquals("row $row", shown, (carouselFirstInView(row, 6)..carouselLastInView(row, 6)).toList())
+        }
+        // At the reach a full-size pet (half-width at most 60 dp at 0.75 scale) is past the 16:9 edge.
+        val pitch = carouselPitch(960f, 48f, MAX_PITCH.value)
+        assertTrue(carouselX(0, CAROUSEL_REACH, 480f, pitch) + 60f <= 0f)
+        assertTrue(carouselX(5, 5f - CAROUSEL_REACH, 480f, pitch) - 60f >= 960f)
     }
 
     @Test
