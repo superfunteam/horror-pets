@@ -38,4 +38,22 @@ class SpecialTimingTest {
     fun everyOtherSpecialLandsAtItsImpact() {
         for (style in SpecialStyle.entries - SpecialStyle.THE_SHAPE) assertEquals("$style", 0L, specialLandsAtMs(style))
     }
+
+    @Test
+    fun sawDancesGlowFlickersAtMostEightTimesASecond() {
+        // Photosensitivity: count the glow's peaks over the effect at a fine step.
+        val steps = 10_000
+        var peaks = 0
+        for (i in 1 until steps - 1) {
+            val a = sawFlicker((i - 1) / steps.toFloat())
+            val b = sawFlicker(i / steps.toFloat())
+            val c = sawFlicker((i + 1) / steps.toFloat())
+            if (b > a && b >= c) peaks++
+        }
+        val perSecond = peaks * 1000f / SPECIAL_MS
+        assertTrue("$peaks peaks in $SPECIAL_MS ms = $perSecond Hz", perSecond <= 8f)
+        // It still flickers: an engine, not a steady lamp.
+        assertTrue("$peaks peaks", peaks >= 3)
+        for (i in 0..steps) assertTrue(sawFlicker(i / steps.toFloat()) in 0.5f..1f)
+    }
 }

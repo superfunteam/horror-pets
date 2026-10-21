@@ -591,13 +591,20 @@ private fun sawY(orbit: Int, theta: Float, cy: Float, bodyH: Float): Float {
         SawOrbitRy[orbit] * bodyH * sin(theta) * cos(tilt)
 }
 
+/** How often Saw Dance's glow flickers, per second: an idling engine, kept well under 8 Hz for photosensitivity. */
+private const val SAW_FLICKER_HZ = 5f
+
+/** The glow's brightness (0.5..1) at [p] (0..1 over [SPECIAL_MS]): it flickers [SAW_FLICKER_HZ] times a second. */
+internal fun sawFlicker(p: Float): Float =
+    0.75f + 0.25f * sin(p * 2f * PI.toFloat() * SAW_FLICKER_HZ * SPECIAL_MS / 1000f)
+
 private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit) {
     // The saw revs up (the blades sweep in) and lets go at the end.
     val appear = easeOut((p / 0.12f).coerceAtMost(1f))
     val fade = if (p < 0.8f) 1f else 1f - (p - 0.8f) / 0.2f
     val a = appear * fade
     // The engine's flicker in the glow.
-    val flicker = 0.75f + 0.25f * sin(p * 90f)
+    val flicker = sawFlicker(p)
     drawRect(SawOrange, alpha = 0.06f * a)
     drawCircle(kit.glow, radius = f.bodyH * 0.8f, center = Offset(f.cx, f.cy), alpha = a * flicker)
 
