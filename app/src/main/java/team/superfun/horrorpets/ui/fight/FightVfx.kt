@@ -31,6 +31,24 @@ import team.superfun.horrorpets.ui.theme.BloodGlow
 /** How long a special's effect runs over its target. */
 const val SPECIAL_MS = 950
 
+/**
+ * The Shape's slash, as fractions of [SPECIAL_MS]: it starts at [SHAPE_SLASH_START] (once the dark has closed
+ * in), lasts [SHAPE_SLASH_LIFE], and has cut all the way through after [SHAPE_SLASH_CUT] of that.
+ */
+internal const val SHAPE_SLASH_START = 0.5f
+internal const val SHAPE_SLASH_LIFE = 0.34f
+internal const val SHAPE_SLASH_CUT = 0.24f
+
+/**
+ * How far into its effect a special's blow lands: its sound, damage number, hit flash and HP drain wait this
+ * long after the impact. The Shape's lands as its slash cuts through (about 550 ms in); every other special's
+ * effect is the blow itself and lands at the impact (0).
+ */
+internal fun specialLandsAtMs(style: SpecialStyle): Long = when (style) {
+    SpecialStyle.THE_SHAPE -> ((SHAPE_SLASH_START + SHAPE_SLASH_LIFE * SHAPE_SLASH_CUT) * SPECIAL_MS).toLong()
+    else -> 0L
+}
+
 /** How long the shield ring of a block takes to flare out. */
 const val SHIELD_MS = 480
 
@@ -470,9 +488,9 @@ private fun DrawScope.theShape(f: SpecialFx, p: Float, unit: Float, kit: ShapeKi
         }
     }
     // One big overhead slash, from high above the head down across the body.
-    val life = window(p, 0.5f, 0.34f)
+    val life = window(p, SHAPE_SLASH_START, SHAPE_SLASH_LIFE)
     if (life <= 0f || life >= 1f) return
-    val cut = easeOut((life / 0.24f).coerceAtMost(1f))
+    val cut = easeOut((life / SHAPE_SLASH_CUT).coerceAtMost(1f))
     val fade = if (life < 0.45f) 1f else 1f - (life - 0.45f) / 0.55f
     val from = Offset(f.cx + f.bodyH * 0.72f, f.cy - f.bodyH * 1.3f)
     val to = Offset(f.cx - f.bodyH * 0.62f, f.cy + f.bodyH * 0.8f)

@@ -198,7 +198,8 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    drains with it; a crit is a big Amber number with CRITICAL! and a screen shake, a HEAVY flashes the
  *    screen, a SPECIAL darkens the arena and plays its pet's effect ([SpecialVfx]); a miss shows a grey MISS
  *    as the defender sways away, a block a shield ring and BLOCK before the blocker's counter. Each event's
- *    sound plays at its impact ([TurnSounds]).
+ *    sound plays at its impact ([TurnSounds]); a special whose blow comes later in its effect (The Shape's
+ *    slash) lands its sound, number and drain then (see [specialLandsAtMs]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
  *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
  *    Otherwise the bars settle on the real values and the move pills come back, focus on the last move.
@@ -865,7 +866,11 @@ private fun FightStage.impactOf(
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
 ): Job? {
-    play(sounds.of(event))
+    // A special whose blow lands partway through its effect (The Shape's slash) holds its sound, number,
+    // flash and HP drain until then; everything else lands right at the impact.
+    val landMs = if (event is FightEvent.Hit && event.move == Move.SPECIAL) specialLandsAtMs(a.pet.spec.special) else 0L
+    val sound = sounds.of(event)
+    if (landMs == 0L) play(sound)
     // An interrupt is the defender's: say it on the defender's number rather than over it.
     val interrupted = riders.any { it is Beat.Interrupt && it.side == d.side }
     var effect: Job? = null
@@ -882,17 +887,28 @@ private fun FightStage.impactOf(
                 if (breaksGuard) add("GUARD BREAK")
                 if (interrupted) add("INTERRUPTED")
             }
-            float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "${event.damage}", labels, d.side)
-            hurt(scope, d, strength = 1f)
-            drain(scope, d, event.damage)
-            if (event.move != Move.SPECIAL) charge(scope, a)
-            when {
-                event.crit -> scope.launch {
-                    shake.snapTo(1f)
-                    shake.animateTo(0f, tween(SHAKE_MS, easing = LinearEasing))
+            val blow = {
+                float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "${event.damage}", labels, d.side)
+                hurt(scope, d, strength = 1f)
+                drain(scope, d, event.damage)
+                when {
+                    event.crit -> scope.launch {
+                        shake.snapTo(1f)
+                        shake.animateTo(0f, tween(SHAKE_MS, easing = LinearEasing))
+                    }
+                    event.move == Move.HEAVY -> flash(scope, Color.White, 0.22f, 160)
                 }
-                event.move == Move.HEAVY -> flash(scope, Color.White, 0.22f, 160)
             }
+            if (landMs == 0L) {
+                blow()
+            } else {
+                scope.launch {
+                    delay(landMs)
+                    play(sound)
+                    blow()
+                }
+            }
+            if (event.move != Move.SPECIAL) charge(scope, a)
             if (event.move == Move.SPECIAL) {
                 special = specialOn(a.pet, d.side)
                 effect = scope.launch {
@@ -904,7 +920,7 @@ private fun FightStage.impactOf(
                 }
                 // The target keeps reeling through the effect (a lighter flash, so the effect still reads over it).
                 scope.launch {
-                    delay(SPECIAL_MS / 3L)
+                    delay(landMs + SPECIAL_MS / 3L)
                     hurt(scope, d, strength = 0.4f)
                 }
             }
