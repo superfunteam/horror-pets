@@ -30,10 +30,19 @@ class RosterAssetsTest {
             val manifest = parseManifest(file("sprites-final/$dir/manifest.json").readText())
             assertEquals("$id", dir, manifest.pet)
             for (anim in Anim.entries) {
+                // An optional animation (the dance) need not be there, but one the manifest lists must be.
+                if (anim.optional && !manifest.has(anim)) continue
                 assertTrue("$id ${anim.key}", file("sprites-final/$dir/${manifest.spec(anim).file}").isFile)
             }
             assertTrue("$id feed", runCatching { manifest.feedAnim() }.isSuccess)
         }
+    }
+
+    @Test
+    fun leatherfaceHasHisDance() {
+        val manifest = parseManifest(file("sprites-final/leatherface/manifest.json").readText())
+        assertTrue(manifest.has(Anim.DANCE))
+        assertTrue(file("sprites-final/leatherface/${manifest.spec(Anim.DANCE).file}").isFile)
     }
 
     @Test

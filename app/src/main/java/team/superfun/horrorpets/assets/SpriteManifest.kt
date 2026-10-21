@@ -3,8 +3,12 @@ package team.superfun.horrorpets.assets
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** The twelve animations every pet ships. [key] is the manifest key (and the strip file's base name). */
-enum class Anim(val key: String) {
+/**
+ * The animations a pet can ship. [key] is the manifest key (and the strip file's base name). The twelve
+ * [required] ones are in every manifest; an [optional] one ([DANCE], Leatherface's chainsaw dance) only in
+ * some, so a caller checks [SpriteManifest.has] before asking for it.
+ */
+enum class Anim(val key: String, val optional: Boolean = false) {
     IDLE("idle"),
     RUN_RIGHT("run-right"),
     RUN_LEFT("run-left"),
@@ -17,10 +21,16 @@ enum class Anim(val key: String) {
     LOOK_A("look-a"),
     LOOK_B("look-b"),
     ATTACK("attack"),
+
+    /** A one-shot dance, played for PLAY on Home and for a danced special (see `SpecialStyle.danced`). */
+    DANCE("dance", optional = true),
     ;
 
     companion object {
         private val byKey = entries.associateBy { it.key }
+
+        /** The animations every manifest has. */
+        val required: List<Anim> = entries.filterNot { it.optional }
 
         /** The animation whose manifest key is [key], or null if there is none. */
         fun fromKey(key: String): Anim? = byKey[key]
@@ -63,7 +73,13 @@ private val manifestFormat = Json { ignoreUnknownKeys = true }
 /** Throws a `SerializationException` on malformed or incomplete JSON: the manifests ship inside the APK. */
 fun parseManifest(json: String): SpriteManifest = manifestFormat.decodeFromString(SpriteManifest.serializer(), json)
 
-/** The spec for [anim]. Throws [IllegalStateException] if the manifest lacks it (a broken asset pack). */
+/** Whether this pet ships [anim]: always true for the [Anim.required] ones in a sound asset pack. */
+fun SpriteManifest.has(anim: Anim): Boolean = anim.key in animations
+
+/**
+ * The spec for [anim]. Throws [IllegalStateException] if the manifest lacks it: a broken asset pack for a
+ * required animation, a caller that did not check [has] first for an optional one.
+ */
 fun SpriteManifest.spec(anim: Anim): AnimSpec =
     animations[anim.key] ?: error("Manifest for '$pet' has no '${anim.key}' animation")
 
