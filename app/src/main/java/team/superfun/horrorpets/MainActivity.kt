@@ -83,7 +83,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (applyDebugTimeTravel(intent)) vm.onResume()
+        // No vm.onResume() here: an Activity is always paused before it gets a new intent, so the real
+        // onResume() follows and picks up the new clock offset.
+        applyDebugTimeTravel(intent)
     }
 
     /**
@@ -118,13 +120,26 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Debug builds only: `--ef advance_hours <h>` on the launch intent shifts the game clock [h] hours
-     * into the future, so decay and the fake death can be tried without waiting. Returns whether it applied.
+     * Debug builds only: an `advance_hours` extra on the launch intent shifts the game clock that many
+     * hours into the future, so decay and the fake death can be tried without waiting. Any number type
+     * works (`--ef`, `--ed`, `--ei`, `--el`), and so does a numeric string (`--es`). Returns whether it applied.
      */
     private fun applyDebugTimeTravel(intent: Intent?): Boolean {
-        if (!BuildConfig.DEBUG || intent?.hasExtra(EXTRA_ADVANCE_HOURS) != true) return false
-        val hours = intent.getFloatExtra(EXTRA_ADVANCE_HOURS, 0f)
-        offsetClock.offsetMs = (hours.toDouble() * MS_PER_HOUR).toLong()
+        if (!BuildConfig.DEBUG) return false
+        val extras = intent?.extras ?: return false
+        if (!extras.containsKey(EXTRA_ADVANCE_HOURS)) return false
+        // The untyped getter is deprecated, but it is the only way to accept whichever type adb sent.
+        @Suppress("DEPRECATION")
+        val hours = when (val raw = extras.get(EXTRA_ADVANCE_HOURS)) {
+            is Number -> raw.toDouble()
+            is String -> raw.trim().toDoubleOrNull()
+            else -> null
+        }
+        if (hours == null || !hours.isFinite()) {
+            Log.w(TAG, "Debug time travel: ignoring non-numeric $EXTRA_ADVANCE_HOURS")
+            return false
+        }
+        offsetClock.offsetMs = (hours * MS_PER_HOUR).toLong()
         Log.i(TAG, "Debug time travel: clock offset $hours h")
         return true
     }

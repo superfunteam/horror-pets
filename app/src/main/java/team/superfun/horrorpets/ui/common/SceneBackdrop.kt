@@ -3,10 +3,9 @@ package team.superfun.horrorpets.ui.common
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -16,7 +15,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -41,8 +42,10 @@ private const val SCENE_FADE_MS = 450
  * A full-bleed scene: the backdrop scaled to cover the screen (cropping whichever axis overflows, with
  * the floor kept above the bottom safe inset by [coverCrop]) under a soft cinematic vignette.
  *
- * The image is decoded off the main thread. Until the first one is ready the screen is plain [Ink];
- * when [scene] changes, the old image stays up until the new one is decoded and then cross-fades into it.
+ * The image is decoded off the main thread. Until the first one is ready nothing but the vignette is
+ * drawn (the app's [Ink] background shows through; this composable adds no fill of its own, since the
+ * scene covers the screen); when [scene] changes, the old image stays up until the new one is decoded
+ * and then cross-fades into it.
  *
  * [content] is drawn over the scene and receives the floor line in pixels from the top of this box
  * (where a pet's feet go). It is only composed once a scene is on screen, because the floor depends on
@@ -68,7 +71,7 @@ fun SceneBackdrop(
         previous = null
     }
 
-    BoxWithConstraints(modifier.fillMaxSize().background(Ink)) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val viewW = constraints.maxWidth
         val viewH = constraints.maxHeight
         val shownNow = current
@@ -80,11 +83,20 @@ fun SceneBackdrop(
             prevNow?.let { coverCrop(it.bitmap.width, it.bitmap.height, viewW, viewH, it.spec.floorY) }
         }
 
-        Canvas(Modifier.fillMaxSize()) {
-            if (prevNow != null && prevCrop != null) drawScene(prevNow.bitmap, prevCrop, 1f)
-            if (shownNow != null && crop != null) drawScene(shownNow.bitmap, crop, fade.value)
-            drawVignette()
-        }
+        Spacer(
+            Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    // The vignette only depends on the size: build its gradients once, not every frame.
+                    val vignette = Vignette(size)
+                    onDrawBehind {
+                        if (prevNow != null && prevCrop != null) drawScene(prevNow.bitmap, prevCrop, 1f)
+                        if (shownNow != null && crop != null) drawScene(shownNow.bitmap, crop, fade.value)
+                        drawRect(brush = vignette.lens)
+                        drawRect(brush = vignette.bands)
+                    }
+                },
+        )
 
         if (shownNow != null && crop != null) {
             content(floorYOnScreen(crop, shownNow.bitmap.height, shownNow.spec.floorY))
@@ -113,27 +125,24 @@ private fun DrawScope.drawScene(image: ImageBitmap, crop: Crop, alpha: Float) {
 }
 
 /**
- * Darkens the edges like a lens, plus a little more at the top and bottom where the HUD sits, so white
- * UI stays readable over bright skies and floors. The centre (where the pet stands) is left alone.
+ * Darkens the edges like a lens ([lens]), plus a little more at the top and bottom where the HUD sits
+ * ([bands]), so white UI stays readable over bright skies and floors. The centre (where the pet stands)
+ * is left alone.
  */
-private fun DrawScope.drawVignette() {
-    val w = size.width
-    val h = size.height
-    drawRect(
-        brush = Brush.radialGradient(
-            0.55f to Color.Transparent,
-            0.85f to Color.Black.copy(alpha = 0.28f),
-            1f to Color.Black.copy(alpha = 0.55f),
-            center = Offset(w / 2f, h * 0.48f),
-            radius = max(w, h) * 0.72f,
-        ),
+private class Vignette(size: Size) {
+    val lens: Brush = Brush.radialGradient(
+        0.55f to Color.Transparent,
+        0.85f to Color.Black.copy(alpha = 0.28f),
+        1f to Color.Black.copy(alpha = 0.55f),
+        center = Offset(size.width / 2f, size.height * 0.48f),
+        radius = max(size.width, size.height) * 0.72f,
     )
-    drawRect(
-        brush = Brush.verticalGradient(
-            0f to Color.Black.copy(alpha = 0.50f),
-            0.28f to Color.Transparent,
-            0.72f to Color.Transparent,
-            1f to Color.Black.copy(alpha = 0.62f),
-        ),
+    val bands: Brush = Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.50f),
+        0.28f to Color.Transparent,
+        0.72f to Color.Transparent,
+        1f to Color.Black.copy(alpha = 0.62f),
+        startY = 0f,
+        endY = size.height,
     )
 }

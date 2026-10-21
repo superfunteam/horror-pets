@@ -27,6 +27,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.common.FocusPill
+import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.theme.Ink
@@ -37,11 +38,11 @@ import team.superfun.horrorpets.ui.theme.TextLo
  * the move pills. Each turn's animation marker is reported finished at once, so the fight moves on.
  */
 @Composable
-fun FightScreen(screen: Screen.Fight, petAnim: PetAnimRequest?, onMove: (Move) -> Unit, onAnimFinished: (Long) -> Unit) {
+fun FightScreen(screen: Screen.Fight, petAnim: PetAnimRequest?, onMove: (Move) -> Unit, onAnimFinished: (Long) -> Unit, focusEntry: Any? = Unit) {
     val focus = remember { FocusRequester() }
     val finished by rememberUpdatedState(onAnimFinished)
     BackHandler { /* Task 14 asks "Run away?" here */ }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    RequestFocusOnEntry(focus, focusEntry)
     LaunchedEffect(petAnim?.token) { petAnim?.let { finished(it.token) } }
 
     val fight = screen.fight

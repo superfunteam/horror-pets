@@ -10,9 +10,11 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- allowBackup is off entirely, so there is nothing for dataExtractionRules to describe. -->
+    <!-- allowBackup is off entirely, so there is nothing for dataExtractionRules to describe.
+         largeHeap: on API 22-25 (Fire OS 5/6) decoded sprite strips and scenes live on the Java heap. -->
     <application
         android:allowBackup="false"
+        android:largeHeap="true"
         android:banner="@drawable/banner"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"

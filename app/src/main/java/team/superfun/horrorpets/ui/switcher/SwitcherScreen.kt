@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +32,7 @@ import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.SwitcherMode
 import team.superfun.horrorpets.ui.common.FocusPill
+import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.safeInsetPadding
@@ -51,14 +51,15 @@ fun SwitcherScreen(
     onPick: (PetId) -> Unit,
     onBack: () -> Unit,
     onExit: () -> Unit,
+    focusEntry: Any? = Unit,
 ) {
     val pets = PetId.entries.filter { mode != SwitcherMode.OPPONENT || it != game.selected }
     val initial = game.selected?.takeIf { it in pets } ?: pets.first()
     var focusedPet by remember { mutableStateOf(initial) }
     val initialFocus = remember { FocusRequester() }
 
-    BackHandler { if (mode == SwitcherMode.ONBOARD) onExit() else onBack() }
-    LaunchedEffect(Unit) { initialFocus.requestFocus() }
+    BackHandler(enabled = focusEntry != null) { if (mode == SwitcherMode.ONBOARD) onExit() else onBack() }
+    RequestFocusOnEntry(initialFocus, focusEntry)
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
         val heightPx = with(LocalDensity.current) { maxHeight.toPx() } * 0.42f

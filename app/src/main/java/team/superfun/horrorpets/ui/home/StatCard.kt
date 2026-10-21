@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -166,17 +167,17 @@ private fun StatBar(label: String, value: Double, level: BarLevel, last: Boolean
     val warnColor = if (level == BarLevel.OK) TextHi else levelColor(level)
     val valueColor by animateColorAsState(warnColor, tween(BAR_ANIM_MS), label = "barValue$label")
 
-    // A critical bar breathes, so a starving pet is noticed from the sofa.
-    val pulse = if (level == BarLevel.CRITICAL) {
-        val transition = rememberInfiniteTransition(label = "critical$label")
-        transition.animateFloat(
+    // A critical bar breathes, so a starving pet is noticed from the sofa. The pulse is only read in the
+    // draw phase below, so it repaints the bar each frame without recomposing the card.
+    val pulse: State<Float> = if (level == BarLevel.CRITICAL) {
+        rememberInfiniteTransition(label = "critical$label").animateFloat(
             initialValue = 0.25f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
             label = "criticalPulse$label",
-        ).value
+        )
     } else {
-        0f
+        NoPulse
     }
 
     Column(Modifier.padding(bottom = if (last) 0.dp else 8.dp)) {
@@ -199,8 +200,9 @@ private fun StatBar(label: String, value: Double, level: BarLevel, last: Boolean
                     val w = size.width * fraction
                     if (w <= 0f) return@drawBehind
                     val fillSize = Size(w.coerceAtLeast(size.height), size.height)
-                    if (pulse > 0f) {
-                        softGlow(BloodGlow, alpha = 0.55f * pulse, cornerRadius = r.x, spread = 8.dp, layers = 5, size = fillSize)
+                    val glow = pulse.value
+                    if (glow > 0f) {
+                        softGlow(BloodGlow, alpha = 0.55f * glow, cornerRadius = r.x, spread = 8.dp, layers = 5, size = fillSize)
                     }
                     drawRoundRect(brush = levelBrush(level), size = fillSize, cornerRadius = r)
                     // A thin specular line along the top makes the fill read as glossy, not flat.
@@ -212,6 +214,11 @@ private fun StatBar(label: String, value: Double, level: BarLevel, last: Boolean
                 },
         )
     }
+}
+
+/** The pulse of a bar that is not critical: always off. */
+private object NoPulse : State<Float> {
+    override val value: Float = 0f
 }
 
 private val OkBrush = Brush.horizontalGradient(listOf(Color(0xFF9C978F), Color(0xFFF4F0EA)))
@@ -247,7 +254,7 @@ fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
     }
 }
 
-/** A remote-key hint: the key's name in a small outlined cap. */
+/** A remote-key hint: the key's name in dark letters on a small solid light cap. */
 @Composable
 fun KeyCap(label: String, modifier: Modifier = Modifier) {
     Box(

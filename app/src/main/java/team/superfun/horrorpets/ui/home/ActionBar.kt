@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -55,8 +56,9 @@ private val ActionPillPadding = 20.dp
  * The home action row, bottom centre: `◀ | PLAY FEED TRAIN FIGHT | ▶`.
  *
  * The arrows walk to the previous / next scene; while one is focused, a caption above it names the
- * scene it leads to. Up from any pill goes to [statCardFocus]; coming back down returns to the pill
- * that last had focus. [playFocus] is PLAY's requester, for the screen's initial focus.
+ * scene it leads to. Up from any pill goes to [statCardFocus]. The row is one focus group with a
+ * restorer, so coming back into it (Down from the stat card) lands on the pill that last had focus,
+ * or on PLAY ([playFocus], also the screen's initial focus) when none has yet.
  */
 @Composable
 fun ActionBar(
@@ -79,7 +81,10 @@ fun ActionBar(
         Row(
             modifier = Modifier
                 .padding(top = CaptionSpace)
-                .focusRestorer(playFocus),
+                // The restorer only acts on a focus group: without focusGroup() entering the row is a
+                // plain geometric search, which from the stat card lands on the left arrow.
+                .focusRestorer(playFocus)
+                .focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

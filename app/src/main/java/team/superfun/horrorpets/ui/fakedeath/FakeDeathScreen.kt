@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.common.FocusPill
+import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.Ink
@@ -27,10 +27,10 @@ import team.superfun.horrorpets.ui.theme.TextLo
 
 /** Functional stand-in for the fake-death reveal: the copy and a CONTINUE pill. */
 @Composable
-fun FakeDeathScreen(pet: PetId, onDone: () -> Unit) {
+fun FakeDeathScreen(pet: PetId, onDone: () -> Unit, focusEntry: Any? = Unit) {
     val focus = remember { FocusRequester() }
     BackHandler { /* the reveal has to be seen */ }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    RequestFocusOnEntry(focus, focusEntry)
     val name = pet.displayName.uppercase()
     Column(
         Modifier.fillMaxSize().background(Ink),

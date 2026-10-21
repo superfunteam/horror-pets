@@ -13,7 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -118,38 +118,46 @@ fun SpriteView(
     Spacer(
         modifier
             .then(sizeModifier)
-            .drawBehind {
+            .drawWithCache {
+                // Everything here depends only on the size and the parameters, so the shadow's gradient
+                // is built once per change instead of on every frame of the animation.
                 val feet = Offset(size.width / 2f, size.height)
-                if (shadowOpacity > 0f) {
-                    val w = cellW * scale * SHADOW_WIDTH_OF_CELL
-                    val r = w / 2f
-                    scale(scaleX = 1f, scaleY = SHADOW_ASPECT, pivot = feet) {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                0f to Color.Black.copy(alpha = shadowOpacity),
-                                0.45f to Color.Black.copy(alpha = shadowOpacity * 0.7f),
-                                1f to Color.Transparent,
-                                center = feet,
-                                radius = r,
-                            ),
-                            radius = r,
-                            center = feet,
-                        )
-                    }
+                val shadowRadius = cellW * scale * SHADOW_WIDTH_OF_CELL / 2f
+                val shadowBrush = if (shadowOpacity > 0f) {
+                    Brush.radialGradient(
+                        0f to Color.Black.copy(alpha = shadowOpacity),
+                        0.45f to Color.Black.copy(alpha = shadowOpacity * 0.7f),
+                        1f to Color.Transparent,
+                        center = feet,
+                        radius = shadowRadius,
+                    )
+                } else {
+                    null
                 }
-                val s = shown ?: return@drawBehind
-                val index = frame.coerceIn(0, (s.spec.frames - 1).coerceAtLeast(0))
-                val left = feet.x - manifest.anchorX * scale
-                val top = feet.y - manifest.baselineY * scale
-                drawImage(
-                    image = s.strip,
-                    srcOffset = IntOffset(index * cellW, 0),
-                    srcSize = IntSize(cellW, cellH),
-                    dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                    dstSize = IntSize((cellW * scale).roundToInt(), (cellH * scale).roundToInt()),
-                    colorFilter = filter,
-                    filterQuality = FilterQuality.High,
-                )
+                val left = (feet.x - manifest.anchorX * scale).roundToInt()
+                val top = (feet.y - manifest.baselineY * scale).roundToInt()
+                val dstSize = IntSize((cellW * scale).roundToInt(), (cellH * scale).roundToInt())
+
+                onDrawBehind {
+                    // Nothing, not even the shadow, until the strip is decoded: a lone shadow would
+                    // flash on the floor before the pet appears.
+                    val s = shown ?: return@onDrawBehind
+                    if (shadowBrush != null) {
+                        scale(scaleX = 1f, scaleY = SHADOW_ASPECT, pivot = feet) {
+                            drawCircle(brush = shadowBrush, radius = shadowRadius, center = feet)
+                        }
+                    }
+                    val index = frame.coerceIn(0, (s.spec.frames - 1).coerceAtLeast(0))
+                    drawImage(
+                        image = s.strip,
+                        srcOffset = IntOffset(index * cellW, 0),
+                        srcSize = IntSize(cellW, cellH),
+                        dstOffset = IntOffset(left, top),
+                        dstSize = dstSize,
+                        colorFilter = filter,
+                        filterQuality = FilterQuality.High,
+                    )
+                }
             },
     )
 }

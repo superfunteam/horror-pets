@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.audio.SoundSink
@@ -37,6 +38,13 @@ private const val SCREEN_FADE_MS = 280
 fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onExit: () -> Unit) {
     val state by vm.state.collectAsState()
 
+    // Back can arrive between a state change and the recomposition that shows it (Menu then Back in
+    // quick succession): only leave the app if the view model is really still on the exiting screen.
+    val exitFromHome = { if (vm.state.value.screen == Screen.Home) onExit() }
+    val exitFromOnboarding = {
+        if (vm.state.value.screen == Screen.Switcher(SwitcherMode.ONBOARD)) onExit()
+    }
+
     LaunchedEffect(vm, sounds) {
         vm.state.collect { s ->
             if (s.sfx.isEmpty() && s.voice.isEmpty()) return@collect
@@ -46,6 +54,11 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
         }
     }
 
+    // A fresh value each time the router switches screens (see RequestFocusOnEntry). A screen gets it only
+    // while it is the target, so one that is fading out never pulls focus back from the one fading in.
+    val entries = remember { EntryCounter() }
+    val entry = remember(state.screen::class) { entries.next() }
+
     AnimatedContent(
         targetState = state.screen,
         contentKey = { it::class },
@@ -53,8 +66,10 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
         modifier = Modifier.fillMaxSize().background(Ink),
         label = "screen",
     ) { screen ->
+        val focusEntry: Any? = if (screen::class == state.screen::class) entry else null
         when (screen) {
-            Screen.Loading -> Box(Modifier.fillMaxSize().background(Ink))
+            // The router's own Ink fill (on AnimatedContent) is the only app background; screens draw over it.
+            Screen.Loading -> Box(Modifier.fillMaxSize())
 
             is Screen.Switcher -> SwitcherScreen(
                 mode = screen.mode,
@@ -62,10 +77,11 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                 loader = loader,
                 onPick = vm::onSwitcherPick,
                 onBack = vm::onSwitcherBack,
-                onExit = onExit,
+                onExit = exitFromOnboarding,
+                focusEntry = focusEntry,
             )
 
-            is Screen.FakeDeath -> FakeDeathScreen(pet = screen.pet, onDone = vm::onFakeDeathDone)
+            is Screen.FakeDeath -> FakeDeathScreen(pet = screen.pet, onDone = vm::onFakeDeathDone, focusEntry = focusEntry)
 
             Screen.Home -> HomeScreen(
                 state = state,
@@ -76,13 +92,15 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                 onOpenSwitcher = vm::openSwitcher,
                 onAnimFinished = vm::onAnimFinished,
                 onToastDone = vm::consumeToast,
-                onExit = onExit,
+                onExit = exitFromHome,
+                focusEntry = focusEntry,
             )
 
             is Screen.Versus -> VersusScreen(
                 player = state.game.selected ?: screen.opponent,
                 opponent = screen.opponent,
                 onDone = vm::onVersusDone,
+                focusEntry = focusEntry,
             )
 
             is Screen.Fight -> FightScreen(
@@ -90,9 +108,17 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                 petAnim = state.petAnim,
                 onMove = vm::onMove,
                 onAnimFinished = vm::onAnimFinished,
+                focusEntry = focusEntry,
             )
 
-            is Screen.Results -> ResultsCard(screen = screen, onDone = vm::onResultsDone)
+            is Screen.Results -> ResultsCard(screen = screen, onDone = vm::onResultsDone, focusEntry = focusEntry)
         }
     }
+}
+
+/** Hands out increasing numbers; one per screen entry. */
+private class EntryCounter {
+    private var last = 0
+
+    fun next(): Int = ++last
 }

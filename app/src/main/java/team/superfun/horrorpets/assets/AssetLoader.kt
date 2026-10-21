@@ -7,11 +7,14 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.util.EnumMap
+import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 
 /**
  * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`) and scene backdrops
  * (`scenes/...`). Bitmaps are decoded as ARGB_8888 without density scaling.
+ *
+ * The scene catalog must have [Tuning.SCENE_COUNT] scenes per pet (see [scenes]).
  *
  * Caches (the loader is safe to share between the main thread and background loaders). Each cache has
  * its own lock, so a slow scene decode never blocks a sprite strip and vice versa; a decode only blocks
@@ -48,8 +51,17 @@ class AssetLoader(context: Context) {
         strips.getOrPut(key) { decode("sprites/${pet.dir}/${manifest(pet).spec(anim).file}") }
     }
 
+    /**
+     * The scene catalog. Throws [IllegalStateException] unless every pet has exactly
+     * [Tuning.SCENE_COUNT] scenes: the view model wraps scene indexes with that constant while the
+     * screens index this list, so a catalog of any other size would put the two out of step.
+     */
     fun scenes(): Map<PetId, List<SceneSpec>> = synchronized(metaLock) {
-        catalog ?: parseScenes(readText("scenes/scenes.json")).also { catalog = it }
+        catalog ?: parseScenes(readText("scenes/scenes.json")).also { parsed ->
+            val wrong = parsed.filterValues { it.size != Tuning.SCENE_COUNT }.mapValues { it.value.size }
+            check(wrong.isEmpty()) { "Scene catalog must have ${Tuning.SCENE_COUNT} scenes per pet, has $wrong" }
+            catalog = parsed
+        }
     }
 
     fun sceneBitmap(spec: SceneSpec): ImageBitmap = synchronized(sceneLock) {
@@ -75,8 +87,12 @@ class AssetLoader(context: Context) {
     private val PetId.dir: String get() = name.lowercase()
 
     private companion object {
-        /** About 55 MB of decoded strips at worst: sized for 2 GB TV sticks. */
-        const val MAX_STRIPS = 16
+        /**
+         * At worst every slot holds an 8-frame strip: 384 x 416 px x 8 frames x 4 bytes = 5.1 MB, so
+         * 12 slots are about 61 MB decoded. Sized for 2 GB TV sticks, where bitmaps on API 22-25 live
+         * on the Java heap. Home keeps 8 strips warm (see HomeScreen) and idle variety needs 3 more.
+         */
+        const val MAX_STRIPS = 12
         const val MAX_SCENES = 2
 
         /** Access-ordered map that drops its least recently used entry beyond [max]. */

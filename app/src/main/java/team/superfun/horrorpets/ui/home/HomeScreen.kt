@@ -33,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,6 +68,7 @@ import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -90,7 +90,10 @@ private const val VARIETY_MAX_MS = 20_000L
 
 private const val BUBBLE_MS = 2_000L
 
-/** Strips decoded ahead of time on Home (with the pet's feed animation): 8 of the loader's 16 slots. */
+/** A run-out still waiting for its scene change after this long is abandoned (it never should be). */
+private const val WALK_STUCK_MS = 1_500L
+
+/** Strips decoded ahead of time on Home (with the pet's feed animation; 8 of the loader's 12 slots with IDLE). */
 private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.JUMP, Anim.WAVE, Anim.ATTACK, Anim.FAIL)
 
 /** Arrival: a run that settles gently onto the centre mark instead of braking hard and running in place. */
@@ -103,6 +106,9 @@ private const val BUBBLE_ABOVE_FEET = 0.91f
 /**
  * Home: the selected pet standing in its current scene, with the stat card, scene dots, welcome toast
  * and the action bar over it (the spec's layout A).
+ *
+ * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value gives PLAY
+ * focus, and null (the screen is fading out) also turns off Back.
  *
  * The view model drives the pet through [UiState.petAnim]; this screen plays each request and reports
  * it with [onAnimFinished]. Everything else the pet does is local: idle glances, running out of one
@@ -119,6 +125,7 @@ fun HomeScreen(
     onAnimFinished: (token: Long) -> Unit,
     onToastDone: () -> Unit,
     onExit: () -> Unit,
+    focusEntry: Any? = Unit,
 ) {
     val petId = state.game.selected ?: return
     val pet = state.game.pets[petId] ?: return
@@ -132,8 +139,9 @@ fun HomeScreen(
     val cardFocus = remember { FocusRequester() }
     var lastWasFight by remember { mutableStateOf(false) }
 
-    BackHandler(onBack = onExit)
-    LaunchedEffect(Unit) { playFocus.requestFocus() }
+    // Only the screen being entered handles Back: a Home that is fading out must never exit the app.
+    BackHandler(enabled = focusEntry != null, onBack = onExit)
+    RequestFocusOnEntry(playFocus, focusEntry)
 
     // Warm the strips Home's actions play, so a first press starts at once. The run strips matter most:
     // the walk-out fade is timed from the press, the view model's scene change from the sprite's first
@@ -150,8 +158,7 @@ fun HomeScreen(
     val walkX = remember { Animatable(0f) }
     val walkAlpha = remember { Animatable(1f) }
     val walkJob = remember { JobSlot() }
-    var departingDir by remember { mutableIntStateOf(0) }
-    var arriving by remember { mutableStateOf<Local?>(null) }
+    var walk by remember { mutableStateOf<Walk?>(null) }
     var variety by remember { mutableStateOf<Local?>(null) }
     var bubble by remember { mutableStateOf<Bubble?>(null) }
     var showSceneTitle by remember { mutableStateOf(false) }
@@ -169,16 +176,15 @@ fun HomeScreen(
             else -> 0
         }
         walkJob.cancel()
-        arriving = null
         if (dir == 0) {
-            departingDir = 0
+            walk = null
             walkX.snapTo(0f)
             walkAlpha.snapTo(1f)
             return@LaunchedEffect
         }
         // Walking: the toast has done its job, and the location title will need its space.
         if (state.toast != null) onToastDone()
-        departingDir = dir
+        walk = Walk(dir, request.anim, key = request.token, arriving = false)
         val cycle = manifest.spec(request.anim).durationsMs.sum()
         // Decode the destination while the pet runs, so the cross-fade can start the moment it arrives.
         val destination = scenes[(sceneIndex + dir).mod(scenes.size)]
@@ -194,21 +200,30 @@ fun HomeScreen(
 
     // The view model moved the pet to the next scene: run in from the other side.
     LaunchedEffect(sceneIndex) {
-        val dir = departingDir
-        if (dir == 0) return@LaunchedEffect
-        departingDir = 0
+        val out = walk ?: return@LaunchedEffect
+        if (out.arriving) return@LaunchedEffect
         walkJob.cancel()
-        val run = if (dir > 0) Anim.RUN_RIGHT else Anim.RUN_LEFT
-        val cycle = manifest.spec(run).durationsMs.sum()
-        arriving = Local(run)
+        val cycle = manifest.spec(out.anim).durationsMs.sum()
+        walk = Walk(out.dir, out.anim, out.key, arriving = true)
         showSceneTitle = true
         walkJob.job = scope.launch {
-            walkX.snapTo(-dir * WALK_DISTANCE)
+            walkX.snapTo(-out.dir * WALK_DISTANCE)
             walkAlpha.snapTo(0f)
             launch { walkAlpha.animateTo(1f, tween(cycle * 45 / 100)) }
             walkX.animateTo(0f, tween(cycle * 120 / 100, easing = ArriveEasing))
-            arriving = null
+            walk = null
         }
+    }
+    // Safety net: if a run ever ends without the scene changing, bring the pet back instead of leaving
+    // it faded out at the edge.
+    LaunchedEffect(walk, request == null) {
+        val out = walk ?: return@LaunchedEffect
+        if (out.arriving || request != null) return@LaunchedEffect
+        delay(WALK_STUCK_MS)
+        walkJob.cancel()
+        walk = null
+        walkX.snapTo(0f)
+        walkAlpha.animateTo(1f, tween(250))
     }
     LaunchedEffect(showSceneTitle, sceneIndex) {
         if (showSceneTitle) {
@@ -217,7 +232,7 @@ fun HomeScreen(
         }
     }
 
-    val idle = request == null && arriving == null
+    val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
     LaunchedEffect(idle, variety, petId) {
         if (!idle || variety != null) return@LaunchedEffect
@@ -236,21 +251,24 @@ fun HomeScreen(
         }
     }
 
-    // Exactly one animation is on screen; the view model's request always wins.
-    val local = arriving ?: variety
-    val shownAnim = request?.anim ?: local?.anim ?: Anim.IDLE
-    val playKey: Any = request?.token ?: local ?: IdleKey
+    // Exactly one animation is on screen; the view model's request always wins. A walk keeps playing its
+    // run under the request's token from the press until the pet has run into the next scene, so the run
+    // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
+    val shownAnim = request?.anim ?: walk?.anim ?: variety?.anim ?: Anim.IDLE
+    val playKey: Any = request?.token ?: walk?.key ?: variety ?: IdleKey
+    val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
         request != null -> {
             { onAnimFinished(request.token) }
         }
-        local != null && local === variety -> {
+        walk == null && currentVariety != null -> {
             { variety = null }
         }
         else -> null
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
+    // No background: the scene covers the screen, and the app root's Ink shows while it loads.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
         val petHeightPx = screenH * HOME_PET_HEIGHT
@@ -328,6 +346,14 @@ private fun refusalText(reason: RefuseReason, fight: Boolean): String = when (re
 /** A local (not view-model) animation; each instance is a distinct playback key. */
 @Immutable
 private class Local(val anim: Anim)
+
+/**
+ * A walk between scenes: running out toward [dir], then ([arriving]) in from the other side. [key] is the
+ * view model's run request token, kept as the playback key for the whole walk so the run plays on
+ * seamlessly after the request itself has finished.
+ */
+@Immutable
+private class Walk(val dir: Int, val anim: Anim, val key: Any, val arriving: Boolean)
 
 /** One showing of the refusal bubble; a new instance restarts its timer even with the same text. */
 @Immutable
