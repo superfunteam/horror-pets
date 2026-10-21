@@ -15,8 +15,6 @@ import kotlinx.coroutines.sync.withLock
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
-import team.superfun.horrorpets.fight.FightEvent
-import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
@@ -237,6 +235,9 @@ class GameViewModel(
     /**
      * Plays the player's move against the CPU's reply. The screen animates [Screen.Fight.lastEvents]
      * and then reports the turn's [PetAnimRequest] finished. A SPECIAL without a full meter is ignored.
+     *
+     * A turn queues no sounds: the fight screen plays each event's sound (hits, crits, misses, blocks,
+     * the KO call) itself, at the moment it shows that event.
      */
     fun onMove(m: Move) {
         val s = _state.value
@@ -249,11 +250,8 @@ class GameViewModel(
         // placeholder it is handed.
         val cpuPicked = if (m == Move.RUN) null else cpuPick(fight, rng)
         val turn = resolveTurn(fight, m, cpuPicked ?: Move.BLOCK, rng)
-        val sounds = fightSounds(turn.events, turn.state)
         _state.value = s.copy(
             screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuPicked),
-            sfx = s.sfx + sounds.sfx,
-            voice = s.voice + sounds.voice,
         ).beginAction(listOf(Anim.ATTACK), ::finishTurn)
     }
 
@@ -381,41 +379,4 @@ internal fun awayToast(away: AwaySummary): String? {
     val stat = away.biggestStat ?: return "Away $time"
     val sign = if (away.biggestDelta < 0) "\u2212" else "+" // a real minus sign, not a hyphen
     return "Away $time \u00b7 $stat $sign${abs(away.biggestDelta)}"
-}
-
-/** The sound queues' additions for one turn. */
-internal data class FightSounds(val sfx: List<String>, val voice: List<String>)
-
-/**
- * Maps a turn's [events] to sound names, in event order. A hit is `hit`, `heavy_hit` or
- * `special_<attacker's pet>`; a crit is `crit` instead (and the announcer says `critical`, once per
- * turn even when both sides crit); a miss is `miss`, a block `block`, and a KO has the announcer
- * say `ko`. [fight] is the state after the turn, used to tell which pet a side is.
- */
-internal fun fightSounds(events: List<FightEvent>, fight: FightState): FightSounds {
-    val sfx = mutableListOf<String>()
-    val voice = mutableListOf<String>()
-    for (event in events) {
-        when (event) {
-            is FightEvent.Hit -> if (event.crit) {
-                sfx += "crit"
-                if ("critical" !in voice) voice += "critical"
-            } else {
-                sfx += when (event.move) {
-                    Move.HEAVY -> "heavy_hit"
-                    Move.SPECIAL -> {
-                        val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
-                        "special_${attacker.id.soundName()}"
-                    }
-                    else -> "hit"
-                }
-            }
-
-            is FightEvent.Miss -> sfx += "miss"
-            is FightEvent.Blocked -> sfx += "block"
-            is FightEvent.Ko -> voice += "ko"
-            is FightEvent.Interrupted, is FightEvent.SpecialReady -> Unit
-        }
-    }
-    return FightSounds(sfx, voice)
 }

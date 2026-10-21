@@ -21,8 +21,6 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightEvent
-import team.superfun.horrorpets.fight.FightState
-import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Roll
 import team.superfun.horrorpets.fight.ScriptedRandom
@@ -613,6 +611,8 @@ class GameViewModelTest {
             rig.vm.onMove(Move.STRIKE)
             val fight = rig.ui.screen as Screen.Fight
             assertTrue("a turn's events are on the screen", fight.lastEvents.isNotEmpty())
+            assertTrue("the fight screen plays a turn's sounds as it shows them", rig.ui.sfx.isEmpty())
+            assertTrue(rig.ui.voice.isEmpty())
             assertEquals(Move.STRIKE, fight.playerMove)
             assertEquals("the scripted CPU only ever strikes", Move.STRIKE, fight.cpuMove)
             assertTrue(rig.ui.busy)
@@ -637,9 +637,9 @@ class GameViewModelTest {
         assertEquals(results.reward.pet, rig.jason)
         assertEquals(35.0, rig.jason.hunger, 1e-9)
 
-        assertTrue("hit" in rig.ui.sfx)
-        assertTrue("ko" in rig.ui.voice)
-        assertEquals("you_win", rig.ui.voice.last())
+        // Only the result is announced here; the hits and the KO were the fight screen's to play.
+        assertTrue(rig.ui.sfx.isEmpty())
+        assertEquals(listOf("you_win"), rig.ui.voice)
 
         rig.settle()
         assertEquals(1, rig.store.last.pets.getValue(PetId.JASON).wins)
@@ -683,8 +683,8 @@ class GameViewModelTest {
         assertEquals(0, rig.jason.wins)
         assertEquals(35.0, rig.jason.hunger, 1e-9)
         assertEquals(75.0, rig.jason.funLevel, 1e-9)
-        assertTrue("heavy_hit" in rig.ui.sfx)
-        assertEquals("you_lose", rig.ui.voice.last())
+        assertTrue(rig.ui.sfx.isEmpty())
+        assertEquals(listOf("you_lose"), rig.ui.voice)
         rig.settle()
         assertEquals(1, rig.store.last.pets.getValue(PetId.JASON).losses)
     }
@@ -715,6 +715,26 @@ class GameViewModelTest {
         assertEquals(before.hunger, rig.jason.hunger, 1e-9)
         assertEquals(-10.0, rig.jason.moodBonus, 1e-9)
         assertTrue(rig.ui.voice.isEmpty())
+    }
+
+    @Test
+    fun aTurnQueuesNoSoundsEvenForACrit() {
+        // Turn 1: Jason's strike crits, Freddy's strike lands.
+        val crit = Roll(crit = 0.0)
+        val plain = Roll()
+        val rng = ScriptedRandom(
+            listOf(crit.miss, crit.variance, crit.crit, plain.miss, plain.variance, plain.crit),
+            ints = listOf(0, 0, 0),
+        )
+        val rig = Rig(strongJason(), rng = rng).started()
+        rig.toFight()
+        rig.vm.consumeSounds()
+
+        rig.vm.onMove(Move.STRIKE)
+        val fight = rig.ui.screen as Screen.Fight
+        assertTrue(fight.lastEvents.any { it is FightEvent.Hit && it.crit })
+        assertTrue("hit, crit and the rest are played by the fight screen", rig.ui.sfx.isEmpty())
+        assertTrue("so is the announcer's critical", rig.ui.voice.isEmpty())
     }
 
     @Test
@@ -993,76 +1013,5 @@ class AwayToastTest {
         assertNull(awayToast(away(Tuning.TOAST_MIN_AWAY_MS - 1, "Fun", -1)))
         assertNull(awayToast(away(0, null, 0)))
         assertNotNull(awayToast(away(Tuning.TOAST_MIN_AWAY_MS, "Fun", -1)))
-    }
-}
-
-class FightSoundsTest {
-    private val fight = FightState(
-        player = Fighter(PetId.JASON, 1, 100, 100, 20.0, 50, 0),
-        cpu = Fighter(PetId.FREDDY, 1, 100, 100, 20.0, 50, 0),
-    )
-
-    private fun sounds(vararg events: FightEvent) = fightSounds(events.toList(), fight)
-
-    @Test
-    fun plainHitsAndHeavyHits() {
-        val s = sounds(
-            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false),
-            FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false),
-        )
-        assertEquals(listOf("hit", "heavy_hit"), s.sfx)
-        assertTrue(s.voice.isEmpty())
-    }
-
-    @Test
-    fun counterHitIsAPlainHit() {
-        val s = sounds(FightEvent.Blocked(Side.PLAYER), FightEvent.Hit(Side.PLAYER, Move.STRIKE, 5, crit = false, counter = true))
-        assertEquals(listOf("block", "hit"), s.sfx)
-    }
-
-    @Test
-    fun specialsUseTheAttackersPetSound() {
-        assertEquals(listOf("special_jason"), sounds(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)).sfx)
-        assertEquals(listOf("special_freddy"), sounds(FightEvent.Hit(Side.CPU, Move.SPECIAL, 40, crit = false)).sfx)
-    }
-
-    @Test
-    fun critsPlayCritAndTheAnnouncerOncePerTurn() {
-        val s = sounds(
-            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true),
-            FightEvent.Hit(Side.CPU, Move.HEAVY, 30, crit = true),
-        )
-        assertEquals(listOf("crit", "crit"), s.sfx)
-        assertEquals(listOf("critical"), s.voice)
-    }
-
-    @Test
-    fun missesAndBlocks() {
-        assertEquals(listOf("miss"), sounds(FightEvent.Miss(Side.CPU, Move.HEAVY)).sfx)
-        assertEquals(listOf("block"), sounds(FightEvent.Blocked(Side.CPU)).sfx)
-    }
-
-    @Test
-    fun koIsAnnounced() {
-        val s = sounds(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), FightEvent.Ko(Side.CPU))
-        assertEquals(listOf("hit"), s.sfx)
-        assertEquals(listOf("ko"), s.voice)
-    }
-
-    @Test
-    fun interruptsAndSpecialReadyAreSilent() {
-        val s = sounds(FightEvent.Interrupted(Side.CPU), FightEvent.SpecialReady(Side.PLAYER))
-        assertTrue(s.sfx.isEmpty())
-        assertTrue(s.voice.isEmpty())
-    }
-
-    @Test
-    fun soundsKeepEventOrder() {
-        val s = sounds(
-            FightEvent.Miss(Side.PLAYER, Move.STRIKE),
-            FightEvent.Hit(Side.CPU, Move.STRIKE, 9, crit = false),
-            FightEvent.Interrupted(Side.PLAYER),
-        )
-        assertEquals(listOf("miss", "hit"), s.sfx)
     }
 }
