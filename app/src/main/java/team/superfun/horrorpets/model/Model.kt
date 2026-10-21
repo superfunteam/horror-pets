@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * Every killer, in roster order (the pet switcher's order). A pet's facts (its passive, its special, how it
@@ -37,12 +38,19 @@ data class PetState(
     val fakeDeathPending: Boolean = false,
 )
 
+/**
+ * The whole save. [newcomers] is never saved: it marks the pets a loaded save had no entry for (killers an
+ * update added since it was written, filled in at their defaults by `SaveCodec`). They join fresh, so the
+ * next [applyElapsed][team.superfun.horrorpets.game.applyElapsed] leaves them untouched (no decay, no fake
+ * death for time the player spent away before they existed) and clears the mark.
+ */
 @Serializable
 data class GameState(
     val version: Int = 1,
     val pets: Map<PetId, PetState> = PetId.entries.associateWith { PetState(it) },
     val selected: PetId? = null,
     val lastSeenMs: Long? = null,
+    @Transient val newcomers: Set<PetId> = emptySet(),
 )
 
 /**

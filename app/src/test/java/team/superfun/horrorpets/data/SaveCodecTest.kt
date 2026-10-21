@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -71,7 +72,8 @@ class SaveCodecTest {
     fun wrongTypesGiveDefaults() {
         assertEquals(defaults, SaveCodec.decode("""{"version":"one"}"""))
         assertEquals(defaults, SaveCodec.decode("""{"pets":[1,2,3]}"""))
-        assertEquals(defaults, SaveCodec.decode("""{"selected":"ZOMBIE"}"""))
+        // An unknown selection reads as none; with no pets object at all, every pet is a newcomer.
+        assertEquals(defaults.copy(newcomers = PetId.entries.toSet()), SaveCodec.decode("""{"selected":"ZOMBIE"}"""))
         assertEquals(defaults, SaveCodec.decode("[]"))
         assertEquals(defaults, SaveCodec.decode("42"))
     }
@@ -103,6 +105,7 @@ class SaveCodecTest {
         assertEquals(PetState(PetId.FREDDY), decoded.pets.getValue(PetId.FREDDY))
         assertEquals(PetState(PetId.PINHEAD), decoded.pets.getValue(PetId.PINHEAD))
         assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
+        assertEquals(PetId.entries.toSet() - PetId.JASON, decoded.newcomers)
     }
 
     /** A save exactly as v0.1.0 (four pets) wrote it: every field spelled out, in declaration order. */
@@ -138,9 +141,14 @@ class SaveCodecTest {
         assertEquals(PetId.GHOSTFACE, decoded.selected)
         assertEquals(1_761_000_000_000L, decoded.lastSeenMs)
         assertEquals(1, decoded.version)
-        // Saved again, the new pets are written out and read back the same.
-        assertEquals(decoded, SaveCodec.decode(SaveCodec.encode(decoded)))
+        // The pets the save did not have are marked as newcomers, so the time away does not touch them.
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.newcomers)
+        // Saved again, the new pets are written out and read back the same; the mark is never saved.
+        val again = SaveCodec.decode(SaveCodec.encode(decoded))
+        assertEquals(decoded.copy(newcomers = emptySet()), again)
+        assertTrue(again.newcomers.isEmpty())
         assertTrue(SaveCodec.encode(decoded).contains("\"MICHAEL\""))
+        assertFalse(SaveCodec.encode(decoded).contains("newcomers"))
     }
 
     @Test
@@ -148,6 +156,7 @@ class SaveCodecTest {
         val decoded = SaveCodec.decode("""{"version":1,"selected":"FREDDY"}""")
         assertEquals(PetId.FREDDY, decoded.selected)
         assertEquals(defaults.pets, decoded.pets)
+        assertEquals(PetId.entries.toSet(), decoded.newcomers)
     }
 
     @Test
@@ -318,6 +327,8 @@ class SaveCodecTest {
         assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
         assertEquals(4, decoded.pets.getValue(PetId.FREDDY).level)
         assertEquals(9, decoded.pets.getValue(PetId.PINHEAD).wins)
+        // A damaged entry is still a pet the player had: only the pets with no entry are newcomers.
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.newcomers)
     }
 
     @Test
@@ -342,7 +353,10 @@ class SaveCodecTest {
 
     @Test
     fun nullPetValueGivesDefaults() {
-        assertEquals(defaults, SaveCodec.decode("""{"pets":{"JASON":null}}"""))
+        // JASON's entry is there (null), so only the pets with no entry at all are newcomers.
+        val nullJason = SaveCodec.decode("""{"pets":{"JASON":null}}""")
+        assertEquals(defaults, nullJason.copy(newcomers = emptySet()))
+        assertEquals(PetId.entries.toSet() - PetId.JASON, nullJason.newcomers)
         assertEquals(defaults, SaveCodec.decode("""{"pets":null}"""))
     }
 

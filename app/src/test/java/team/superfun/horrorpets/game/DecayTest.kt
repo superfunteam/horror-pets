@@ -259,6 +259,38 @@ class DecayTest {
     }
 
     @Test
+    fun newcomersJoinFreshAndAreThenTreatedLikeEveryoneElse() {
+        // A save from before Chucky and Michael existed: they were added at their defaults on load.
+        val loaded = seen().copy(newcomers = setOf(PetId.CHUCKY, PetId.MICHAEL))
+        val (next, summary) = applyElapsed(loaded, t0 + 8 * day)
+        assertEquals(PetState(PetId.CHUCKY), next.pets.getValue(PetId.CHUCKY))
+        assertEquals(PetState(PetId.MICHAEL), next.pets.getValue(PetId.MICHAEL))
+        assertEquals(PetId.entries.toSet() - PetId.CHUCKY - PetId.MICHAEL, summary.fakeDeath)
+        assertTrue(next.pets.getValue(PetId.JASON).fakeDeathPending)
+        assertTrue(next.newcomers.isEmpty())
+
+        // From then on they decay with the rest.
+        val (later, _) = applyElapsed(next, t0 + 8 * day + 10 * hour)
+        assertEquals(20.0 + 40.0, later.pets.getValue(PetId.CHUCKY).hunger, 1e-9)
+    }
+
+    @Test
+    fun newcomersAreClearedEvenWhenNoTimeHasPassed() {
+        val (next, _) = applyElapsed(seen().copy(newcomers = setOf(PetId.MICHAEL)), t0)
+        assertTrue(next.newcomers.isEmpty())
+        val (firstRun, _) = applyElapsed(GameState(newcomers = setOf(PetId.MICHAEL)), t0)
+        assertTrue(firstRun.newcomers.isEmpty())
+    }
+
+    @Test
+    fun newcomersWaitOutAStaleBootClock() {
+        // The clock has not synced yet: nothing is applied, so the newcomers stay marked for the real update.
+        val marked = seen().copy(newcomers = setOf(PetId.CHUCKY))
+        val (next, _) = applyElapsed(marked, Tuning.MIN_VALID_EPOCH_MS - 1)
+        assertEquals(setOf(PetId.CHUCKY), next.newcomers)
+    }
+
+    @Test
     fun justUnderSevenDaysNoFakeDeath() {
         val (next, summary) = applyElapsed(seen(), t0 + 7 * day - 1)
         assertTrue(summary.fakeDeath.isEmpty())

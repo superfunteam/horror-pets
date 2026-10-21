@@ -25,6 +25,10 @@ import team.superfun.horrorpets.model.PetState
  * - Decay is linear and clamped, so applying two intervals back to back equals applying their sum.
  * - After [Tuning.FAKE_DEATH_AFTER_MS] away, every pet fake-dies (applied after the decay). The strength
  *   penalty is skipped for a pet whose fake death is already pending (not yet viewed).
+ * - [GameState.newcomers] (pets the save did not have yet) are left exactly as they are: they were not
+ *   there for the time away. Once the time is applied (any [nowMs] at or above [floorMs]) the mark is
+ *   cleared and from then on they decay like everyone else. Under a stale clock nothing is applied, so the
+ *   mark stays for the real update.
  */
 fun applyElapsed(
     state: GameState,
@@ -37,16 +41,17 @@ fun applyElapsed(
     val newLastSeen = max(lastSeen ?: nowMs, nowMs)
     val elapsedMs = if (lastSeen == null) 0L else min(gapMs(nowMs, lastSeen), Tuning.MAX_ELAPSED_MS)
     if (elapsedMs == 0L) {
-        return state.copy(lastSeenMs = newLastSeen) to AwaySummary(0L, null, 0, emptySet())
+        return state.copy(lastSeenMs = newLastSeen, newcomers = emptySet()) to AwaySummary(0L, null, 0, emptySet())
     }
 
     val hours = elapsedMs.toDouble() / Tuning.HOUR_MS
-    var pets = state.pets.mapValues { (_, p) -> decay(p, hours) }
+    val newcomers = state.newcomers
+    var pets = state.pets.mapValues { (id, p) -> if (id in newcomers) p else decay(p, hours) }
 
-    val fakeDeath = if (elapsedMs >= Tuning.FAKE_DEATH_AFTER_MS) pets.keys.toSet() else emptySet()
-    if (fakeDeath.isNotEmpty()) pets = pets.mapValues { (_, p) -> fakeDie(p) }
+    val fakeDeath = if (elapsedMs >= Tuning.FAKE_DEATH_AFTER_MS) pets.keys - newcomers else emptySet()
+    if (fakeDeath.isNotEmpty()) pets = pets.mapValues { (id, p) -> if (id in fakeDeath) fakeDie(p) else p }
 
-    val next = state.copy(pets = pets, lastSeenMs = newLastSeen)
+    val next = state.copy(pets = pets, lastSeenMs = newLastSeen, newcomers = emptySet())
     return next to summarize(state, next, elapsedMs, fakeDeath)
 }
 

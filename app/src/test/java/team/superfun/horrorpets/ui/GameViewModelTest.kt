@@ -19,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
+import team.superfun.horrorpets.data.SaveCodec
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.Move
@@ -28,6 +29,7 @@ import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
@@ -191,6 +193,58 @@ class GameViewModelTest {
         val rig = Rig(gameOf(lastSeenMs = T0 - 10 * MINUTE))
         rig.started()
         assertNotNull(rig.ui.toast)
+    }
+
+    /** A save as v0.1.0 wrote it (four pets, every field), last seen [lastSeenMs]. */
+    private fun v010Save(lastSeenMs: Long): String = """
+        {"version":1,"pets":{
+        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false},
+        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":false},
+        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false},
+        "GHOSTFACE":{"id":"GHOSTFACE","hunger":30.0,"funLevel":55.0,"strength":61.0,"level":7,"xp":640,"moodBonus":12.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false}},
+        "selected":"GHOSTFACE","lastSeenMs":$lastSeenMs}
+    """.trimIndent()
+
+    private val originalFour = listOf(PetId.JASON, PetId.FREDDY, PetId.PINHEAD, PetId.GHOSTFACE)
+
+    @Test
+    fun anUpgradeAfterAWeekAwayFakeKillsTheOriginalFourButChuckyAndMichaelArriveFresh() {
+        val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
+        val rig = Rig(loaded).started()
+
+        // The four original killers decay and fake-die exactly as they did before the update.
+        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
+        for (id in originalFour) {
+            assertEquals("$id", asBefore.pets.getValue(id), rig.game.pets.getValue(id))
+            assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
+        }
+        assertEquals(Screen.FakeDeath(PetId.GHOSTFACE), rig.ui.screen)
+        // The two new killers have only just arrived: no time away, no fake death, nothing decayed.
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+            assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
+            assertEquals("$id saved", PetState(id), rig.store.last.pets.getValue(id))
+        }
+        assertEquals(T0, rig.store.last.lastSeenMs)
+
+        // After the reveal, picking Chucky goes straight Home: no R.I.P. for a pet that just moved in.
+        rig.vm.onFakeDeathDone()
+        rig.vm.openSwitcher()
+        rig.vm.onSwitcherPick(PetId.CHUCKY)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun anUpgradeAfterTenHoursDecaysTheOriginalFourButNotTheNewcomers() {
+        val loaded = SaveCodec.decode(v010Save(T0 - 10 * HOUR))
+        val rig = Rig(loaded).started()
+        assertEquals(12.5 + 40.0, rig.game.pets.getValue(PetId.JASON).hunger, 1e-9)
+        assertEquals(PetState(PetId.CHUCKY), rig.game.pets.getValue(PetId.CHUCKY))
+        assertEquals(PetState(PetId.MICHAEL), rig.game.pets.getValue(PetId.MICHAEL))
+
+        // Once they have joined, they decay like everyone else.
+        rig.clock.now = T0 + 10 * HOUR
+        rig.vm.tick()
+        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.CHUCKY).hunger, 1e-9)
     }
 
     @Test

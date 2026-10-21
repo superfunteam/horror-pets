@@ -46,6 +46,8 @@ object SaveCodec {
      * - a pet key this build does not know (a character added later) is skipped;
      * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, and
      *   so is a missing one; the other pets are kept;
+     * - a pet with no entry at all (a killer added since the save was written, like Chucky and Michael in
+     *   a v0.1.0 save) is listed in [GameState.newcomers], so the time away does not decay it;
      * - an unknown `selected` pet reads as none, so the player picks again.
      * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
@@ -70,6 +72,7 @@ object SaveCodec {
                 version = rest.version.coerceAtLeast(1),
                 selected = petIdOrNull(root["selected"]),
                 pets = PetId.entries.associateWith { id -> petOrDefault(id, pets[id.name]) },
+                newcomers = PetId.entries.filter { it.name !in pets }.toSet(),
             )
         } catch (_: Exception) {
             // SerializationException, IllegalArgumentException (bad number): the save as a whole is unusable.
