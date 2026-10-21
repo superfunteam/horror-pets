@@ -63,11 +63,14 @@ val ShieldBlue = Color(0xFFA9D2FF)
 
 /** The look of a floating text. */
 internal enum class FloatKind {
-    /** A damage number: white. */
+    /** A damage number, "−23": red, like an RPG's. */
     DAMAGE,
 
-    /** A critical hit: bigger, Amber into Blood, with CRITICAL! over it. */
+    /** A critical hit: bigger, hot orange into blood red, with CRITICAL! over it. */
     CRIT,
+
+    /** Hit points back from a potion, "+34": green. */
+    HEAL,
 
     /** A whiff: grey. */
     MISS,
@@ -177,11 +180,14 @@ internal fun Modifier.placeInBounds(
     }
 }
 
-private val CritFill = Brush.verticalGradient(listOf(Color(0xFFFFD36B), Amber, Blood))
+private val DamageFill = Brush.verticalGradient(listOf(Color(0xFFFF8A8F), Color(0xFFFF2D3A), Color(0xFFB30F1C)))
+private val CritFill = Brush.verticalGradient(listOf(Color(0xFFFFC46B), Color(0xFFFF3B2F), Blood))
+private val HealFill = Brush.verticalGradient(listOf(Color(0xFFE0FFC2), PotionGreen, Color(0xFF2E9E2A)))
 private val ReadyFill = Brush.verticalGradient(listOf(Color(0xFFFF8088), BloodGlow, Blood))
 
 private fun mainStyle(kind: FloatKind): TextStyle = when (kind) {
-    FloatKind.DAMAGE -> displayStyle(64.sp, tracking = 0.02f, lineHeight = 64.sp)
+    FloatKind.DAMAGE -> displayStyle(64.sp, tracking = 0.02f, lineHeight = 64.sp).copy(brush = DamageFill)
+    FloatKind.HEAL -> displayStyle(72.sp, tracking = 0.02f, lineHeight = 72.sp).copy(brush = HealFill)
     FloatKind.CRIT -> displayStyle(96.sp, tracking = 0.02f, lineHeight = 96.sp).copy(brush = CritFill)
     FloatKind.MISS -> displayStyle(56.sp, color = Color(0xFFB4B1B8), tracking = 0.08f, lineHeight = 56.sp)
     FloatKind.BLOCK -> displayStyle(56.sp, color = ShieldBlue, tracking = 0.08f, lineHeight = 56.sp)
@@ -223,6 +229,7 @@ fun specialName(pet: PetId): String = pet.spec.special.displayName
 internal fun calloutText(move: Move, pet: PetId): String = when (move) {
     Move.SPECIAL -> specialName(pet).uppercase() + "!"
     Move.RUN -> "RUN!"
+    Move.POTION -> "POTION!"
     else -> move.name
 }
 
@@ -246,6 +253,7 @@ internal fun MoveCallout(
         Move.SPECIAL -> Amber
         Move.BLOCK -> ShieldBlue
         Move.RUN -> Color(0xFFB4B1B8)
+        Move.POTION -> PotionGreen
         else -> BloodGlow
     }
     Box(

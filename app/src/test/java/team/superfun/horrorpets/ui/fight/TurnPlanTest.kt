@@ -130,6 +130,13 @@ class TurnPlanTest {
     }
 
     @Test
+    fun aPotionIsADrinkBeatBeforeTheOpponentsSwing() {
+        val heal = FightEvent.Heal(Side.PLAYER, 34)
+        val hit = FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false)
+        assertEquals(listOf(Beat.Drink(Side.PLAYER, 34), Beat.Lunge(Side.CPU, hit)), beatsOf(listOf(heal, hit), winner = null))
+    }
+
+    @Test
     fun noEventsNoBeats() {
         assertTrue(beatsOf(emptyList(), winner = Side.CPU).isEmpty())
     }
@@ -217,6 +224,14 @@ class TurnSoundsTest {
         val s = sounds(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), FightEvent.Ko(Side.CPU))
         assertEquals(listOf("hit", "ko"), s.sfx)
         assertEquals(listOf("ko"), s.voice)
+    }
+
+    @Test
+    fun aPotionPoofsAndTheAnnouncerKeepsQuiet() {
+        val s = sounds(FightEvent.Heal(Side.PLAYER, 34))
+        assertEquals(listOf("potion"), s.sfx)
+        assertTrue(s.voice.isEmpty())
+        assertEquals(null, momentOf(FightEvent.Heal(Side.PLAYER, 34)))
     }
 
     @Test
@@ -312,6 +327,13 @@ class HudBeforeTurnTest {
             FightEvent.Hit(Side.CPU, Move.HEAVY, 8, crit = true),
         )
         assertEquals(HudStart(hp = 80, meter = 50), hudBeforeTurn(jason, Side.PLAYER, events))
+    }
+
+    @Test
+    fun aPotionsHealIsTakenBackOut() {
+        // Jason drank 30 and was then hit for 12: before the turn he had 60 - 30 + 12.
+        val events = listOf(FightEvent.Heal(Side.PLAYER, 30), FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false))
+        assertEquals(HudStart(hp = 42, meter = 50), hudBeforeTurn(jason, Side.PLAYER, events))
     }
 
     @Test

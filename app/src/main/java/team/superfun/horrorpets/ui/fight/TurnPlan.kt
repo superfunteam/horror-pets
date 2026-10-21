@@ -25,6 +25,9 @@ internal sealed interface Beat {
 
     /** [side]'s special meter just filled. */
     data class Ready(val side: Side) : Beat
+
+    /** A potion is tossed onto [side], who drinks it and gets [amount] hit points back. */
+    data class Drink(val side: Side, val amount: Int) : Beat
 }
 
 /**
@@ -41,6 +44,7 @@ internal fun beatsOf(events: List<FightEvent>, winner: Side?): List<Beat> = even
         is FightEvent.Blocked -> Beat.Lunge(event.blocker.other(), event)
         is FightEvent.Interrupted -> Beat.Interrupt(event.side)
         is FightEvent.SpecialReady -> if (winner == null) Beat.Ready(event.side) else null
+        is FightEvent.Heal -> Beat.Drink(event.side, event.amount)
         is FightEvent.Ko -> null
     }
 }
@@ -53,7 +57,8 @@ private val Silent = FightSounds(emptyList(), emptyList())
 /**
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
  * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
- * instead; a miss is `miss`, a block `block`, and a KO is the `ko` boom with the announcer saying `ko`.
+ * instead; a miss is `miss`, a block `block`, a potion `potion`, and a KO is the `ko` boom with the announcer
+ * saying `ko`.
  * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
  * one from [events], is said with the event it reacts to.
  *
@@ -80,6 +85,7 @@ internal class TurnSounds(
             }
             is FightEvent.Miss -> "miss"
             is FightEvent.Blocked -> "block"
+            is FightEvent.Heal -> "potion"
             is FightEvent.Ko -> return FightSounds(listOf("ko"), listOf("ko"))
             is FightEvent.Interrupted, is FightEvent.SpecialReady -> return Silent
         }
@@ -151,15 +157,17 @@ internal data class HudStart(val hp: Int, val meter: Int)
 
 /**
  * A side's HP and meter before the turn whose [events] left it as [f], as near as the events tell: the
- * damage it took is given back (never above max HP), the special it used was a full meter, and each hit it
- * landed (counters included) had not yet filled its cell. Only for a fight screen built in the middle of a
+ * damage it took is given back and a potion's heal taken back out (always within 0..max HP), the special it
+ * used was a full meter, and each hit it landed (counters included) had not yet filled its cell. Only for a fight screen built in the middle of a
  * turn (the Activity was recreated while it played); otherwise the bars simply follow the turn.
  */
 internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): HudStart {
     var taken = 0
+    var healed = 0
     var landed = 0
     var usedSpecial = false
     for (e in events) {
+        if (e is FightEvent.Heal && e.side == side) healed += e.amount
         if (e !is FightEvent.Hit) continue
         when {
             e.attacker != side -> taken += e.damage
@@ -168,5 +176,5 @@ internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): Hu
         }
     }
     val meter = if (usedSpecial) FightTuning.METER_MAX else (f.meter - FightTuning.METER_PER_HIT * landed).coerceAtLeast(0)
-    return HudStart(hp = (f.hp + taken).coerceAtMost(f.maxHp), meter = meter)
+    return HudStart(hp = (f.hp + taken - healed).coerceIn(0, f.maxHp), meter = meter)
 }

@@ -26,7 +26,7 @@ nothing else.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **Feeding time:** a snack whistles down from the sky (meat on the bone, a turkey leg, canned spinach, a cake with a knife in it, popcorn or a jello brain) and gets munched, bite by bite.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
-- **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
+- **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all of its health back, in green (+34). Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
 - **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stable badge, swipe
   left or right to walk between scenes, tap or swipe through the pet lineup (tap the pet in the spotlight to
@@ -87,6 +87,7 @@ OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_food.py --n 2   # then pick in finalize_food.py
 tools/.venv/bin/python -I tools/finalize_food.py
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_hand.py --n 2  # the Play glove; then finalize_hand.py
+OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_potion.py --n 3  # the fight's potion; then --pick K
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_player_voice.py
 ```
 

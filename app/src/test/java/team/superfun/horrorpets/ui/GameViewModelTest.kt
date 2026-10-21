@@ -1378,6 +1378,35 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aPotionIsOnlyDrunkBelowFullHealthAndWhileAnyAreLeft() {
+        // Dice: the opponent's build, then turn 1 the CPU HEAVYs Jason's BLOCK; turns 2 and 3 Jason drinks (rolling
+        // the smallest heal) while the CPU, ignoring his BLOCK habit, STRIKEs. Every swing lands plainly.
+        val swing = listOf(Roll().miss, Roll().variance, Roll().crit)
+        val doubles = swing + listOf(0.99, 0.0) + swing + listOf(0.99, 0.0) + swing
+        val rig = Rig(strongJason(), rng = ScriptedRandom(doubles, ints = listOf(0, 0, 40, 0, 0))).started()
+        rig.toFight(PetId.FREDDY)
+
+        rig.vm.onMove(Move.POTION) // at full health a potion would be wasted: ignored
+        assertFalse(rig.ui.busy)
+        assertEquals(2, (rig.ui.screen as Screen.Fight).fight.playerPotions)
+
+        rig.vm.onMove(Move.BLOCK)
+        rig.finishAnim()
+        for (left in listOf(1, 0)) {
+            rig.vm.onMove(Move.POTION)
+            val fight = rig.ui.screen as Screen.Fight
+            assertEquals(Move.POTION, fight.playerMove)
+            assertEquals(left, fight.fight.playerPotions)
+            assertTrue(fight.lastEvents.first() is FightEvent.Heal)
+            rig.finishAnim()
+        }
+
+        val before = rig.ui
+        rig.vm.onMove(Move.POTION) // none left: ignored
+        assertEquals(before, rig.ui)
+    }
+
+    @Test
     fun beatingAKillerYouHaveIsARematch() {
         val rig = Rig(strongJason(), rng = winningScript()).started()
         val freddy = rig.game.pets.getValue(PetId.FREDDY)

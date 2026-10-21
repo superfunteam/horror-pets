@@ -54,7 +54,7 @@ class PlayerHomeTest {
     fun aFourByThreeScreenMovesThePlayerClearOfTheWindow() {
         val menuRight = 36f + window // 5% of 720 + the window
         val home = playerHomeFraction(720f, menuRight)
-        assertEquals(0.3194f, home, 1e-3f)
+        assertEquals(0.325f, home, 1e-3f) // (36 + 128 + 10 + 60) / 720
         // Leatherface's saw, the widest idle pose (59dp), still clears the window by 10dp.
         assertTrue(home * 720f - 59f >= menuRight + 10f)
     }

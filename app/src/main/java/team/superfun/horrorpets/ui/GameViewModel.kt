@@ -324,7 +324,8 @@ class GameViewModel(
 
     /**
      * Plays the player's move against the CPU's reply. The screen animates [Screen.Fight.lastEvents]
-     * and then reports the turn's [PetAnimRequest] finished. A SPECIAL without a full meter is ignored.
+     * and then reports the turn's [PetAnimRequest] finished. A SPECIAL without a full meter is ignored, and so is a
+     * POTION with none left or at full health.
      *
      * A turn queues no sounds: the fight screen plays each event's sound (hits, crits, misses, blocks,
      * the KO call) itself, at the moment it shows that event.
@@ -335,6 +336,8 @@ class GameViewModel(
         val fight = screen.fight
         if (s.busy || fight.winner != null) return
         if (m == Move.SPECIAL && fight.player.meter < FightTuning.METER_MAX) return
+        // A potion needs one left, and at full health it would be wasted.
+        if (m == Move.POTION && (fight.playerPotions == 0 || fight.player.hp >= fight.player.maxHp)) return
 
         // Running ends the fight before the CPU acts: it picks nothing, and the engine ignores the
         // placeholder it is handed.

@@ -835,13 +835,18 @@ class FightEngineTest {
             var turns = 0
             while (s.winner == null) {
                 assertTrue("fight $seed ran away", turns++ < 500)
-                val legal = Move.entries.filter { it != Move.RUN && (it != Move.SPECIAL || s.player.meter == FightTuning.METER_MAX) }
+                val legal = Move.entries.filter {
+                    it != Move.RUN &&
+                        (it != Move.SPECIAL || s.player.meter == FightTuning.METER_MAX) &&
+                        (it != Move.POTION || s.playerPotions > 0)
+                }
                 val r = resolveTurn(s, legal[rng.nextInt(legal.size)], cpuPick(s, rng), rng)
                 s = r.state
                 for (f in listOf(s.player, s.cpu)) {
                     assertTrue(f.hp in 0..f.maxHp)
                     assertTrue(f.meter in 0..FightTuning.METER_MAX)
                 }
+                assertTrue(s.playerPotions in 0..FightTuning.POTIONS_PER_FIGHT)
                 assertEquals(s.winner != null, r.events.any { it is Ko })
             }
             val loser = if (s.winner == Side.PLAYER) s.cpu else s.player
