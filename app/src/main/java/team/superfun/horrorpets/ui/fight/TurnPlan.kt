@@ -3,6 +3,8 @@ package team.superfun.horrorpets.ui.fight
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
+import team.superfun.horrorpets.fight.FightTuning
+import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
@@ -50,7 +52,7 @@ private val Silent = FightSounds(emptyList(), emptyList())
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
  * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
  * instead, and the announcer says `critical` with the turn's first crit only; a miss is `miss`, a block
- * `block`, and a KO has the announcer say `ko`. Interrupts and a filled meter are silent.
+ * `block`, and a KO is the `ko` boom with the announcer saying `ko`. Interrupts and a filled meter are silent.
  *
  * Make one per turn: it remembers whether the announcer has already called a crit. [fight] is the state
  * after the turn, used to tell which pet a side is.
@@ -75,7 +77,7 @@ internal class TurnSounds(private val fight: FightState) {
 
         is FightEvent.Miss -> FightSounds(listOf("miss"), emptyList())
         is FightEvent.Blocked -> FightSounds(listOf("block"), emptyList())
-        is FightEvent.Ko -> FightSounds(emptyList(), listOf("ko"))
+        is FightEvent.Ko -> FightSounds(listOf("ko"), listOf("ko"))
         is FightEvent.Interrupted, is FightEvent.SpecialReady -> Silent
     }
 }
@@ -90,4 +92,29 @@ internal fun impactMs(attack: AnimSpec): Long {
     var snap = 0
     for (i in d.indices) if (d[i] < d[snap]) snap = i
     return d.take(snap).sumOf { it.coerceAtLeast(0).toLong() }
+}
+
+/** Where a side's HP bar and special meter stand, in hit points and meter points. */
+internal data class HudStart(val hp: Int, val meter: Int)
+
+/**
+ * A side's HP and meter before the turn whose [events] left it as [f], as near as the events tell: the
+ * damage it took is given back (never above max HP), the special it used was a full meter, and each hit it
+ * landed (counters included) had not yet filled its cell. Only for a fight screen built in the middle of a
+ * turn (the Activity was recreated while it played); otherwise the bars simply follow the turn.
+ */
+internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): HudStart {
+    var taken = 0
+    var landed = 0
+    var usedSpecial = false
+    for (e in events) {
+        if (e !is FightEvent.Hit) continue
+        when {
+            e.attacker != side -> taken += e.damage
+            e.move == Move.SPECIAL -> usedSpecial = true
+            else -> landed++
+        }
+    }
+    val meter = if (usedSpecial) FightTuning.METER_MAX else (f.meter - FightTuning.METER_PER_HIT * landed).coerceAtLeast(0)
+    return HudStart(hp = (f.hp + taken).coerceAtMost(f.maxHp), meter = meter)
 }

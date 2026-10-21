@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +54,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -76,6 +81,7 @@ import team.superfun.horrorpets.assets.SceneSpec
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.fight.FightEvent
+import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
@@ -147,9 +153,19 @@ private const val MENU_MS = 200
 /** How long a sprite may take beyond its own length before the turn moves on without it. */
 private const val ANIM_SLACK_MS = 1_200L
 
-/** Strips a fight needs from the first turn: decoded during the VS card so the first swing starts at once. */
-private val PLAYER_FIGHT_ANIMS = listOf(Anim.IDLE, Anim.RUN_RIGHT, Anim.ATTACK, Anim.WAIT)
-private val CPU_FIGHT_ANIMS = listOf(Anim.IDLE, Anim.RUN_LEFT, Anim.ATTACK, Anim.WAIT)
+/**
+ * Strips decoded during the VS card: everything a swing and the K.O. finale need, for both fighters. That
+ * is 12, the whole of the loader's strip cache. WAIT (a guard) and the run-off are left to decode when a
+ * turn first needs them (see [turnStrips]), during its callouts.
+ */
+private val PLAYER_FIGHT_ANIMS = listOf(Anim.IDLE, Anim.RUN_RIGHT, Anim.ATTACK, Anim.FAIL, Anim.JUMP, Anim.WAVE)
+private val CPU_FIGHT_ANIMS = listOf(Anim.IDLE, Anim.RUN_LEFT, Anim.ATTACK, Anim.FAIL, Anim.JUMP, Anim.WAVE)
+
+/** The longest a turn waits, after its callouts, for its strips to finish decoding. */
+private const val STRIPS_WAIT_MS = 1_500L
+
+/** The longest a swing waits for its ATTACK to come on screen before timing its impact anyway. */
+private const val SWING_START_WAIT_MS = 600L
 
 /** The arena: one of the [opponent]'s scenes, picked by the fight's [roll] (see `HorrorPetsApp`). */
 internal fun arenaScene(loader: AssetLoader, opponent: PetId, roll: Int): SceneSpec {
@@ -183,7 +199,8 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    Otherwise the bars settle on the real values and the move pills come back, focus on the last move.
  *
  * Back (or the RUN pill) asks "Run away?"; Yes runs ([Move.RUN]). [focusEntry] is the router's entry key
- * (see `RequestFocusOnEntry`); null (the screen is fading out) turns off Back.
+ * (see `RequestFocusOnEntry`); null (the screen is fading out) turns off Back. [isBusy] reads the view
+ * model's `busy` live, so a key that arrives before the screen has recomposed is still turned down.
  */
 @Composable
 fun FightScreen(
@@ -194,6 +211,7 @@ fun FightScreen(
     onMove: (Move) -> Unit,
     onAnimFinished: (Long) -> Unit,
     focusEntry: Any? = Unit,
+    isBusy: () -> Boolean = { false },
 ) {
     val fight = screen.fight
     val playerId = fight.player.id
@@ -214,7 +232,12 @@ fun FightScreen(
     // A request to put focus back on the menu, served after the recomposition that makes its pills
     // focusable again (they are not while the dialog is up). A new instance is a new request.
     var refocus by remember { mutableStateOf<Refocus?>(null) }
-    val over = fight.winner != null
+    // A turn is on from the moment the view model hands it over (its marker) until it has played out. The
+    // marker alone covers the frame before playback starts; `playing` covers a recreated screen replaying.
+    val turnActive = petAnim != null || stage.playing
+    // Keys are handled between frames, so a Back right behind OK can arrive before the recomposition that
+    // shows the new turn: ask the view model itself whether a move is still being played.
+    val canAct = { !isBusy() && !stage.playing && fight.winner == null }
     // Read from the meter as shown, which only moves while a turn plays: the pill comes and goes while
     // the menu is hidden, never under the player's eyes. Not cleared when the fight ends either: the menu
     // is fading out then, and a pill vanishing mid-fade flickers.
@@ -227,7 +250,7 @@ fun FightScreen(
     }
 
     BackHandler(enabled = focusEntry != null && !askRun) {
-        if (!stage.playing && !over) {
+        if (!turnActive && canAct()) {
             returnTo = focusedMove
             askRun = true
         }
@@ -259,7 +282,7 @@ fun FightScreen(
         if (screen.fight.winner == null && entry != null && !askRun) focusMenu(lastMove)
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { stage.screenTop = it.positionInRoot().y }) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val cellH = h * FIGHTER_HEIGHT
@@ -267,8 +290,10 @@ fun FightScreen(
         val shakePx = with(density) { 14.dp.toPx() }
         val jitterPx = with(density) { 4.dp.toPx() }
         val halfWidth = with(density) { (w * 0.4f).toDp() }
-        stage.width = w
-        stage.height = h
+        SideEffect {
+            stage.width = w
+            stage.height = h
+        }
 
         // The arena (scene, fighters, effects) shakes as one; the HUD and menu hold still.
         Box(
@@ -314,23 +339,6 @@ fun FightScreen(
                     }
                 }
                 SpecialVfx(stage.special, progress = { stage.specialT.value })
-                for (side in Side.entries) {
-                    val rig = stage.rig(side)
-                    val move = rig.calloutMove
-                    if (move != null) {
-                        key(side, rig.calloutKey) {
-                            MoveCallout(
-                                text = calloutText(move, rig.pet),
-                                move = move,
-                                progress = { rig.callout.value },
-                                x = { w * homeFraction(side) },
-                                y = floorY - cellH * CALLOUT_AT,
-                                maxWidth = halfWidth,
-                            )
-                        }
-                    }
-                }
-                FloatingNumbers(stage.floats, onDone = { stage.floats.remove(it) })
             }
         }
 
@@ -344,15 +352,39 @@ fun FightScreen(
                 },
         )
 
+        // The callouts and floating numbers hold still while the arena shakes, so they stay inside the
+        // safe inset, and they keep below the HUD (see placeInBounds).
+        val clear = with(density) { 6.dp.toPx() }
+        val belowHud = { stage.hudBottom + clear }
+        for (side in Side.entries) {
+            val rig = stage.rig(side)
+            val move = rig.calloutMove
+            if (move != null) {
+                key(side, rig.calloutKey) {
+                    MoveCallout(
+                        text = calloutText(move, rig.pet),
+                        move = move,
+                        progress = { rig.callout.value },
+                        x = { w * homeFraction(side) },
+                        y = { stage.floor - cellH * CALLOUT_AT },
+                        top = belowHud,
+                        maxWidth = halfWidth,
+                    )
+                }
+            }
+        }
+        FloatingNumbers(stage.floats, top = belowHud, onDone = { stage.floats.remove(it) })
+
         Box(Modifier.fillMaxSize().padding(safeInsetPadding())) {
             FightHud(
                 player = fight.player,
                 cpu = fight.cpu,
-                // The turn being played (or the last one, once it is over), not the next one.
-                turn = if (stage.playing || over) (fight.turn - 1).coerceAtLeast(1) else fight.turn,
+                turn = shownTurn(fight, turnActive),
                 playerValues = stage.player.hud,
                 cpuValues = stage.cpu.hud,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop },
             )
             MoveMenu(
                 pet = playerId,
@@ -362,7 +394,7 @@ fun FightScreen(
                 focused = focusedMove,
                 onFocused = { focusedMove = it },
                 onPick = { move ->
-                    if (!stage.playing && !over) {
+                    if (!turnActive && canAct()) {
                         if (move == Move.RUN) {
                             returnTo = Move.RUN
                             askRun = true
@@ -390,6 +422,11 @@ fun FightScreen(
             exit = fadeOut(tween(160)),
         ) {
             RunDialog(
+                // The card grows in as the scrim fades in, and settles back as it fades out.
+                modifier = Modifier.animateEnterExit(
+                    enter = scaleIn(tween(200), initialScale = 0.9f),
+                    exit = scaleOut(tween(160), targetScale = 0.95f),
+                ),
                 onYes = {
                     askRun = false
                     lastMove = Move.RUN
@@ -405,6 +442,15 @@ fun FightScreen(
 }
 
 private fun homeFraction(side: Side): Float = if (side == Side.PLAYER) PLAYER_X else CPU_X
+
+/**
+ * The turn the badge shows: the one being played while a turn is on, or the last one played once the
+ * fight is over, never the next. Running away plays no turn (the engine leaves `turn` as it was).
+ */
+private fun shownTurn(fight: FightState, turnActive: Boolean): Int {
+    val played = (turnActive || fight.winner != null) && !fight.playerRan
+    return if (played) (fight.turn - 1).coerceAtLeast(1) else fight.turn
+}
 
 /** One request to focus the menu on [move]. */
 @Stable
@@ -444,9 +490,15 @@ private fun FightersLayer(
 
 // ---- the fighters ----
 
-/** One showing of an animation; a new instance restarts playback even for the same [anim]. */
+/**
+ * One showing of an animation; a new instance restarts playback even for the same [anim]. [started]
+ * completes when its first frame is on screen, [ended] when it has played once (or was replaced).
+ */
 @Stable
-private class Pose(val anim: Anim)
+private class Pose(val anim: Anim) {
+    val started = CompletableDeferred<Unit>()
+    val ended = CompletableDeferred<Unit>()
+}
 
 /**
  * Everything one fighter shows that the turn playback drives: its animation, where it stands (a step
@@ -481,31 +533,19 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     var hpTarget = hp
     var meterTarget = meter
 
-    private var awaited: Pose? = null
-    private var done: CompletableDeferred<Unit>? = null
-
-    /** Shows [anim] without waiting for it (a loop, or a pose to hold). */
-    fun show(anim: Anim) {
-        done?.complete(Unit)
-        awaited = null
-        done = null
-        pose = Pose(anim)
+    /** Shows [anim] (a loop, or a pose to hold) and returns its showing, to wait on. */
+    fun show(anim: Anim): Pose {
+        // Whoever waits on the showing being replaced is let go.
+        pose.started.complete(Unit)
+        pose.ended.complete(Unit)
+        return Pose(anim).also { pose = it }
     }
 
     /** Plays [anim] once and returns when it ends, or after [timeoutMs] if it never reports. */
+    /** Plays [anim] once and returns when it ends, or after [timeoutMs] if it never reports. */
     suspend fun play(anim: Anim, timeoutMs: Long) {
-        done?.complete(Unit)
-        val p = Pose(anim)
-        val d = CompletableDeferred<Unit>()
-        awaited = p
-        done = d
-        pose = p
-        withTimeoutOrNull(timeoutMs) { d.await() }
-    }
-
-    /** The sprite finished playing [p] (once through, for a loop). */
-    fun finished(p: Pose) {
-        if (p === awaited) done?.complete(Unit)
+        val p = show(anim)
+        withTimeoutOrNull(timeoutMs) { p.ended.await() }
     }
 }
 
@@ -542,7 +582,8 @@ private fun FighterView(
         shadowOpacity = shadowOpacity,
         loopOffsetMs = if (rig.side == Side.CPU) 380L else 0L,
         playKey = pose,
-        onFinished = { rig.finished(pose) },
+        onStarted = { pose.started.complete(Unit) },
+        onFinished = { pose.ended.complete(Unit) },
         modifier = Modifier
             .zIndex(if (front) 1f else 0f)
             .placeAt(x = { homeX + rig.dir * rig.step.value * width }, y = { floorY })
@@ -567,10 +608,10 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
         val f = screen.fight
         // Normally the bars start at the fight's real values. A screen built mid-turn (the Activity was
         // recreated while a turn played) replays that turn, so it starts from the values before it.
-        val (playerHp, playerMeter) = if (turnPending) before(f.player, Side.PLAYER, screen.lastEvents) else now(f.player)
-        val (cpuHp, cpuMeter) = if (turnPending) before(f.cpu, Side.CPU, screen.lastEvents) else now(f.cpu)
-        player = FighterRig(Side.PLAYER, f.player.id, playerHp, playerMeter)
-        cpu = FighterRig(Side.CPU, f.cpu.id, cpuHp, cpuMeter)
+        val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
+        val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat())
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat())
     }
 
     val shake = Animatable(0f)
@@ -593,12 +634,18 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
     // The last layout's geometry, for placing effects (main thread only).
     var width = 0f
     var height = 0f
-    var floorY = 0f
+
+    /** The arena's floor line, once its scene is up (0 until then). Read in layout by the callouts. */
+    var floorY by mutableFloatStateOf(0f)
+
+    /** The bottom of the HUD and the top of this screen, in root pixels: floating words keep below the HUD. */
+    var hudBottom by mutableFloatStateOf(0f)
+    var screenTop = 0f
 
     fun rig(side: Side): FighterRig = if (side == Side.PLAYER) player else cpu
 
     private val cellH: Float get() = height * FIGHTER_HEIGHT
-    private val floor: Float get() = if (floorY > 0f) floorY else height * 0.75f
+    val floor: Float get() = if (floorY > 0f) floorY else height * 0.75f
 
     private fun homeX(side: Side): Float = width * homeFraction(side)
 
@@ -618,16 +665,31 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
         loader.manifest(rig.pet).spec(anim).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong() + ANIM_SLACK_MS
 }
 
-private fun now(f: Fighter): Pair<Float, Float> = f.hp.toFloat() to f.meter.toFloat()
-
-/** A side's HP and meter before the turn whose [events] produced [f], as near as the events tell. */
-private fun before(f: Fighter, side: Side, events: List<FightEvent>): Pair<Float, Float> {
-    val taken = events.sumOf { if (it is FightEvent.Hit && it.attacker != side) it.damage else 0 }
-    val usedSpecial = events.any { it is FightEvent.Hit && it.attacker == side && it.move == Move.SPECIAL }
-    val landed = events.count { it is FightEvent.Hit && it.attacker == side && it.move != Move.SPECIAL }
-    val meter = if (usedSpecial) FightTuning.METER_MAX else max(0, f.meter - FightTuning.METER_PER_HIT * landed)
-    return min(f.maxHp, f.hp + taken).toFloat() to meter.toFloat()
-}
+/** The strips [turn] shows, by pet: idles, guards, swings, and the finale or the run-off. At most 11. */
+private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> = buildList {
+    val fight = turn.fight
+    for (side in Side.entries) add(rig(side).pet to Anim.IDLE)
+    if (turn.playerMove == Move.BLOCK) add(player.pet to Anim.WAIT)
+    if (turn.cpuMove == Move.BLOCK) add(cpu.pet to Anim.WAIT)
+    for (beat in beatsOf(turn.lastEvents, fight.winner)) {
+        if (beat !is Beat.Lunge) continue
+        val r = rig(beat.attacker)
+        add(r.pet to (if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT))
+        add(r.pet to Anim.ATTACK)
+    }
+    val winner = fight.winner
+    when {
+        fight.playerRan -> {
+            add(player.pet to Anim.RUN_LEFT)
+            add(cpu.pet to Anim.WAVE)
+        }
+        winner != null -> {
+            add(rig(winner.other()).pet to Anim.FAIL)
+            add(rig(winner).pet to Anim.JUMP)
+            add(rig(winner).pet to Anim.WAVE)
+        }
+    }
+}.distinct()
 
 /** Plays [turn] out; returns when it is over (the caller then reports its marker finished). */
 private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader, sink: SoundSink) = coroutineScope {
@@ -635,13 +697,10 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     val winner = fight.winner
     playing = true
     launch { menu.animateTo(0f, tween(MENU_MS)) }
-    if (winner != null && !fight.playerRan) {
-        // The finale's strips decode while the turn plays.
-        launch(Dispatchers.IO) {
-            loader.strip(rig(winner.other()).pet, Anim.FAIL)
-            loader.strip(rig(winner).pet, Anim.JUMP)
-            loader.strip(rig(winner).pet, Anim.WAVE)
-        }
+    // Every strip this turn shows decodes during the callouts (most are cached since the VS card), so
+    // no decode ever holds up a swing and puts its impact out of step with the sprite.
+    val strips = launch(Dispatchers.IO) {
+        for ((pet, anim) in turnStrips(turn)) loader.strip(pet, anim)
     }
     val sounds = TurnSounds(fight)
     val play: (FightSounds) -> Unit = { s ->
@@ -658,6 +717,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     callout(this, player, turn.playerMove)
     callout(this, cpu, turn.cpuMove)
     delay(CALLOUT_LEAD_MS)
+    withTimeoutOrNull(STRIPS_WAIT_MS) { strips.join() }
 
     if (turn.playerMove == Move.RUN) {
         runAway(this, loader)
@@ -754,7 +814,10 @@ private suspend fun FightStage.lunge(
 
     val attack = loader.manifest(a.pet).spec(Anim.ATTACK)
     val impact = impactMs(attack)
-    val swing = scope.launch { a.play(Anim.ATTACK, timeoutFor(loader, a, Anim.ATTACK)) }
+    val swingPose = a.show(Anim.ATTACK)
+    val swing = scope.launch { withTimeoutOrNull(timeoutFor(loader, a, Anim.ATTACK)) { swingPose.ended.await() } }
+    // The impact is timed from the swing's first frame on screen, not from asking for it.
+    withTimeoutOrNull(SWING_START_WAIT_MS) { swingPose.started.await() }
     if (special) scope.launch {
         delay(max(0L, impact - 220L))
         darken.animateTo(0.5f, tween(220))
@@ -1119,8 +1182,9 @@ private fun MovePill(
 
 // ---- "Run away?" ----
 
+/** "Run away?" over a scrim; [modifier] goes on the card (the caller animates it in). */
 @Composable
-private fun RunDialog(onYes: () -> Unit, onNo: () -> Unit) {
+private fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier = Modifier) {
     val noFocus = remember { FocusRequester() }
     BackHandler(onBack = onNo)
     LaunchedEffect(Unit) { runCatching { noFocus.requestFocus() } }
@@ -1130,23 +1194,18 @@ private fun RunDialog(onYes: () -> Unit, onNo: () -> Unit) {
             .background(Color.Black.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center,
     ) {
-        AnimatedVisibility(
-            visible = true,
-            enter = scaleIn(tween(200), initialScale = 0.9f),
-        ) {
-            GlassPanel(contentPadding = PaddingValues(horizontal = 56.dp, vertical = 30.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    BasicText("RUN AWAY?", style = displayStyle(60.sp, tracking = 0.08f, lineHeight = 60.sp), maxLines = 1)
-                    Spacer(Modifier.height(10.dp))
-                    BasicText(
-                        "You forfeit the fight and lose a little mood.",
-                        style = bodyStyle(16.sp, color = TextLo).copy(textAlign = TextAlign.Center),
-                    )
-                    Spacer(Modifier.height(26.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        FocusPill("No", onNo, Modifier.focusRequester(noFocus), minWidth = 120.dp)
-                        FocusPill("Yes", onYes, minWidth = 120.dp)
-                    }
+        GlassPanel(modifier, contentPadding = PaddingValues(horizontal = 56.dp, vertical = 30.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                BasicText("RUN AWAY?", style = displayStyle(60.sp, tracking = 0.08f, lineHeight = 60.sp), maxLines = 1)
+                Spacer(Modifier.height(10.dp))
+                BasicText(
+                    "You forfeit the fight and lose a little mood.",
+                    style = bodyStyle(16.sp, color = TextLo).copy(textAlign = TextAlign.Center),
+                )
+                Spacer(Modifier.height(26.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    FocusPill("No", onNo, Modifier.focusRequester(noFocus), minWidth = 120.dp)
+                    FocusPill("Yes", onYes, minWidth = 120.dp)
                 }
             }
         }

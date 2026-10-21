@@ -42,7 +42,6 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.displayStyle
-import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
@@ -100,25 +99,27 @@ internal class FloatText(
  * recomposition per frame) and reports [onDone] once it has faded, so the caller can drop it.
  */
 @Composable
-internal fun FloatingNumbers(items: List<FloatText>, onDone: (FloatText) -> Unit) {
+internal fun FloatingNumbers(items: List<FloatText>, top: () -> Float, onDone: (FloatText) -> Unit) {
     for (item in items) {
-        key(item.id) { FloatingText(item, onDone) }
+        key(item.id) { FloatingText(item, top, onDone) }
     }
 }
 
 @Composable
-private fun FloatingText(item: FloatText, onDone: (FloatText) -> Unit) {
+private fun FloatingText(item: FloatText, top: () -> Float, onDone: (FloatText) -> Unit) {
     val t = remember { Animatable(0f) }
     val done by rememberUpdatedState(onDone)
     LaunchedEffect(Unit) {
         t.animateTo(1f, tween(FLOAT_MS, easing = LinearEasing))
         done(item)
     }
-    val rise = with(LocalDensity.current) { FloatRise.toPx() }
+    val density = LocalDensity.current
+    val rise = with(density) { FloatRise.toPx() }
+    val rim = with(density) { FloatRim.toPx() }
     val popScale = if (item.kind == FloatKind.CRIT) 1.3f else 1.25f
     Column(
         Modifier
-            .floatAt(item.x, item.y, popScale)
+            .placeInBounds(x = { item.x }, y = { item.y }, top = top, popScale = popScale, rise = rise, rim = rim)
             .graphicsLayer {
                 val p = t.value
                 val up = 1f - (1f - p) * (1f - p) * (1f - p) // ease out: quick off the mark, then drifting
@@ -141,18 +142,35 @@ private fun FloatingText(item: FloatText, onDone: (FloatText) -> Unit) {
     }
 }
 
+/** Room kept for a floating word's dark outline and drop shadow, which draw outside its measured box. */
+private val FloatRim = 8.dp
+
 /**
- * Places a floating text with its bottom centre at ([x], [y]), nudged sideways as needed to keep it inside
- * the safe inset even at its [popScale] (a fighter stands at 30% of the width, and on 4:3 a wide
- * "CRITICAL! · COUNTER" centred there would reach into the overscan).
+ * Places a floating word with its bottom centre at ([x], [y]), moved as little as needed to stay in
+ * bounds for its whole life:
+ * - sideways inside the safe inset, even at its [popScale] (a fighter stands at 30% of the width, and on
+ *   4:3 or a CRT a wide "CRITICAL! · COUNTER" centred there would reach into the overscan);
+ * - down, so that neither its popped-in size nor its top after rising [rise] pixels comes above [top]
+ *   (the bottom of the HUD), which on a small screen a labelled crit would otherwise reach.
+ * [rim] is extra room for the outline. The word must not be drawn inside a layer that moves (the arena's
+ * shake), or the clamp no longer holds; all positions are read during layout.
  */
-private fun Modifier.floatAt(x: Float, y: Float, popScale: Float): Modifier = layout { measurable, constraints ->
+internal fun Modifier.placeInBounds(
+    x: () -> Float,
+    y: () -> Float,
+    top: () -> Float,
+    popScale: Float,
+    rise: Float,
+    rim: Float,
+): Modifier = layout { measurable, constraints ->
     val p = measurable.measure(Constraints())
     val w = constraints.maxWidth
-    val inset = w * SAFE_INSET_FRACTION + p.width * (popScale - 1f) / 2f
-    val left = (x - p.width / 2f).coerceIn(inset, max(inset, w - inset - p.width))
+    val side = w * SAFE_INSET_FRACTION + rim + p.width * (popScale - 1f) / 2f
+    val left = (x() - p.width / 2f).coerceIn(side, max(side, w - side - p.width))
+    val above = max(p.height * popScale, p.height + rise) + rim
+    val bottom = max(y(), top() + above)
     layout(w, constraints.maxHeight) {
-        p.place(left.roundToInt(), (y - p.height).roundToInt())
+        p.place(left.roundToInt(), (bottom - p.height).roundToInt())
     }
 }
 
@@ -215,7 +233,15 @@ internal fun calloutText(move: Move, pet: PetId): String = when (move) {
  * runs 0..1 over the callout's life: it springs in, holds, and fades away up. Read in the layer only.
  */
 @Composable
-internal fun MoveCallout(text: String, move: Move, progress: () -> Float, x: () -> Float, y: Float, maxWidth: Dp) {
+internal fun MoveCallout(
+    text: String,
+    move: Move,
+    progress: () -> Float,
+    x: () -> Float,
+    y: () -> Float,
+    top: () -> Float,
+    maxWidth: Dp,
+) {
     val accent = when (move) {
         Move.SPECIAL -> Amber
         Move.BLOCK -> ShieldBlue
@@ -224,12 +250,19 @@ internal fun MoveCallout(text: String, move: Move, progress: () -> Float, x: () 
     }
     Box(
         Modifier
-            .placeAt(x = x, y = { y })
+            .placeInBounds(
+                x = x,
+                y = y,
+                top = top,
+                popScale = CALLOUT_POP,
+                rise = with(LocalDensity.current) { CalloutRise.toPx() },
+                rim = with(LocalDensity.current) { 4.dp.toPx() },
+            )
             .graphicsLayer {
                 val p = progress()
                 val pop = (p / 0.22f).coerceIn(0f, 1f)
                 // A springy overshoot on the way in.
-                val s = if (pop < 1f) lerp(0.55f, 1.12f, pop) else lerp(1.12f, 1f, ((p - 0.22f) / 0.1f).coerceIn(0f, 1f))
+                val s = if (pop < 1f) lerp(0.55f, CALLOUT_POP, pop) else lerp(CALLOUT_POP, 1f, ((p - 0.22f) / 0.1f).coerceIn(0f, 1f))
                 scaleX = s
                 scaleY = s
                 alpha = when {
@@ -237,7 +270,7 @@ internal fun MoveCallout(text: String, move: Move, progress: () -> Float, x: () 
                     p > 0.8f -> ((1f - p) / 0.2f).coerceIn(0f, 1f)
                     else -> 1f
                 }
-                translationY = -12.dp.toPx() * ((p - 0.8f) / 0.2f).coerceIn(0f, 1f)
+                translationY = -CalloutRise.toPx() * ((p - 0.8f) / 0.2f).coerceIn(0f, 1f)
                 transformOrigin = TransformOrigin(0.5f, 1f)
             }
             .drawBehind {
@@ -265,6 +298,10 @@ internal fun MoveCallout(text: String, move: Move, progress: () -> Float, x: () 
         )
     }
 }
+
+/** A callout overshoots to this size as it pops in, and drifts up this far as it fades. */
+private const val CALLOUT_POP = 1.12f
+private val CalloutRise = 12.dp
 
 /** Callouts are 32sp; a long special name steps down so its tag stays inside the fighter's half. */
 private fun calloutSize(text: String, maxWidth: Dp): TextUnit {

@@ -139,9 +139,9 @@ class TurnSoundsTest {
     }
 
     @Test
-    fun koIsAnnounced() {
+    fun koIsTheBoomAndTheAnnouncer() {
         val s = sounds(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), FightEvent.Ko(Side.CPU))
-        assertEquals(listOf("hit"), s.sfx)
+        assertEquals(listOf("hit", "ko"), s.sfx)
         assertEquals(listOf("ko"), s.voice)
     }
 
@@ -160,5 +160,54 @@ class TurnSoundsTest {
             FightEvent.Interrupted(Side.PLAYER),
         )
         assertEquals(listOf("miss", "hit"), s.sfx)
+    }
+}
+
+/** Where the HUD's bars start when a screen is built in the middle of a turn's playback. */
+class HudBeforeTurnTest {
+    private val jason = Fighter(PetId.JASON, 1, maxHp = 100, hp = 60, strength = 20.0, mood = 50, meter = 50)
+
+    @Test
+    fun theDamageTakenIsGivenBack() {
+        val events = listOf(
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false),
+            FightEvent.Hit(Side.CPU, Move.HEAVY, 8, crit = true),
+        )
+        assertEquals(HudStart(hp = 80, meter = 50), hudBeforeTurn(jason, Side.PLAYER, events))
+    }
+
+    @Test
+    fun hpNeverStartsAboveMax() {
+        val events = listOf(FightEvent.Hit(Side.CPU, Move.HEAVY, 70, crit = false))
+        assertEquals(100, hudBeforeTurn(jason, Side.PLAYER, events).hp)
+    }
+
+    @Test
+    fun ownHitsAreNotDamageTakenButFillTheMeter() {
+        // Jason landed a strike (and a counter): one meter cell each, which came after the turn started.
+        val events = listOf(
+            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false),
+            FightEvent.Blocked(Side.PLAYER),
+            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 5, crit = false, counter = true),
+        )
+        assertEquals(HudStart(hp = 60, meter = 0), hudBeforeTurn(jason, Side.PLAYER, events))
+    }
+
+    @Test
+    fun theMeterNeverStartsBelowZero() {
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false))
+        assertEquals(0, hudBeforeTurn(jason.copy(meter = 0), Side.PLAYER, events).meter)
+    }
+
+    @Test
+    fun aSpecialStartedFromAFullMeter() {
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false))
+        assertEquals(HudStart(hp = 60, meter = 100), hudBeforeTurn(jason.copy(meter = 0), Side.PLAYER, events))
+    }
+
+    @Test
+    fun aQuietTurnChangesNothing() {
+        val events = listOf(FightEvent.Miss(Side.CPU, Move.HEAVY), FightEvent.Interrupted(Side.PLAYER))
+        assertEquals(HudStart(hp = 60, meter = 50), hudBeforeTurn(jason, Side.PLAYER, events))
     }
 }

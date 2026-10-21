@@ -48,7 +48,9 @@ private const val SHADOW_ASPECT = 0.2f
  * below the feet and the contact shadow draw just outside its bounds.
  *
  * **Playback** restarts whenever [pet], [anim] or [playKey] changes; pass the view model's request token
- * as [playKey] so the same animation requested twice plays twice. [onFinished] is called once: when a
+ * as [playKey] so the same animation requested twice plays twice. [onStarted] is called when its first
+ * frame goes up (after the strip is decoded, so it can lag the request), to time things against the
+ * animation itself. [onFinished] is called once: when a
  * one-shot ends (its last frame then stays up), or after one full cycle of a looping animation (which
  * keeps looping). The previous animation stays on screen until the new strip has been decoded off the
  * main thread, so switching never flashes an empty frame.
@@ -76,6 +78,7 @@ fun SpriteView(
     shadowOpacity: Float = 0f,
     loopOffsetMs: Long = 0L,
     playKey: Any? = null,
+    onStarted: (() -> Unit)? = null,
     onFinished: (() -> Unit)? = null,
 ) {
     val manifest = remember(loader, pet) { loader.manifest(pet) }
@@ -87,6 +90,7 @@ fun SpriteView(
     // thread, so a frame index never meets the wrong strip.
     var shown by remember(pet) { mutableStateOf<Shown?>(null) }
     var frame by remember(pet) { mutableIntStateOf(0) }
+    val started by rememberUpdatedState(onStarted)
     val finished by rememberUpdatedState(onFinished)
 
     LaunchedEffect(loader, pet, anim, playKey) {
@@ -94,6 +98,7 @@ fun SpriteView(
         val strip = withContext(Dispatchers.IO) { loader.strip(pet, anim) }
         shown = Shown(strip, spec)
         frame = 0
+        started?.invoke()
         val total = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() }
         var start = -1L
         var reported = false

@@ -235,7 +235,11 @@ private fun Progress(screen: Screen.Results, before: PetState?) {
         progress.animateTo(end, tween(XP_FILL_MS, easing = FastOutSlowInEasing))
     }
     val level by remember { derivedStateOf { floor(progress.value + 1e-4f).toInt() } }
-    val leveledUp by remember { derivedStateOf { screen.reward.levelsGained > 0 && level > floor(start + 1e-4f).toInt() } }
+    // With the pet before the fight, LEVEL UP! pops as the bar wraps; without it (the Activity was
+    // recreated on this card) there is no fill to watch, so it shows at once.
+    val leveledUp by remember {
+        derivedStateOf { screen.reward.levelsGained > 0 && (before == null || level > floor(start + 1e-4f).toInt()) }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         BasicText(

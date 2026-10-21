@@ -690,6 +690,29 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aWinThatLevelsThePetQueuesLevelupWithTheResult() {
+        // 90 xp + the win's 40 crosses level 2's 100.
+        val rig = Rig(gameOf(pets = arrayOf(jason(strength = 100.0, xp = 90))), rng = winningScript()).started()
+        rig.toFight()
+        rig.vm.consumeSounds()
+
+        var turns = 0
+        while (rig.ui.screen is Screen.Fight) {
+            rig.vm.onMove(Move.STRIKE)
+            assertTrue("no levelup before the results", "levelup" !in rig.ui.sfx)
+            rig.finishAnim()
+            check(++turns < 20)
+        }
+        val results = rig.ui.screen as Screen.Results
+        assertTrue(results.won)
+        assertEquals(1, results.reward.levelsGained)
+        assertEquals(2, rig.jason.level)
+        assertEquals(30, rig.jason.xp)
+        assertEquals(listOf("levelup"), rig.ui.sfx)
+        assertEquals(listOf("you_win"), rig.ui.voice)
+    }
+
+    @Test
     fun runningAwayEndsTheFightAsALoss() {
         val rig = Rig(strongJason(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
         rig.toFight()

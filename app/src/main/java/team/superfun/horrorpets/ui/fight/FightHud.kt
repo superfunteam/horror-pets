@@ -148,12 +148,15 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
 private val HpFill = Brush.verticalGradient(listOf(Color(0xFFFFF0B0), Color(0xFFF5C543), Color(0xFFC98A12)))
 private val HpLow = Brush.verticalGradient(listOf(Color(0xFFFF7A82), Color(0xFFE0262F), Color(0xFF8E0B15)))
 private val Trail = Color(0xFFE8333D)
+
+/** Over a red (low) fill the red trail would vanish, so there it is pale bone instead. */
+private val TrailOnLow = Color(0xFFF4ECE4)
 private val BarBack = Color(0xE6120D10)
 private val Gloss = Brush.verticalGradient(0f to Color.White.copy(alpha = 0.38f), 1f to Color.Transparent)
 
 /**
- * A slanted HP bar: the fill (gold, red when low) over a red "trail" that lags behind it, so a hit shows
- * as a red chunk draining away after the fill. [mirrored] anchors the fill at the right edge (the CPU).
+ * A slanted HP bar: the fill (gold, red when low) over a "trail" that lags behind it, so a hit shows as a
+ * chunk draining away after the fill: red over the gold fill, pale over the red one. [mirrored] anchors the fill at the right edge (the CPU).
  */
 @Composable
 private fun HpBar(values: HudValues, maxHp: Int, mirrored: Boolean, pulse: () -> Float) {
@@ -185,7 +188,7 @@ private fun HpBar(values: HudValues, maxHp: Int, mirrored: Boolean, pulse: () ->
                     clipPath(frame) {
                         drawRect(BarBack)
                         slanted(trailPath, 0f, trail.coerceIn(0f, 1f), w, h, skew, mirrored)
-                        drawPath(trailPath, Trail)
+                        drawPath(trailPath, if (low) TrailOnLow else Trail)
                         slanted(fillPath, 0f, f.coerceIn(0f, 1f), w, h, skew, mirrored)
                         drawPath(fillPath, if (low) HpLow else HpFill)
                         drawRect(Gloss, size = gloss)
@@ -237,7 +240,7 @@ private fun MeterBar(meter: () -> Float, mirrored: Boolean, full: Boolean, pulse
                 val skew = h * 0.75f
                 val frame = slanted(Path(), 0f, 1f, w, h, skew, mirrored)
                 val fillPath = Path()
-                val rim = Stroke(1.5.dp.toPx())
+                val rim = Stroke(2.dp.toPx())
                 val divider = 2.dp.toPx()
                 val cells = FightTuning.METER_MAX / FightTuning.METER_PER_HIT
                 onDrawBehind {

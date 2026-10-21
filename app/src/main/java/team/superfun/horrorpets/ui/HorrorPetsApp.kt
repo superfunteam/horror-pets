@@ -150,6 +150,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onMove = vm::onMove,
                     onAnimFinished = vm::onAnimFinished,
                     focusEntry = focusEntry,
+                    isBusy = { vm.state.value.busy },
                 )
 
                 is Screen.Results -> {
