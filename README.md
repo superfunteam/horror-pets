@@ -5,24 +5,30 @@
 # Virtual Pet Slasher 2 Turbo
 
 Virtual pets from your favorite horror films, right on your TV. It is a Tamagotchi for the living room:
-seven chibi slasher icons live on your Android TV, and you feed them, play with them, train them and make
-them fight. Everything runs offline, with a D-pad remote and nothing else.
+you start with one chibi slasher icon, feed it, play with it, train it and make it fight, and every killer you
+beat joins your stable, until all seven live on your Android TV. Everything runs offline, with a D-pad remote and
+nothing else.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Jason on the Camp Crystal Lake dock, with his stat card and the Play, Feed, Train and Fight buttons" width="49%">
-  <img src="docs/fight.png" alt="A VS fight in the attic: Jason against Pinhead, with a critical hit" width="49%">
+  <img src="docs/screenshot.png" alt="Jason on the Camp Crystal Lake dock: his status window top left, Freddy in the stable badge top right, and the Play, Feed, Train and Fight slabs" width="49%">
+  <img src="docs/fight.png" alt="A VS fight outside Freddy's house: Jason against Freddy on turn 2, with the command window on the left" width="49%">
 </p>
 
 ## Features
 
-- **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. Pick yours from a spotlight carousel. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
+- **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
+- **Press start, pick one:** every launch opens on the title screen. A new game starts with one killer of your
+  choice from a spotlight carousel; the rest are locked.
+- **Unlock your stable:** beat a locked killer in a fight and it is UNLOCKED, joining your stable. Once you have
+  more than one, the others take turns in the top-right corner of Home, their heads ringed by Fed, Fun, Strength
+  and Mood; open the stable there (or with the remote's Menu key) to go see any of them.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **Feeding time:** a snack whistles down from the sky (meat on the bone, a turkey leg, canned spinach, a cake with a knife in it, popcorn or a jello brain) and gets munched, bite by bite.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
-- **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
+- **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
-- **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stat card, swipe
+- **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stable badge, swipe
   left or right to walk between scenes, tap or swipe through the pet lineup (tap the pet in the spotlight to
   pick it), tap to skip the VS card. The back gesture works like the remote's Back.
   ([On a phone](docs/touch/phone-home.jpg).)
