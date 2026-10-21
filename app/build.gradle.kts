@@ -151,6 +151,11 @@ kotlin {
 }
 
 androidComponents {
+    // AGP 9 creates unit-test tasks for debug only. Releases are verified with :app:testReleaseUnitTest
+    // (tools/release.sh and the tag workflow), so switch them on for every variant.
+    beforeVariants { builder ->
+        builder.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
+    }
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(syncGameAssets, SyncGameAssets::outputDir)
     }
