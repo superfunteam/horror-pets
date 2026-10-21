@@ -13,8 +13,8 @@ import team.superfun.horrorpets.model.PetState
  * Applies the wall-clock time since [GameState.lastSeenMs] to every pet.
  *
  * [floorMs] is the earliest time the clock can really say: [Tuning.MIN_VALID_EPOCH_MS], or later when
- * more is known (the app passes the time it was installed or last updated, because a TV stick without a
- * clock battery boots to its firmware's build date, which is after 2024 but before the install).
+ * more is known (the app passes the time it was first installed, because a TV stick without a clock
+ * battery boots to its firmware's build date, which is after 2024 but before the install).
  * - A [nowMs] below [floorMs] is a not-yet-synced boot clock: nothing decays and `lastSeenMs` is left
  *   as it was.
  * - With no `lastSeenMs` (first run) nothing decays; `lastSeenMs` becomes [nowMs]. A persisted

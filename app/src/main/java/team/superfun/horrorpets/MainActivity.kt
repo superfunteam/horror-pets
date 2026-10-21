@@ -250,19 +250,20 @@ class MainActivity : ComponentActivity() {
         private var sharedLoader: AssetLoader? = null
 
         /**
-         * The earliest believable wall-clock time: when this build was installed or last updated, and
-         * never below [Tuning.MIN_VALID_EPOCH_MS]. A TV stick with no clock battery boots to its
-         * firmware's build date until the network clock syncs; that date is past 2024 but before the
-         * install, so this floor recognises it as stale.
+         * The earliest believable wall-clock time: when the app was first installed, and never below
+         * [Tuning.MIN_VALID_EPOCH_MS]. A TV stick with no clock battery boots to its firmware's build
+         * date until the network clock syncs; that date is past 2024 but before the install, so this
+         * floor recognises it as stale. The first install, not the last update: an update must not
+         * turn the time the player was away before it into a "first run" that forgives the decay.
          */
         fun clockFloorMs(context: Context): Long {
             val installedAt = try {
                 val pm = context.packageManager
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0)).lastUpdateTime
+                    pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0)).firstInstallTime
                 } else {
                     @Suppress("DEPRECATION")
-                    pm.getPackageInfo(context.packageName, 0).lastUpdateTime
+                    pm.getPackageInfo(context.packageName, 0).firstInstallTime
                 }
             } catch (e: PackageManager.NameNotFoundException) {
                 Log.w(TAG, "No package info for the clock floor; using the default", e)

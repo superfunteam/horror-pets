@@ -57,7 +57,7 @@ import team.superfun.horrorpets.model.PetState
  * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry).
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
- *   install / update time, so a stale boot clock can neither decay the pets nor stamp the save.
+ *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
  */
 class GameViewModel(
     private val store: SaveStore,
