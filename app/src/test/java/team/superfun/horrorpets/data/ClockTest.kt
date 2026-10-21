@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClockTest {
@@ -43,6 +44,6 @@ class ClockTest {
         val before = System.currentTimeMillis()
         val t = WallClock.nowMs()
         val after = System.currentTimeMillis()
-        assertEquals(true, t in before..after)
+        assertTrue(t in before..after)
     }
 }

@@ -45,6 +45,10 @@ object Tuning {
     // Leveling: going from level L to L+1 costs XP_PER_LEVEL * L xp.
     const val XP_PER_LEVEL = 100
 
+    // Bounds a loaded save is held to (see SaveCodec): levels run 1..MAX_LEVEL, scenes 0..SCENE_COUNT-1.
+    const val MAX_LEVEL = 99
+    const val SCENE_COUNT = 3
+
     // Care: feed (refused when hunger is already below FEED_REFUSE_BELOW)
     const val FEED_HUNGER = -35.0
     const val FEED_REFUSE_BELOW = 10.0
