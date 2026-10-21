@@ -40,6 +40,9 @@ val PillHeight: Dp = 54.dp
 /** How much a focused pill grows. */
 const val PILL_FOCUS_SCALE = 1.1f
 
+/** How much a pill shrinks under a finger, so a tap feels pressed. */
+private const val PILL_TOUCH_PRESS_SCALE = 0.95f
+
 /** A pill's label style; callers that lay pills out by their label widths measure with this. */
 fun pillLabelStyle(color: Color = TextHi): TextStyle = displayStyle(24.sp, tracking = 0.06f, color = color)
 
@@ -53,6 +56,9 @@ private val FocusedFill = Brush.verticalGradient(
  * The game's button: a rounded pill with an uppercase Display label. Unfocused it is translucent
  * white-on-glass; focused it fills with Blood, gets a BloodGlow rim and halo and grows to 1.1x, so the
  * focus is obvious from across the room. OK (or Enter) calls [onClick].
+ *
+ * Under a finger (see `isTouchInput`) nothing shows focus: a pill lights up the same way while it is
+ * pressed, shrinking a little instead of growing, and a tap calls [onClick] with the `ui_select` tick.
  */
 @Composable
 fun FocusPill(
@@ -69,10 +75,10 @@ fun FocusPill(
         minWidth = minWidth,
         horizontalPadding = horizontalPadding,
         interactionSource = interactionSource,
-    ) { focused ->
+    ) { lit ->
         Text(
             text = label.uppercase(),
-            style = pillLabelStyle(color = if (focused) TextHi else TextHi.copy(alpha = 0.88f)),
+            style = pillLabelStyle(color = if (lit) TextHi else TextHi.copy(alpha = 0.88f)),
             maxLines = 1,
         )
     }
@@ -80,7 +86,7 @@ fun FocusPill(
 
 /**
  * The pill surface with custom [content] (for icons such as the scene arrows); [content] gets whether
- * the pill is focused. Same look and behaviour as [FocusPill].
+ * the pill is lit: focused, or pressed under a finger. Same look and behaviour as [FocusPill].
  */
 @Composable
 fun FocusPillSurface(
@@ -89,13 +95,16 @@ fun FocusPillSurface(
     minWidth: Dp = 0.dp,
     horizontalPadding: Dp = 26.dp,
     interactionSource: MutableInteractionSource? = null,
-    content: @Composable (focused: Boolean) -> Unit,
+    content: @Composable (lit: Boolean) -> Unit,
 ) {
     val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pressed by interaction.collectIsPressedAsState()
+    val touch = isTouchInput()
+    val lit = if (touch) pressed else focused
     val scale by animateFloatAsState(
         targetValue = when {
+            touch -> if (pressed) PILL_TOUCH_PRESS_SCALE else 1f
             focused && pressed -> 1.03f
             focused -> PILL_FOCUS_SCALE
             else -> 1f
@@ -103,7 +112,8 @@ fun FocusPillSurface(
         animationSpec = tween(180),
         label = "pillScale",
     )
-    val glow by animateFloatAsState(if (focused) 1f else 0f, tween(200), label = "pillGlow")
+    val glow by animateFloatAsState(if (lit) 1f else 0f, tween(200), label = "pillGlow")
+    val tick = rememberTouchTick("ui_select")
 
     Box(
         modifier
@@ -111,13 +121,16 @@ fun FocusPillSurface(
                 scaleX = scale
                 scaleY = scale
             }
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                tick()
+                onClick()
+            }
             .defaultMinSize(minWidth = minWidth, minHeight = PillHeight)
             .drawBehind { drawPill(glow) }
             .padding(horizontal = horizontalPadding),
         contentAlignment = Alignment.Center,
     ) {
-        content(focused)
+        content(lit)
     }
 }
 

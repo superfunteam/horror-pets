@@ -1,6 +1,5 @@
 package team.superfun.horrorpets.ui.home
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -86,17 +87,19 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
-import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
+import team.superfun.horrorpets.ui.common.detectWalkSwipes
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.ignoreOkUnless
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.rememberOkReady
-import team.superfun.horrorpets.ui.common.safeInsetPadding
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
+import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
 
@@ -150,7 +153,11 @@ private const val BUBBLE_ABOVE_FEET = 0.91f
  *
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value gives PLAY
  * focus, and null (the screen is fading out) also turns off Back. OK is ignored for a moment after each
- * entry (see `rememberOkReady`), so an OK mashed through the end of a fight cannot fire PLAY.
+ * entry (see `rememberOkReady`), so an OK mashed through the end of a fight cannot fire PLAY; so are taps
+ * and swipes.
+ *
+ * On a phone every button takes a tap, and a sideways swipe anywhere walks to the neighbouring scene
+ * (see `swipeWalkDirection`), as the arrows do.
  *
  * The view model drives the pet through [UiState.petAnim]; this screen plays each request and reports
  * it with [onAnimFinished]. Everything else the pet does is local: idle glances, running out of one
@@ -182,9 +189,11 @@ fun HomeScreen(
     var lastWasFight by remember { mutableStateOf(false) }
 
     // Only the screen being entered handles Back: a Home that is fading out must never exit the app.
-    BackHandler(enabled = focusEntry != null, onBack = onExit)
+    GameBackHandler(enabled = focusEntry != null, onBack = onExit)
     RequestFocusOnEntry(playFocus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
+    val latestOnWalk by rememberUpdatedState(onWalk)
+    val gestureEdges by rememberUpdatedState(systemGestureEdges())
 
     // Warm the strips Home's actions play, so a first press starts at once. The run strips matter most:
     // the walk-out fade is timed from the press, the view model's scene change from the sprite's first
@@ -322,16 +331,21 @@ fun HomeScreen(
         Modifier
             .fillMaxSize()
             .ignoreOkUnless(okReady)
+            // The view model turns a walk down while the pet is busy, as it does the arrows'.
+            .pointerInput(Unit) {
+                detectWalkSwipes(enabled = { okReady.value }, edges = { gestureEdges }, onWalk = { latestOnWalk(it) })
+            }
             .onGloballyPositioned { homeLeftPx = it.positionInRoot().x },
     ) {
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
         val petHeightPx = screenH * HOME_PET_HEIGHT
         val cardWidth = (maxWidth * 0.27f).coerceIn(216.dp, 252.dp)
-        val inset = safeInsetPadding()
-        val toastMax = toastMaxWidth(maxWidth, scenes.size)
+        val safe = safeInset()
+        val inset = PaddingValues(horizontal = safe.horizontal, vertical = safe.vertical)
+        val toastMax = toastMaxWidth(maxWidth, safe.horizontal, scenes.size)
         val density = LocalDensity.current
-        val insetPx = screenW * SAFE_INSET_FRACTION
+        val insetPx = with(density) { safe.horizontal.toPx() }
         val bodyScale = manifest.bodyScale
         val drawnHeightPx = petHeightPx * bodyScale
         val drawnCellW = drawnHeightPx * manifest.cell[0] / manifest.cell[1]
@@ -540,13 +554,13 @@ private val ActiveSceneDot = 14.dp
 private val SceneDotGap = 12.dp
 
 /**
- * How wide the welcome-back toast (top right) may be on a [screenWidth]-wide screen: from the safe inset
+ * How wide the welcome-back toast (top right) may be on a [screenWidth]-wide screen: from the safe [inset]
  * in to a little short of the [sceneCount] scene dots at the top centre. A long toast (the 6-day, 3-digit
  * kind) steps its text down to fit instead of covering the dots, at any font scale.
  */
-private fun toastMaxWidth(screenWidth: Dp, sceneCount: Int): Dp {
+private fun toastMaxWidth(screenWidth: Dp, inset: Dp, sceneCount: Int): Dp {
     val dotsHalf = ((10.dp + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
-    return screenWidth * (0.5f - SAFE_INSET_FRACTION) - dotsHalf - 16.dp
+    return screenWidth / 2f - inset - dotsHalf - 16.dp
 }
 
 /** Scene dots at the top centre; after a walk, the new scene's name fades in under them for a few seconds. */

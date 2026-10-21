@@ -26,7 +26,8 @@
         android:theme="@style/Theme.HorrorPets"
         tools:ignore="DataExtractionRules">
 
-        <!-- The game is landscape-only on a TV; the lint note is about phones/tablets.
+        <!-- The game is landscape-only. sensorLandscape lets a phone be turned either way up; a TV has no
+             sensor, so there it is plain landscape. The lint note is about phones/tablets.
              configChanges: a Bluetooth remote that drops and reconnects (it sleeps between presses on many
              sticks) changes the keyboard / navigation configuration; the Activity rides that out instead
              of being recreated mid-game. Compose picks the change up by itself. -->
@@ -34,7 +35,7 @@
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|navigation"
             android:exported="true"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             tools:ignore="DiscouragedApi">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

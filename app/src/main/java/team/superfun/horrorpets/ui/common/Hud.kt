@@ -2,12 +2,20 @@ package team.superfun.horrorpets.ui.common
 
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.union
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -28,9 +36,49 @@ import team.superfun.horrorpets.ui.theme.TextHi
 /** Fraction of each screen edge kept clear for CRT overscan. Everything (UI and pets) stays inside it. */
 const val SAFE_INSET_FRACTION = 0.05f
 
-/** The 5% overscan-safe padding for the screen this scope fills. */
-fun BoxWithConstraintsScope.safeInsetPadding(): PaddingValues =
-    PaddingValues(horizontal = maxWidth * SAFE_INSET_FRACTION, vertical = maxHeight * SAFE_INSET_FRACTION)
+/**
+ * How far in from both edges of a [size]-long side the UI keeps (any one unit): [SAFE_INSET_FRACTION] of it,
+ * or more where the system takes more of an edge ([start] and [end], such as a phone's camera cutout or its
+ * gesture bar). Both edges get the larger, so a centred layout stays centred. A TV reports no such insets,
+ * so on a TV this is always exactly the 5% overscan inset.
+ */
+fun safeInset(size: Float, start: Float, end: Float): Float = maxOf(size * SAFE_INSET_FRACTION, start, end)
+
+/** The safe inset (see [safeInset]) from the left and right edges, and from the top and bottom, of one screen. */
+@Immutable
+class SafeInset(val horizontal: Dp, val vertical: Dp)
+
+/**
+ * The safe inset for the screen this scope fills: 5% of each side, widened to clear a phone's display
+ * cutout and its mandatory gesture area (the swipe-up bar). Exactly 5% on a TV.
+ */
+@Composable
+fun BoxWithConstraintsScope.safeInset(): SafeInset {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val system = WindowInsets.displayCutout.union(WindowInsets.mandatorySystemGestures)
+    return with(density) {
+        SafeInset(
+            horizontal = safeInset(
+                maxWidth.value,
+                system.getLeft(density, direction).toDp().value,
+                system.getRight(density, direction).toDp().value,
+            ).dp,
+            vertical = safeInset(
+                maxHeight.value,
+                system.getTop(density).toDp().value,
+                system.getBottom(density).toDp().value,
+            ).dp,
+        )
+    }
+}
+
+/** The safe-inset padding (see [safeInset]) for the screen this scope fills. */
+@Composable
+fun BoxWithConstraintsScope.safeInsetPadding(): PaddingValues {
+    val inset = safeInset()
+    return PaddingValues(horizontal = inset.horizontal, vertical = inset.vertical)
+}
 
 /** A dark halo under bright text so it stays readable over any part of a scene. */
 val TextHalo = Shadow(color = Color.Black.copy(alpha = 0.75f), offset = Offset(0f, 2f), blurRadius = 10f)

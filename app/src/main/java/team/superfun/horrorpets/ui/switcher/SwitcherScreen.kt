@@ -1,11 +1,12 @@
 package team.superfun.horrorpets.ui.switcher
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -53,6 +55,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -61,8 +66,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.tv.material3.Text
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -75,9 +82,9 @@ import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.SwitcherMode
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
-import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.beamLayers
@@ -85,8 +92,10 @@ import team.superfun.horrorpets.ui.common.drawBeam
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.placeAt
-import team.superfun.horrorpets.ui.common.safeInsetPadding
+import team.superfun.horrorpets.ui.common.rememberTouchTick
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
+import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextLo
@@ -154,6 +163,11 @@ private const val IDLE_STAGGER_MS = 230L
  * repeats move the row; OK and Back repeats are dropped by `MainActivity`), and `ui_move` plays only on
  * an actual move.
  *
+ * On a phone the stage takes touch too: a tap on a pet slides it into the spotlight, a tap on the pet already
+ * there picks it, and a drag slides the row under the finger and lets go onto the nearest pet (a flick
+ * carries on to the next, or further), with the same nudge at either end. The back gesture is Back, and a
+ * touch that starts in the system's gesture strips along the edges is left to the system.
+ *
  * The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left out.
  *
  * Where the row starts: on the current pet when switching ([SwitcherMode.SELECT]), and on the first pet
@@ -161,10 +175,10 @@ private const val IDLE_STAGGER_MS = 230L
  * leaves the app ([onExit]).
  *
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value takes focus and
- * puts the row back on its starting pet; null (the screen is fading out) turns off Back and the keys.
+ * puts the row back on its starting pet; null (the screen is fading out) turns off Back, the keys and touch.
  *
- * Every per-frame value (the row's position, the dust) is read in layout or draw, so a slide never
- * recomposes the stage; a pet's dim / color steps [LIT_STEPS] times per slide.
+ * Every per-frame value (the row's position, the dust) is read in layout or draw, so a slide (or a drag)
+ * never recomposes the stage; a pet's dim / color steps [LIT_STEPS] times per slide.
  *
  * Music: this screen's track is `switcher`, chosen by the router from the screen type.
  */
@@ -197,9 +211,15 @@ fun SwitcherScreen(
     val focus = remember { FocusRequester() }
     val interaction = remember { MutableInteractionSource() }
     val entered = focusEntry != null
+    // For the touch handler, which outlives a composition: always the current values.
+    val latestEntered by rememberUpdatedState(entered)
+    val latestPets by rememberUpdatedState(pets)
+    val latestOnPick by rememberUpdatedState(onPick)
+    val gestureEdges by rememberUpdatedState(systemGestureEdges())
+    val pickTick = rememberTouchTick("ui_select")
 
     // Only the screen being entered handles Back: a switcher that is fading out must never act on it.
-    BackHandler(enabled = entered) { if (mode == SwitcherMode.ONBOARD) onExit() else onBack() }
+    GameBackHandler(enabled = entered) { if (mode == SwitcherMode.ONBOARD) onExit() else onBack() }
     RequestFocusOnEntry(focus, focusEntry)
 
     // The router reuses a leaving switcher when the player flips straight back to it: start over.
@@ -234,6 +254,15 @@ fun SwitcherScreen(
         sounds.sfx("ui_move")
     }
 
+    /** Lets a dragged row go onto pet [target]: it slides there, even when that is the pet it started from. */
+    fun settle(target: Int) {
+        if (target != index) {
+            index = target // LaunchedEffect(index) slides the row
+        } else {
+            scope.launch { scroll.animateTo(target.toFloat(), tween(SLIDE_MS, easing = EaseOutCubic)) }
+        }
+    }
+
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -259,18 +288,84 @@ fun SwitcherScreen(
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val density = LocalDensity.current
-        val pitchDp = carouselPitch(maxWidth.value, (maxWidth * SAFE_INSET_FRACTION).value, MAX_PITCH.value).dp
+        val safe = safeInset()
+        val pitchDp = carouselPitch(maxWidth.value, safe.horizontal.value, MAX_PITCH.value).dp
         val pitch = with(density) { pitchDp.toPx() }
         val cellH = h * PET_HEIGHT
         val labelWidth = pitchDp * CAROUSEL_LABEL_SHARE
+        val reach = carouselReach(maxWidth.value, pitchDp.value)
+
+        // Touch, under everything else on stage (none of which takes touches). It consumes every touch, so
+        // the stage's clickable above only ever answers OK. The row's position changes only through `scroll`,
+        // read in layout and draw, so a drag never recomposes the stage either.
+        Spacer(
+            // Keyed on `scroll` as well: a new mode (the router reusing a leaving switcher) brings a new row.
+            Modifier.fillMaxSize().pointerInput(pitch, w, scroll) {
+                val centerX = w / 2f
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    down.consume()
+                    // A swipe in from the edge is the system's (see GestureEdges); and so is a tap there.
+                    if (!latestEntered || gestureEdges.contain(down.position, size)) return@awaitEachGesture
+                    val count = latestPets.size
+                    val tracker = VelocityTracker()
+                    tracker.addPointerInputChange(down)
+                    val start = scroll.value
+                    // The pet under the spotlight as the row moves: each new one ticks, like a D-pad step.
+                    var spotlit = index
+                    var dragging = false
+                    var tapping = true
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        change.consume()
+                        tracker.addPointerInputChange(change)
+                        val moved = change.position - down.position
+                        if (!change.pressed) {
+                            if (dragging) {
+                                val target = carouselFlingTarget(scroll.value, -tracker.calculateVelocity().x / pitch, count)
+                                if (target != spotlit) sounds.sfx("ui_move")
+                                settle(target)
+                            } else if (tapping && latestEntered) {
+                                val target = carouselTapTarget(down.position.x, row(), centerX, pitch, count)
+                                when (target) {
+                                    null -> Unit
+                                    index -> {
+                                        pickTick()
+                                        latestOnPick(latestPets[target])
+                                    }
+                                    else -> {
+                                        index = target
+                                        sounds.sfx("ui_move")
+                                    }
+                                }
+                            }
+                            break
+                        }
+                        if (!dragging && tapping && moved.getDistance() > viewConfiguration.touchSlop) {
+                            // Sideways it drags the row; any other way it is neither a drag nor a tap.
+                            if (abs(moved.x) >= abs(moved.y)) dragging = true else tapping = false
+                        }
+                        if (dragging) {
+                            val to = carouselDragRow(start, moved.x, pitch, count)
+                            scope.launch { scroll.snapTo(to) }
+                            val now = to.roundToInt().coerceIn(0, count - 1)
+                            if (now != spotlit) {
+                                spotlit = now
+                                sounds.sfx("ui_move")
+                            }
+                        }
+                    }
+                }
+            },
+        )
 
         Stage(count = pets.size, bodies = bodies, pitch = pitch, cellH = cellH, row = row)
         Dust(pitch = pitch, time = { clock.longValue })
 
         // Only the pets near the spotlight are on stage: composed, their idle strips decoded. The bounds follow
         // the row but change only when it crosses a pet, so a slide recomposes this a couple of times at most.
-        val first by remember(row, pets.size) { derivedStateOf { carouselFirstInView(row(), pets.size) } }
-        val last by remember(row, pets.size) { derivedStateOf { carouselLastInView(row(), pets.size) } }
+        val first by remember(row, pets.size, reach) { derivedStateOf { carouselFirstInView(row(), pets.size, reach) } }
+        val last by remember(row, pets.size, reach) { derivedStateOf { carouselLastInView(row(), pets.size, reach) } }
         // The next pet beyond each end is decoded ahead (not composed), so it draws from its first frame on
         // stage instead of popping in a frame or two late at the screen's edge.
         LaunchedEffect(loader, pets, first, last) {
@@ -297,7 +392,7 @@ fun SwitcherScreen(
         }
 
         Column(
-            Modifier.fillMaxSize().padding(safeInsetPadding()),
+            Modifier.fillMaxSize().padding(horizontal = safe.horizontal, vertical = safe.vertical),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             BasicText(

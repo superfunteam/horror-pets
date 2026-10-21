@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +58,8 @@ import team.superfun.horrorpets.ui.common.GlassPanel
 import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.isTouchInput
+import team.superfun.horrorpets.ui.common.rememberTouchTick
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -75,6 +78,9 @@ enum class BarLevel { OK, WARN, CRITICAL }
 /**
  * The stat card, top-left: name, level and status, then Hunger / Fun / Strength / Mood bars. It is
  * focusable (Up from the action bar); focused it glows and OK opens the pet switcher.
+ *
+ * Under a finger (see `isTouchInput`) a tap opens the switcher; the card lights while pressed, and its
+ * "TAP · SWITCH PET" hint stays up, since there is no focus to bring it out.
  */
 @Composable
 fun StatCard(
@@ -86,8 +92,20 @@ fun StatCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val glow by animateFloatAsState(if (focused) 1f else 0f, tween(200), label = "cardGlow")
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(200), label = "cardScale")
+    val pressed by interaction.collectIsPressedAsState()
+    val touch = isTouchInput()
+    val lit = if (touch) pressed else focused
+    val glow by animateFloatAsState(if (lit) 1f else 0f, tween(200), label = "cardGlow")
+    val scale by animateFloatAsState(
+        targetValue = when {
+            touch -> if (pressed) 0.98f else 1f
+            focused -> 1.04f
+            else -> 1f
+        },
+        animationSpec = tween(200),
+        label = "cardScale",
+    )
+    val tick = rememberTouchTick("ui_select")
 
     GlassPanel(
         modifier = modifier
@@ -104,7 +122,10 @@ fun StatCard(
                 right = FocusRequester.Cancel
                 up = FocusRequester.Cancel
             }
-            .clickable(interactionSource = interaction, indication = null, onClick = onOpenSwitcher),
+            .clickable(interactionSource = interaction, indication = null) {
+                tick()
+                onOpenSwitcher()
+            },
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 16.dp),
         glow = glow,
     ) {
@@ -139,12 +160,12 @@ fun StatCard(
             StatBar("Mood", moodValue, lowIsWarn(moodValue), last = true)
 
             AnimatedVisibility(
-                visible = focused,
+                visible = touch || focused,
                 enter = fadeIn(tween(200)) + expandVertically(tween(200)),
                 exit = fadeOut(tween(150)) + shrinkVertically(tween(150)),
             ) {
                 Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    KeyCap("OK")
+                    KeyCap(if (touch) "TAP" else "OK")
                     Spacer(Modifier.width(10.dp))
                     Text("SWITCH PET", style = displayStyle(20.sp, tracking = 0.1f))
                 }

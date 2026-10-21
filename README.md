@@ -20,6 +20,10 @@ them fight. Everything runs offline, with a D-pad remote and nothing else.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks, specials and an announcer. Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
+- **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stat card, swipe
+  left or right to walk between scenes, tap or swipe through the pet lineup (tap the pet in the spotlight to
+  pick it), tap to skip the VS card. The back gesture works like the remote's Back.
+  ([On a phone](docs/touch/phone-home.jpg).)
 
 ## Install
 
@@ -30,6 +34,9 @@ Download `horror-pets-<version>.apk` from [Releases](https://github.com/superfun
 - **Downloader app** (Google TV, Onn, Fire TV): install Downloader (by AFTVnews, free in the app stores), allow it to install unknown apps,
   and enter the release asset URL, for example
   `https://github.com/superfunteam/horror-pets/releases/download/v0.1.0/horror-pets-0.1.0.apk`.
+
+On a phone, open the release asset URL in the browser and install the downloaded APK (Android asks you to
+allow installing apps from the browser the first time).
 
 Later versions install over the top and keep your pets, because every release is signed with the same key.
 

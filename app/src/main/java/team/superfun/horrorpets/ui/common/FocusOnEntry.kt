@@ -5,11 +5,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 
 /**
@@ -27,7 +31,7 @@ fun RequestFocusOnEntry(requester: FocusRequester, entry: Any?) {
     }
 }
 
-/** How long OK / Enter is ignored after a screen that guards it is entered. */
+/** How long OK / Enter (and a tap) is ignored after a screen that guards it is entered. */
 const val OK_GUARD_MS = 400L
 
 /**
@@ -53,8 +57,17 @@ fun rememberOkReady(entry: Any?): State<Boolean> {
  * Swallows OK / Enter key events (down and up) for everything inside while [ready] says no. A press
  * whose down was swallowed never clicks, even if its up arrives after the guard lifts: a clickable only
  * acts on an up that follows its own down.
+ *
+ * Taps get the same guard: a touch that comes down while [ready] says no is consumed before anything
+ * inside sees it, so a second tap mashed through the end of one screen cannot press a button on the next.
  */
 fun Modifier.ignoreOkUnless(ready: State<Boolean>): Modifier =
     onPreviewKeyEvent { !ready.value && it.key in OkKeys }
+        .pointerInput(ready) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                if (!ready.value) down.consume()
+            }
+        }
 
 private val OkKeys = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
