@@ -524,15 +524,15 @@ private val SawOrange = Color(0xFFFF8A1F)
 private val SawEmber = Color(0xFFD9381E)
 
 /** Points along each blade's trail, from the white-hot leading edge back to the ember tail. */
-private const val SAW_TRAIL_STEPS = 10
+private const val SAW_TRAIL_STEPS = 14
 
-/** How far round its orbit a blade's trail reaches behind it, in radians (about 110 degrees). */
-private const val SAW_TRAIL_RAD = 1.9f
+/** How far round its orbit a blade's trail reaches behind it, in radians (about 150 degrees). */
+private const val SAW_TRAIL_RAD = 2.6f
 
 /** How many times the blades go round over the effect. */
 private const val SAW_TURNS = 2.3f
 
-private const val SAW_SPARKS = 46
+private const val SAW_SPARKS = 90
 
 /**
  * The blades' orbits, flattened ellipses round the target's body: centre height and radii as fractions of the
@@ -603,7 +603,8 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
     drawCircle(kit.glow, radius = f.bodyH * 0.8f, center = Offset(f.cx, f.cy), alpha = a * flicker)
 
     // The blades: each a tapered arc trailing round its orbit, dimmer and thinner where it passes behind
-    // the body (the back half of the orbit), with a glow under its hot leading half.
+    // the body (the back half of the orbit), with a glow under its hot leading half. Butt caps, so the
+    // short segments meet without overlapping (a round cap would double the alpha at every joint).
     for (b in SawBladeOrbit.indices) {
         val orbit = SawBladeOrbit[b]
         val dir = SawOrbitDir[orbit]
@@ -621,12 +622,12 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
             val front = sin(mid) > 0f
             val depth = if (front) 1f else 0.4f
             val taper = (1f - t)
-            val width = (2f + 8f * taper * if (front) 1f else 0.6f) * unit
+            val width = (2f + 10f * taper * taper * if (front) 1f else 0.6f) * unit
             val alpha = a * depth * taper.coerceAtLeast(0.15f)
-            if (t <= 0.5f) {
-                drawLine(SawOrange, Offset(px, py), Offset(x, y), strokeWidth = width * 2.6f, cap = StrokeCap.Round, alpha = 0.28f * alpha)
+            if (t <= 0.45f) {
+                drawLine(SawOrange, Offset(px, py), Offset(x, y), strokeWidth = width * 2.4f, cap = StrokeCap.Butt, alpha = 0.22f * alpha)
             }
-            drawLine(kit.trail[j], Offset(px, py), Offset(x, y), strokeWidth = width, cap = StrokeCap.Round, alpha = alpha)
+            drawLine(kit.trail[j], Offset(px, py), Offset(x, y), strokeWidth = width, cap = StrokeCap.Butt, alpha = alpha)
             px = x
             py = y
         }
@@ -646,8 +647,8 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
 
     // The shower: sparks thrown off the blades' edges, flying out and up, then falling.
     for (i in 0 until SAW_SPARKS) {
-        val born = 0.05f + 0.72f * hash01(i, 51)
-        val life = 0.16f + 0.14f * hash01(i, 52)
+        val born = 0.04f + 0.76f * hash01(i, 51)
+        val life = 0.12f + 0.12f * hash01(i, 52)
         val age = (p - born) / life
         if (age <= 0f || age >= 1f) continue
         val b = i % SawBladeOrbit.size
@@ -657,17 +658,17 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
         val oy = sawY(orbit, theta, f.cy, f.bodyH)
         // Flung along the blade's way round (its tangent) and outward, with a kick upward.
         val tangent = -sin(theta) * SawOrbitDir[orbit]
-        val vx = ((hash01(i, 53) - 0.5f) * 1.1f + tangent * 0.45f) * f.bodyH
-        val vy = -(0.18f + 0.5f * hash01(i, 54)) * f.bodyH
-        val fall = f.bodyH * (0.9f + 0.6f * hash01(i, 55))
-        val tail = (age - 0.14f).coerceAtLeast(0f)
+        val vx = ((hash01(i, 53) - 0.5f) * 0.9f + tangent * 0.7f) * f.bodyH
+        val vy = -(0.3f + 0.6f * hash01(i, 54)) * f.bodyH
+        val fall = f.bodyH * (0.7f + 0.5f * hash01(i, 55))
+        val tail = (age - 0.1f).coerceAtLeast(0f)
         val hx = ox + vx * age
         val hy = oy + vy * age + fall * age * age
         val tx = ox + vx * tail
         val ty = oy + vy * tail + fall * tail * tail
         val color = kit.spark[(age * kit.spark.size).toInt().coerceAtMost(kit.spark.size - 1)]
         val alpha = (1f - age) * fade
-        drawLine(color, Offset(tx, ty), Offset(hx, hy), strokeWidth = (2f + 1.5f * (1f - age)) * unit, cap = StrokeCap.Round, alpha = alpha)
-        if (age < 0.5f) drawCircle(SawHot, 2.5f * unit, Offset(hx, hy), alpha = alpha)
+        drawLine(color, Offset(tx, ty), Offset(hx, hy), strokeWidth = (2.5f + 2f * (1f - age)) * unit, cap = StrokeCap.Round, alpha = alpha)
+        if (age < 0.4f) drawCircle(SawHot, 3f * unit, Offset(hx, hy), alpha = alpha)
     }
 }
