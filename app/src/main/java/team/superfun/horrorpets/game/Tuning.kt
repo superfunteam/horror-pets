@@ -44,6 +44,26 @@ object Tuning {
 
     // Leveling: going from level L to L+1 costs XP_PER_LEVEL * L xp.
     const val XP_PER_LEVEL = 100
+
+    // Care: feed (refused when hunger is already below FEED_REFUSE_BELOW)
+    const val FEED_HUNGER = -35.0
+    const val FEED_REFUSE_BELOW = 10.0
+
+    // Care: play
+    const val PLAY_FUN = 25.0
+    const val PLAY_HUNGER = 8.0
+    const val PLAY_MOOD_BONUS = 5.0
+
+    // Care: train (refused when hunger is at or above TRAIN_REFUSE_AT)
+    const val TRAIN_STRENGTH = 6.0
+    const val TRAIN_HUNGER = 12.0
+    const val TRAIN_FUN = -5.0
+    const val TRAIN_REFUSE_AT = 85.0
+
+    // XP awarded per care action
+    const val XP_TRAIN = 10
+    const val XP_PLAY = 5
+    const val XP_FEED = 0
 }
 
 internal fun clampStat(v: Double): Double = v.coerceIn(Tuning.STAT_MIN, Tuning.STAT_MAX)
