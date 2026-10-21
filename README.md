@@ -76,15 +76,17 @@ One-time key setup (the key lives in `~/.horror-pets/`; `tools/release.sh --help
 1. Generate `release.jks` with `keytool` and put its passwords in `release.properties` next to it (`storePassword`, `keyAlias`, `keyPassword`). Both files `chmod 600`, the folder `700`.
 2. **Back up `~/.horror-pets/`.** Android only accepts updates signed with the same key, so if you lose it, installed copies can never be updated.
 
-Then, from a clean, pushed `main`:
+Then, from a clean `main` that equals `origin/main` (push it first), with the [GitHub CLI](https://cli.github.com/) installed and logged in (`gh auth login`) and push access to the repo:
 
 ```sh
 tools/release.sh 0.2.0 --dry-run   # build, sign, verify, write dist/horror-pets-0.2.0.apk; publishes nothing
 tools/release.sh 0.2.0             # the same, then tag v0.2.0, push it, and create the GitHub Release
 ```
 
-The script checks the version, a clean tree, `main` and a free tag, runs the release tests and lint, verifies the signature
-and `versionName`/`versionCode` (`versionCode = major*10000 + minor*100 + patch`), and only then publishes.
+Before building, the script checks the version, a clean tree, `main` equal to `origin/main`, a free tag, and that `gh` and push access work,
+so a missing login stops the release before anything is tagged. It then runs the release tests and lint, verifies the signature
+(v1 and v2, and the certificate matches your keystore) and `versionName`/`versionCode` (`versionCode = major*10000 + minor*100 + patch`),
+and only then tags that exact commit, pushes the tag and publishes. If the push or the release step fails, it prints the commands to finish by hand.
 
 ## Credits and licenses
 
