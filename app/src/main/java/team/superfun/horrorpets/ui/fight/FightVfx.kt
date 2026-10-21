@@ -49,6 +49,15 @@ internal fun specialLandsAtMs(style: SpecialStyle): Long = when (style) {
     else -> 0L
 }
 
+/**
+ * When a special's sound starts, after the impact, for a blow that lands [landMs] in: a crit plays the crit
+ * hit (and the announcer) with the blow itself; otherwise the special's own clip, whose hit is [hitMs] into
+ * it, starts that much earlier so the hit lands with the blow, but never before the impact. For every
+ * special that lands at the impact this is 0, as it always was.
+ */
+internal fun specialSoundAtMs(landMs: Long, hitMs: Long, crit: Boolean): Long =
+    if (crit) landMs else (landMs - hitMs).coerceAtLeast(0L)
+
 /** How long the shield ring of a block takes to flare out. */
 const val SHIELD_MS = 480
 

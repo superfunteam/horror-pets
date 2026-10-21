@@ -39,7 +39,9 @@ data class Passive(
 /**
  * Everything about one killer that is not art or sound: its fight [passive], its [special], and its
  * [walkSpeed] on Home (1 is the usual stride; a pet whose run rows are a slow walk moves slower so its feet
- * don't skate). Art and sounds are found by `id.name.lowercase()` (`sprites/<pet>/`, `scenes.json`,
+ * don't skate). [specialHitMs] is where its `special_<pet>` clip hits hardest (its strongest attack,
+ * measured from the WAV and checked by RosterAssetsTest), so a special whose blow lands late in its effect
+ * can start the clip early enough for the hit to land with it. Art and sounds are found by `id.name.lowercase()` (`sprites/<pet>/`, `scenes.json`,
  * `music/<pet>.ogg`, `sfx/special_<pet>.wav`, `voice/<pet>.wav`, `voice/<pet>_never_dies.wav`), and the
  * manifest's `displayScale` sets how tall it stands.
  *
@@ -49,20 +51,22 @@ data class PetSpec(
     val id: PetId,
     val passive: Passive,
     val special: SpecialStyle,
+    val specialHitMs: Long,
     val walkSpeed: Float = 1f,
 )
 
 /** Every killer's [PetSpec], in [PetId] order. */
 val Roster: Map<PetId, PetSpec> = listOf(
-    PetSpec(PetId.JASON, Passive("Unstoppable", hpMult = FightTuning.JASON_HP_MULT), SpecialStyle.MACHETE_FRENZY),
-    PetSpec(PetId.FREDDY, Passive("Lucid", critBonus = FightTuning.FREDDY_CRIT_BONUS), SpecialStyle.DREAM_CLAWS),
-    PetSpec(PetId.PINHEAD, Passive("Retribution", counterMult = FightTuning.PINHEAD_COUNTER_MULT), SpecialStyle.CHAINS),
-    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS), SpecialStyle.KNIFE_FLURRY),
-    PetSpec(PetId.CHUCKY, Passive("Scrappy", strikeMult = FightTuning.CHUCKY_STRIKE_MULT), SpecialStyle.VOODOO_STAB),
+    PetSpec(PetId.JASON, Passive("Unstoppable", hpMult = FightTuning.JASON_HP_MULT), SpecialStyle.MACHETE_FRENZY, specialHitMs = 500),
+    PetSpec(PetId.FREDDY, Passive("Lucid", critBonus = FightTuning.FREDDY_CRIT_BONUS), SpecialStyle.DREAM_CLAWS, specialHitMs = 0),
+    PetSpec(PetId.PINHEAD, Passive("Retribution", counterMult = FightTuning.PINHEAD_COUNTER_MULT), SpecialStyle.CHAINS, specialHitMs = 750),
+    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS), SpecialStyle.KNIFE_FLURRY, specialHitMs = 650),
+    PetSpec(PetId.CHUCKY, Passive("Scrappy", strikeMult = FightTuning.CHUCKY_STRIKE_MULT), SpecialStyle.VOODOO_STAB, specialHitMs = 710),
     PetSpec(
         PetId.MICHAEL,
         Passive("Relentless", damageTakenMult = FightTuning.MICHAEL_DAMAGE_TAKEN_MULT),
         SpecialStyle.THE_SHAPE,
+        specialHitMs = 420,
         walkSpeed = 0.6f,
     ),
 ).associateBy { it.id }

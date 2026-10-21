@@ -866,11 +866,22 @@ private fun FightStage.impactOf(
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
 ): Job? {
-    // A special whose blow lands partway through its effect (The Shape's slash) holds its sound, number,
-    // flash and HP drain until then; everything else lands right at the impact.
-    val landMs = if (event is FightEvent.Hit && event.move == Move.SPECIAL) specialLandsAtMs(a.pet.spec.special) else 0L
+    // A special whose blow lands partway through its effect (The Shape's slash) holds its number, flash and
+    // HP drain until then, and starts its sound so the clip's hit lands with them (see specialSoundAtMs);
+    // everything else lands right at the impact.
+    val specialHit = event as? FightEvent.Hit
+    val isSpecial = specialHit?.move == Move.SPECIAL
+    val landMs = if (isSpecial) specialLandsAtMs(a.pet.spec.special) else 0L
+    val soundMs = if (specialHit != null && isSpecial) specialSoundAtMs(landMs, a.pet.spec.specialHitMs, specialHit.crit) else 0L
     val sound = sounds.of(event)
-    if (landMs == 0L) play(sound)
+    if (soundMs == 0L) {
+        play(sound)
+    } else {
+        scope.launch {
+            delay(soundMs)
+            play(sound)
+        }
+    }
     // An interrupt is the defender's: say it on the defender's number rather than over it.
     val interrupted = riders.any { it is Beat.Interrupt && it.side == d.side }
     var effect: Job? = null
@@ -904,7 +915,6 @@ private fun FightStage.impactOf(
             } else {
                 scope.launch {
                     delay(landMs)
-                    play(sound)
                     blow()
                 }
             }
