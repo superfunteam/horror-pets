@@ -54,8 +54,12 @@ private const val SHADOW_ASPECT = 0.2f
  * main thread, so switching never flashes an empty frame.
  *
  * **Look:** [tint] is the scene's ambient color, blended in by [tintStrength] (0..1) to seat the
- * studio-lit sprite in a night scene; [dim] darkens (0..1) and [flashWhite] washes it toward white (0..1,
- * for hit flashes). [shadowOpacity] > 0 draws a soft contact shadow under the feet.
+ * studio-lit sprite in a night scene; [dim] darkens (0..1), [saturation] drains the color (1 is full color,
+ * 0 is greyscale) and [flashWhite] washes it toward white (0..1, for hit flashes). [shadowOpacity] > 0
+ * draws a soft contact shadow under the feet.
+ *
+ * [loopOffsetMs] starts a looping animation that far into its cycle, so several pets idling side by side
+ * don't bob in lockstep. It does not move the "one full cycle" report, and one-shots ignore it.
  */
 @Composable
 fun SpriteView(
@@ -67,8 +71,10 @@ fun SpriteView(
     tintStrength: Float,
     modifier: Modifier = Modifier,
     dim: Float = 0f,
+    saturation: Float = 1f,
     flashWhite: Float = 0f,
     shadowOpacity: Float = 0f,
+    loopOffsetMs: Long = 0L,
     playKey: Any? = null,
     onFinished: (() -> Unit)? = null,
 ) {
@@ -91,11 +97,12 @@ fun SpriteView(
         val total = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() }
         var start = -1L
         var reported = false
+        val offset = if (spec.loop) loopOffsetMs.coerceAtLeast(0L) else 0L
         while (true) {
             val now = withFrameMillis { it }
             if (start < 0) start = now
             val elapsed = now - start
-            val index = frameAt(spec, elapsed)
+            val index = frameAt(spec, elapsed + offset)
             if (index == null) {
                 frame = frameAt(spec, total - 1) ?: 0 // hold the last frame of a finished one-shot
                 if (!reported) finished?.invoke()
@@ -109,7 +116,9 @@ fun SpriteView(
         }
     }
 
-    val filter = remember(tint, tintStrength, dim, flashWhite) { spriteFilter(tint, tintStrength, dim, flashWhite) }
+    val filter = remember(tint, tintStrength, dim, saturation, flashWhite) {
+        spriteFilter(tint, tintStrength, dim, saturation, flashWhite)
+    }
     val density = LocalDensity.current
     val boxW = cellW * scale
     val boxH = manifest.baselineY * scale
@@ -165,25 +174,38 @@ fun SpriteView(
 @Immutable
 private class Shown(val strip: ImageBitmap, val spec: AnimSpec)
 
+/** Rec. 709 luma weights (the ones `android.graphics.ColorMatrix.setSaturation` uses). */
+private const val LUMA_R = 0.213f
+private const val LUMA_G = 0.715f
+private const val LUMA_B = 0.072f
+
 /**
- * One color matrix for all three looks: `rgb' = ((rgb * (1-s) + tint * s) * (1-dim)) * (1-flash) + white * flash`.
- * Offsets are in 0..255 like `android.graphics.ColorMatrix`; alpha passes through untouched, so the
- * transparent cell around the pet stays transparent.
+ * One color matrix for every look: `rgb' = ((sat(rgb) * (1-s) + tint * s) * (1-dim)) * (1-flash) + white * flash`,
+ * where `sat` blends each pixel toward its own grey by `1 - saturation`. Offsets are in 0..255 like
+ * `android.graphics.ColorMatrix`; alpha passes through untouched, so the transparent cell around the pet
+ * stays transparent.
  */
-private fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, flashWhite: Float): ColorFilter? {
+private fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, saturation: Float, flashWhite: Float): ColorFilter? {
     val s = if (tint == null) 0f else tintStrength.coerceIn(0f, 1f)
     val d = dim.coerceIn(0f, 1f)
+    val sat = saturation.coerceIn(0f, 1f)
     val f = flashWhite.coerceIn(0f, 1f)
-    if (s == 0f && d == 0f && f == 0f) return null
+    if (s == 0f && d == 0f && sat == 1f && f == 0f) return null
     val gain = (1f - s) * (1f - d) * (1f - f)
     fun offset(channel: Float) = (channel * 255f * s * (1f - d)) * (1f - f) + 255f * f
+    // Row i of the saturation matrix is luma * (1 - sat), plus sat on the diagonal.
+    val grey = 1f - sat
+    val r = LUMA_R * grey * gain
+    val g = LUMA_G * grey * gain
+    val b = LUMA_B * grey * gain
+    val keep = sat * gain
     val t = tint ?: Color.Black
     return ColorFilter.colorMatrix(
         ColorMatrix(
             floatArrayOf(
-                gain, 0f, 0f, 0f, offset(t.red),
-                0f, gain, 0f, 0f, offset(t.green),
-                0f, 0f, gain, 0f, offset(t.blue),
+                r + keep, g, b, 0f, offset(t.red),
+                r, g + keep, b, 0f, offset(t.green),
+                r, g, b + keep, 0f, offset(t.blue),
                 0f, 0f, 0f, 1f, 0f,
             ),
         ),

@@ -49,17 +49,16 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.tv.material3.Text
 import kotlin.math.roundToInt
-import team.superfun.horrorpets.game.StatusTag
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.common.GlassPanel
+import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
-import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
@@ -235,23 +234,6 @@ private fun levelColor(level: BarLevel): Color = when (level) {
     BarLevel.OK -> TextHi
     BarLevel.WARN -> Amber
     BarLevel.CRITICAL -> BloodGlow
-}
-
-/** The pet's headline status as a small solid tag: CONTENT grey, BORED/HUNGRY Amber, STARVING/GRUMPY Blood. */
-@Composable
-fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
-    val (bg, fg) = when (tag) {
-        StatusTag.CONTENT -> Color.White.copy(alpha = 0.16f) to TextHi
-        StatusTag.BORED, StatusTag.HUNGRY -> Amber to Ink
-        StatusTag.STARVING, StatusTag.GRUMPY -> Blood to TextHi
-    }
-    Box(
-        modifier
-            .background(bg, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 1.dp),
-    ) {
-        Text(text = tag.name, style = displayStyle(17.sp, color = fg, tracking = 0.08f, lineHeight = 22.sp))
-    }
 }
 
 /** A remote-key hint: the key's name in dark letters on a small solid light cap. */

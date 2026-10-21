@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -16,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.audio.SoundSink
+import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.fakedeath.FakeDeathScreen
 import team.superfun.horrorpets.ui.fight.FightScreen
 import team.superfun.horrorpets.ui.fight.ResultsCard
@@ -32,7 +34,8 @@ private const val SCREEN_FADE_MS = 280
  *
  * Screens are keyed by their type, so a screen whose state changes in place (a fight turn) stays
  * mounted, while moving between screens cross-fades. The view model's sound queues are drained into
- * [sounds] as they fill.
+ * [sounds] as they fill, and screens reach the same sink through [LocalSoundSink] for the sounds they
+ * time themselves.
  */
 @Composable
 fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onExit: () -> Unit) {
@@ -59,59 +62,61 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
     val entries = remember { EntryCounter() }
     val entry = remember(state.screen::class) { entries.next() }
 
-    AnimatedContent(
-        targetState = state.screen,
-        contentKey = { it::class },
-        transitionSpec = { fadeIn(tween(SCREEN_FADE_MS)) togetherWith fadeOut(tween(SCREEN_FADE_MS)) },
-        modifier = Modifier.fillMaxSize().background(Ink),
-        label = "screen",
-    ) { screen ->
-        val focusEntry: Any? = if (screen::class == state.screen::class) entry else null
-        when (screen) {
-            // The router's own Ink fill (on AnimatedContent) is the only app background; screens draw over it.
-            Screen.Loading -> Box(Modifier.fillMaxSize())
+    CompositionLocalProvider(LocalSoundSink provides sounds) {
+        AnimatedContent(
+            targetState = state.screen,
+            contentKey = { it::class },
+            transitionSpec = { fadeIn(tween(SCREEN_FADE_MS)) togetherWith fadeOut(tween(SCREEN_FADE_MS)) },
+            modifier = Modifier.fillMaxSize().background(Ink),
+            label = "screen",
+        ) { screen ->
+            val focusEntry: Any? = if (screen::class == state.screen::class) entry else null
+            when (screen) {
+                // The router's own Ink fill (on AnimatedContent) is the only app background; screens draw over it.
+                Screen.Loading -> Box(Modifier.fillMaxSize())
 
-            is Screen.Switcher -> SwitcherScreen(
-                mode = screen.mode,
-                game = state.game,
-                loader = loader,
-                onPick = vm::onSwitcherPick,
-                onBack = vm::onSwitcherBack,
-                onExit = exitFromOnboarding,
-                focusEntry = focusEntry,
-            )
+                is Screen.Switcher -> SwitcherScreen(
+                    mode = screen.mode,
+                    game = state.game,
+                    loader = loader,
+                    onPick = vm::onSwitcherPick,
+                    onBack = vm::onSwitcherBack,
+                    onExit = exitFromOnboarding,
+                    focusEntry = focusEntry,
+                )
 
-            is Screen.FakeDeath -> FakeDeathScreen(pet = screen.pet, onDone = vm::onFakeDeathDone, focusEntry = focusEntry)
+                is Screen.FakeDeath -> FakeDeathScreen(pet = screen.pet, onDone = vm::onFakeDeathDone, focusEntry = focusEntry)
 
-            Screen.Home -> HomeScreen(
-                state = state,
-                loader = loader,
-                onCare = vm::onCare,
-                onWalk = vm::onWalk,
-                onFight = vm::onFightPressed,
-                onOpenSwitcher = vm::openSwitcher,
-                onAnimFinished = vm::onAnimFinished,
-                onToastDone = vm::consumeToast,
-                onExit = exitFromHome,
-                focusEntry = focusEntry,
-            )
+                Screen.Home -> HomeScreen(
+                    state = state,
+                    loader = loader,
+                    onCare = vm::onCare,
+                    onWalk = vm::onWalk,
+                    onFight = vm::onFightPressed,
+                    onOpenSwitcher = vm::openSwitcher,
+                    onAnimFinished = vm::onAnimFinished,
+                    onToastDone = vm::consumeToast,
+                    onExit = exitFromHome,
+                    focusEntry = focusEntry,
+                )
 
-            is Screen.Versus -> VersusScreen(
-                player = state.game.selected ?: screen.opponent,
-                opponent = screen.opponent,
-                onDone = vm::onVersusDone,
-                focusEntry = focusEntry,
-            )
+                is Screen.Versus -> VersusScreen(
+                    player = state.game.selected ?: screen.opponent,
+                    opponent = screen.opponent,
+                    onDone = vm::onVersusDone,
+                    focusEntry = focusEntry,
+                )
 
-            is Screen.Fight -> FightScreen(
-                screen = screen,
-                petAnim = state.petAnim,
-                onMove = vm::onMove,
-                onAnimFinished = vm::onAnimFinished,
-                focusEntry = focusEntry,
-            )
+                is Screen.Fight -> FightScreen(
+                    screen = screen,
+                    petAnim = state.petAnim,
+                    onMove = vm::onMove,
+                    onAnimFinished = vm::onAnimFinished,
+                    focusEntry = focusEntry,
+                )
 
-            is Screen.Results -> ResultsCard(screen = screen, onDone = vm::onResultsDone, focusEntry = focusEntry)
+                is Screen.Results -> ResultsCard(screen = screen, onDone = vm::onResultsDone, focusEntry = focusEntry)
+            }
         }
     }
 }
