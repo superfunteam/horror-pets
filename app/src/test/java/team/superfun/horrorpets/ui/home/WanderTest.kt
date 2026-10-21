@@ -68,6 +68,39 @@ class WanderTest {
     }
 
     @Test
+    fun aStrollIsNeverAShuffle() {
+        // Every stroll covers at least WANDER_MIN_MOVE of the width, or the pet stays put.
+        val ranges = listOf(wide, WanderRange(0.45f, 0.55f), WanderRange(0.4f, 0.47f), WanderRange(0.6f, 0.9f))
+        for (r in ranges) for (i in 0..40) for (step in listOf(WANDER_STEP_MIN, 0.16f, WANDER_STEP_MAX)) {
+            val from = r.min + (r.max - r.min) * i / 40f
+            for (right in listOf(true, false)) for (center in listOf(true, false)) {
+                val t = wanderTarget(from, r, step, center, right)
+                val moved = kotlin.math.abs(t - from)
+                assertTrue("$r from $from step $step right=$right center=$center -> $t", moved == 0f || moved >= WANDER_MIN_MOVE - 1e-6f)
+            }
+        }
+        assertEquals(0.06f, WANDER_MIN_MOVE, 0f)
+    }
+
+    @Test
+    fun aRangeTooShortForAProperStrollKeepsThePetStill() {
+        // 0.05 of room either way: not worth a stroll.
+        assertEquals(0.5f, wanderTarget(0.5f, WanderRange(0.45f, 0.55f), 0.2f, toCenter = false, preferRight = true), 0f)
+    }
+
+    @Test
+    fun aStepCutShortByTheEdgeTriesTheOtherWay() {
+        // 0.04 of room to the right is too little; the left has plenty.
+        assertEquals(0.75f - 0.12f, wanderTarget(0.75f, WanderRange(0.4f, 0.79f), 0.12f, toCenter = false, preferRight = true), 1e-6f)
+    }
+
+    @Test
+    fun nearlyHomeIsJustAnotherStroll() {
+        // 0.03 from the middle: walking "home" would be a shuffle, so it strolls instead.
+        assertEquals(0.53f + 0.12f, wanderTarget(0.53f, wide, 0.12f, toCenter = true, preferRight = true), 1e-6f)
+    }
+
+    @Test
     fun headingHomeWalksTowardTheMiddleWithoutOvershooting() {
         assertEquals(0.6f, wanderTarget(0.8f, wide, 0.2f, toCenter = true, preferRight = true), 1e-6f)
         assertEquals(0.5f, wanderTarget(0.6f, wide, 0.2f, toCenter = true, preferRight = true), 1e-6f)
@@ -87,6 +120,45 @@ class WanderTest {
         // The window shrank (4:3) with the pet standing further right than the new range allows.
         val narrow = WanderRange(0.35f, 0.8f)
         assertEquals(0.65f, wanderTarget(0.95f, narrow, 0.15f, toCenter = false, preferRight = true), 1e-6f)
+    }
+
+    @Test
+    fun aSceneWalkArrivalIsPacedToTheStrideAndCappedInTime() {
+        // Jason at 1080p: a 496.8 px pet walks 273.24 px a second. The full 30% (576 px) would take 2.1 s, so
+        // he walks in for the 1.6 s cap from only as far out as that pace covers.
+        val jason = arrival(screenW = 1920f, drawnHeightPx = 496.8f, walkSpeed = 1f, maxDistance = 0.30f, maxMs = 1600L)
+        assertEquals(1600L, jason.ms)
+        assertEquals(273.24f * 1.6f / 1920f, jason.distance, 1e-4f)
+        // Chucky (drawn half as tall) covers half the ground in the same time; Michael 0.6 of it.
+        val chucky = arrival(1920f, 248.4f, 1f, 0.30f, 1600L)
+        assertEquals(jason.distance / 2f, chucky.distance, 1e-5f)
+        val michael = arrival(1920f, 496.8f, 0.6f, 0.30f, 1600L)
+        assertEquals(jason.distance * 0.6f, michael.distance, 1e-5f)
+        // No skating: ground covered over time is exactly the stride pace.
+        for (a in listOf(jason to 273.24f, chucky to 136.62f, michael to 163.944f)) {
+            assertEquals(a.second, a.first.distance * 1920f / (a.first.ms / 1000f), 0.01f)
+        }
+    }
+
+    @Test
+    fun aShortSceneWalkArrivalWalksTheWholeWay() {
+        // 550 px a second over a 300 px walk-in: 545 ms, under the cap, from the full distance.
+        val a = arrival(screenW = 1000f, drawnHeightPx = 1000f, walkSpeed = 1f, maxDistance = 0.30f, maxMs = 1600L)
+        assertEquals(0.30f, a.distance, 1e-6f)
+        assertEquals(545L, a.ms)
+    }
+
+    @Test
+    fun aPetThatCannotWalkJustAppears() {
+        assertEquals(Arrival(0f, 0L), arrival(1920f, 0f, 1f, 0.30f, 1600L))
+    }
+
+    @Test
+    fun aWalkOutCoversWhatItsPaceAllows() {
+        // 864 ms (the run-out, tied to the run cycle) at 273.24 px a second.
+        assertEquals(273.24f * 0.864f / 1920f, walkDistance(864L, 1920f, 496.8f, 1f), 1e-5f)
+        assertEquals(walkDistance(864L, 1920f, 496.8f, 1f) / 2f, walkDistance(864L, 1920f, 248.4f, 1f), 1e-6f)
+        assertEquals(0f, walkDistance(864L, 0f, 496.8f, 1f), 0f)
     }
 
     @Test

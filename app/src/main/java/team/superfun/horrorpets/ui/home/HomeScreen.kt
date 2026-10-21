@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -14,8 +12,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -23,11 +19,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +35,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,15 +50,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Text
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -94,8 +103,13 @@ import team.superfun.horrorpets.ui.theme.TextHi
 /** The pet's whole cell is this tall, as a fraction of the screen height (the same on 4:3 and 16:9). */
 const val HOME_PET_HEIGHT = 0.46f
 
-/** How far (fraction of the screen width) the pet runs out before the scene changes, and in after. */
+/**
+ * The farthest out (fraction of the screen width) a pet arrives from when it walks into the next scene. It
+ * walks at its stride pace (see [walkPxPerSecond]) for at most [ARRIVAL_MAX_MS], so a slower walker (Chucky,
+ * Michael) arrives from closer in rather than skating or dragging.
+ */
 private const val WALK_DISTANCE = 0.30f
+private const val ARRIVAL_MAX_MS = 1_600L
 
 /** Idle variety: a glance or a hungry wait every 12–20 s. */
 private const val VARIETY_MIN_MS = 12_000L
@@ -125,8 +139,6 @@ private const val WALK_STUCK_MS = 1_500L
 /** Strips decoded ahead of time on Home (with the pet's feed animation; 8 of the loader's 12 slots with IDLE). */
 private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.JUMP, Anim.WAVE, Anim.ATTACK, Anim.FAIL)
 
-/** Arrival: a run that settles gently onto the centre mark instead of braking hard and running in place. */
-private val ArriveEasing = CubicBezierEasing(0.1f, 0f, 0.55f, 1f)
 private const val SCENE_TITLE_MS = 3_200L
 
 /** The refusal bubble's tail sits this far above the feet, as a fraction of the cell height (just over the head). */
@@ -187,7 +199,7 @@ fun HomeScreen(
     // ---- what the pet is doing -------------------------------------------------------------------
     val scope = rememberCoroutineScope()
     // Where the pet stands (its centre, a fraction of the width): the middle, until it strolls off.
-    val homeX = remember { Animatable(0.5f) }
+    val homeX = remember(petId) { Animatable(0.5f) }
     val walkX = remember { Animatable(0f) }
     val walkAlpha = remember { Animatable(1f) }
     val walkJob = remember { JobSlot() }
@@ -196,6 +208,9 @@ fun HomeScreen(
     var stroll by remember { mutableStateOf<Local?>(null) }
     var bubble by remember { mutableStateOf<Bubble?>(null) }
     val geometry = remember { HomeGeometry() }
+    // The stat card's right edge and this screen's left edge, in root pixels (0 until measured).
+    var cardRightPx by remember { mutableFloatStateOf(0f) }
+    var homeLeftPx by remember { mutableFloatStateOf(0f) }
     var showSceneTitle by remember { mutableStateOf(false) }
 
     val request = state.petAnim
@@ -203,10 +218,7 @@ fun HomeScreen(
         if (request == null) return@LaunchedEffect
         variety = null
         if (state.refuse != null) {
-            // The bubble hangs right of the head, away from the stat card, unless that would run past the
-            // right safe inset (the pet has strolled right): then it hangs left.
-            val petX = (homeX.value + walkX.value) * geometry.screenW
-            bubble = Bubble(refusalText(state.refuse, lastWasFight), hangLeft = petX + geometry.bubbleReachPx > geometry.rightLimitPx)
+            bubble = Bubble(refusalText(state.refuse, lastWasFight))
         }
         val dir = when (request.anim) {
             Anim.RUN_RIGHT -> 1
@@ -215,7 +227,9 @@ fun HomeScreen(
         }
         walkJob.cancel()
         if (dir == 0) {
+            // Anything but a walk plays where the pet is: an arrival cut short stops right there.
             walk = null
+            homeX.snapTo((homeX.value + walkX.value).coerceIn(0f, 1f))
             walkX.snapTo(0f)
             walkAlpha.snapTo(1f)
             return@LaunchedEffect
@@ -229,10 +243,13 @@ fun HomeScreen(
         scope.launch(Dispatchers.IO) { loader.sceneBitmap(destination) }
         // The run-out deliberately lasts a little longer than the run cycle: the view model changes the
         // scene one cycle after the sprite's first frame, a frame or two after this starts, and the pet
-        // should still be fading when the new scene starts to cross-fade in rather than leave a gap.
+        // should still be fading when the new scene starts to cross-fade in rather than leave a gap. It
+        // covers only what its stride pace allows in that time (a steady pace, so the feet don't skate).
+        val outMs = cycle * 120 / 100
+        val outDistance = walkDistance(outMs.toLong(), geometry.screenW, geometry.drawnHeightPx, geometry.walkSpeed)
         walkJob.job = scope.launch {
             launch { walkAlpha.animateTo(0f, tween(cycle * 70 / 100, delayMillis = cycle * 50 / 100)) }
-            walkX.animateTo(dir * WALK_DISTANCE, tween(cycle * 120 / 100, easing = FastOutLinearInEasing))
+            walkX.animateTo(dir * outDistance, tween(outMs, easing = LinearEasing))
         }
     }
 
@@ -244,12 +261,14 @@ fun HomeScreen(
         val cycle = manifest.spec(out.anim).durationsMs.sum()
         walk = Walk(out.dir, out.anim, out.key, arriving = true)
         showSceneTitle = true
+        val inbound = arrival(geometry.screenW, geometry.drawnHeightPx, geometry.walkSpeed, WALK_DISTANCE, ARRIVAL_MAX_MS)
         walkJob.job = scope.launch {
             homeX.snapTo(0.5f)
-            walkX.snapTo(-out.dir * WALK_DISTANCE)
+            walkX.snapTo(-out.dir * inbound.distance)
             walkAlpha.snapTo(0f)
-            launch { walkAlpha.animateTo(1f, tween(cycle * 45 / 100)) }
-            walkX.animateTo(0f, tween(cycle * 120 / 100, easing = ArriveEasing))
+            launch { walkAlpha.animateTo(1f, tween(min(cycle * 45 / 100, inbound.ms.toInt()))) }
+            // At the stride pace, steady all the way, like a stroll.
+            walkX.animateTo(0f, tween(inbound.ms.toInt(), easing = LinearEasing))
             walk = null
         }
     }
@@ -298,7 +317,12 @@ fun HomeScreen(
     }
 
     // No background: the scene covers the screen, and the app root's Ink shows while it loads.
-    BoxWithConstraints(Modifier.fillMaxSize().ignoreOkUnless(okReady)) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .ignoreOkUnless(okReady)
+            .onGloballyPositioned { homeLeftPx = it.positionInRoot().x },
+    ) {
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
         val petHeightPx = screenH * HOME_PET_HEIGHT
@@ -316,12 +340,16 @@ fun HomeScreen(
             cardRightPx = insetPx + with(density) { cardWidth.toPx() },
             bodyHalfPx = drawnCellW * BODY_HALF_OF_CELL,
         )
-        val tailPx = with(density) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
+        val walkSpeed = petId.spec.walkSpeed
         SideEffect {
             geometry.screenW = screenW
-            geometry.rightLimitPx = screenW - insetPx
-            geometry.bubbleReachPx = with(density) { BubbleMaxWidth.toPx() } - tailPx
+            geometry.drawnHeightPx = drawnHeightPx
+            geometry.walkSpeed = walkSpeed
         }
+        // The bubble keeps between the stat card (as measured) and the right safe inset.
+        val cardFallbackPx = insetPx + with(density) { cardWidth.toPx() }
+        val bubbleGapPx = with(density) { BubbleCardGap.toPx() }
+        val bubbleMinLeft = { (if (cardRightPx > 0f) cardRightPx - homeLeftPx else cardFallbackPx) + bubbleGapPx }
 
         // The pet's life while nothing else is going on: it idles, glances about (or waits, when hungry)
         // every 12–20 s, and every 8–15 s strolls a little way along the floor and stops. Anything the view
@@ -329,37 +357,44 @@ fun HomeScreen(
         val latestRange by rememberUpdatedState(range)
         val latestScreenW by rememberUpdatedState(screenW)
         val latestDrawnHeight by rememberUpdatedState(drawnHeightPx)
-        val walkSpeed = petId.spec.walkSpeed
-        LaunchedEffect(idle, petId) {
+        val lifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(idle, petId, lifecycleOwner) {
             if (!idle) return@LaunchedEffect
-            try {
-                var untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
-                var untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
-                while (true) {
-                    val wait = min(untilLook, untilStroll)
-                    delay(wait)
-                    untilLook -= wait
-                    untilStroll -= wait
-                    if (untilStroll <= 0L) {
-                        strollOnce(homeX, latestRange, latestScreenW, latestDrawnHeight, walkSpeed) { stroll = it }
-                        untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
-                        untilLook = max(untilLook, SETTLE_MS)
-                    } else {
-                        val anim = when {
-                            hungry -> Anim.WAIT
-                            Random.nextBoolean() -> Anim.LOOK_A
-                            else -> Anim.LOOK_B
+            // Only while the app is in the foreground. In the background the frame clock stops, so a stroll
+            // left running would jump to its end on return; instead it stops where it is, and the pet's idle
+            // life starts over (fresh timers) when the app comes back.
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                try {
+                    var untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
+                    var untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
+                    while (true) {
+                        val wait = min(untilLook, untilStroll)
+                        delay(wait)
+                        untilLook -= wait
+                        untilStroll -= wait
+                        if (untilStroll <= 0L) {
+                            strollOnce(homeX, latestRange, latestScreenW, latestDrawnHeight, walkSpeed) { stroll = it }
+                            untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
+                            untilLook = max(untilLook, SETTLE_MS)
+                        } else {
+                            val anim = when {
+                                hungry -> Anim.WAIT
+                                Random.nextBoolean() -> Anim.LOOK_A
+                                else -> Anim.LOOK_B
+                            }
+                            variety = Local(anim)
+                            val length = manifest.spec(anim).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
+                            withTimeoutOrNull(length + VARIETY_SLACK_MS) { snapshotFlow { variety }.first { it == null } }
+                            variety = null
+                            untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
+                            untilStroll = max(untilStroll, SETTLE_MS)
                         }
-                        variety = Local(anim)
-                        val length = manifest.spec(anim).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
-                        withTimeoutOrNull(length + VARIETY_SLACK_MS) { snapshotFlow { variety }.first { it == null } }
-                        variety = null
-                        untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
-                        untilStroll = max(untilStroll, SETTLE_MS)
                     }
+                } finally {
+                    // Stopped (a view-model action, or the app went to the background): the pet stays put.
+                    stroll = null
+                    variety = null
                 }
-            } finally {
-                stroll = null
             }
         }
 
@@ -378,17 +413,12 @@ fun HomeScreen(
                     .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
-            val hangLeft = bubble?.hangLeft ?: false
             RefusalBubble(
                 text = bubble?.text,
-                hangLeft = hangLeft,
-                // Pinned by its tail, not its middle: the body hangs to the right of the head, away from the
-                // stat card, which on 4:3 sits close to the pet (or to the left, near the right edge).
-                modifier = Modifier.placeAt(
-                    x = { (homeX.value + walkX.value) * screenW + if (hangLeft) tailPx else -tailPx },
-                    y = { floorY - drawnHeightPx * BUBBLE_ABOVE_FEET },
-                    pivotX = if (hangLeft) 1f else 0f,
-                ),
+                headX = { (homeX.value + walkX.value) * screenW },
+                bottomY = { floorY - drawnHeightPx * BUBBLE_ABOVE_FEET },
+                minLeft = bubbleMinLeft,
+                maxRight = screenW - insetPx,
             )
         }
 
@@ -398,7 +428,9 @@ fun HomeScreen(
                 onOpenSwitcher = onOpenSwitcher,
                 width = cardWidth,
                 focusRequester = cardFocus,
-                modifier = Modifier.align(Alignment.TopStart),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .onGloballyPositioned { cardRightPx = it.boundsInRoot().right },
             )
             SceneMarker(
                 count = scenes.size,
@@ -451,13 +483,13 @@ private class Walk(val dir: Int, val anim: Anim, val key: Any, val arriving: Boo
 
 /** One showing of the refusal bubble; a new instance restarts its timer even with the same text. */
 @Immutable
-private class Bubble(val text: String, val hangLeft: Boolean)
+private class Bubble(val text: String)
 
-/** The last layout's sizes, for decisions made outside composition (main thread only). */
+/** The last layout's sizes and the pet's pace, for the walks timed outside composition (main thread only). */
 private class HomeGeometry {
     var screenW = 0f
-    var rightLimitPx = Float.MAX_VALUE
-    var bubbleReachPx = 0f
+    var drawnHeightPx = 0f
+    var walkSpeed = 1f
 }
 
 /**
@@ -550,66 +582,106 @@ private fun SceneDot(active: Boolean) {
     )
 }
 
-/** The bubble's tail: its distance from the bubble's left edge, and its width. */
+/** The bubble's tail: where it sits from the bubble's left edge when there is room, and its width. */
 private val BubbleTailInset = 40.dp
 private val BubbleTailWidth = 26.dp
 
 /** Longer refusals wrap onto two lines rather than reach across the screen. */
 private val BubbleMaxWidth = 330.dp
 
+/** The bubble keeps at least this far right of the stat card. */
+private val BubbleCardGap = 8.dp
+
+private const val BUBBLE_POP_FROM = 0.6f
+private const val BUBBLE_SHRINK_TO = 0.85f
+
 /**
- * Bone-white speech bubble whose tail points down at the pet's head, popping in when it refuses. The tail is
- * near its left end, or its right end when it [hangLeft]s of the head.
+ * Bone-white speech bubble whose tail points down at the pet's head ([headX]), popping in when it refuses.
+ * Its bottom (the tail's tip) is at [bottomY]. The box hangs right of the head where it can and slides left
+ * near the right edge, always between [minLeft] (just right of the stat card) and [maxRight] (the right safe
+ * inset); the tail is drawn under the head wherever the box ends up (see [bubbleLeft], [bubbleTailX]). The
+ * position is read in layout and draw, and the pop grows from the tail, so nothing jumps as it fades out.
  */
 @Composable
-private fun RefusalBubble(text: String?, hangLeft: Boolean, modifier: Modifier = Modifier) {
+private fun RefusalBubble(text: String?, headX: () -> Float, bottomY: () -> Float, minLeft: () -> Float, maxRight: Float) {
     var lastText by remember { mutableStateOf("") }
     if (text != null) lastText = text
-    AnimatedVisibility(
-        visible = text != null,
-        modifier = modifier,
-        enter = fadeIn(tween(120)) + scaleIn(
-            spring(dampingRatio = 0.55f, stiffness = 500f),
-            initialScale = 0.6f,
-            transformOrigin = if (hangLeft) BubblePivotRight else BubblePivot,
-        ),
-        exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.85f, transformOrigin = if (hangLeft) BubblePivotRight else BubblePivot),
-    ) {
-        Column(horizontalAlignment = if (hangLeft) Alignment.End else Alignment.Start) {
-            Box(
-                Modifier
-                    .widthIn(max = BubbleMaxWidth)
-                    .drawBehind {
-                        softGlow(Color.Black, alpha = 0.6f, cornerRadius = 16.dp.toPx(), spread = 14.dp, offsetY = 4.dp.toPx())
-                    }
-                    .background(BubbleWhite, RoundedCornerShape(16.dp))
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = lastText.uppercase(),
-                    style = displayStyle(28.sp, color = Ink, tracking = 0.05f, lineHeight = 30.sp),
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                )
-            }
-            val tailPad = if (hangLeft) Modifier.padding(end = BubbleTailInset) else Modifier.padding(start = BubbleTailInset)
-            Canvas(tailPad.size(width = BubbleTailWidth, height = 14.dp)) {
-                val path = Path().apply {
-                    moveTo(0f, 0f)
-                    lineTo(size.width, 0f)
-                    lineTo(size.width / 2f, size.height)
-                    close()
-                }
-                drawPath(path, BubbleWhite)
-            }
-            // Room under the tail so it floats just clear of the head.
-            Box(Modifier.height(6.dp))
+    val shown = text != null
+    val fade = remember { Animatable(0f) }
+    val pop = remember { Animatable(BUBBLE_POP_FROM) }
+    var present by remember { mutableStateOf(false) }
+    LaunchedEffect(shown) {
+        if (shown) {
+            present = true
+            pop.snapTo(BUBBLE_POP_FROM)
+            launch { fade.animateTo(1f, tween(120)) }
+            pop.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 500f))
+        } else if (present) {
+            launch { pop.animateTo(BUBBLE_SHRINK_TO, tween(220)) }
+            fade.animateTo(0f, tween(220))
+            present = false
         }
+    }
+    if (!present) return
+
+    val density = LocalDensity.current
+    val preferredTail = with(density) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
+    val tailEdge = with(density) { (16.dp + BubbleTailWidth / 2).toPx() }
+    val maxWidthPx = with(density) { BubbleMaxWidth.toPx() }
+    val tailPath = remember { Path() }
+    Column(
+        Modifier
+            .layout { measurable, constraints ->
+                // Never wider than the gap it has to fit in (it wraps to a second line instead).
+                val room = (maxRight - minLeft()).coerceAtLeast(0f)
+                val p = measurable.measure(Constraints(maxWidth = min(maxWidthPx, room).roundToInt()))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    val left = bubbleLeft(headX(), p.width.toFloat(), preferredTail, minLeft(), maxRight)
+                    p.place(left.roundToInt(), (bottomY() - p.height).roundToInt())
+                }
+            }
+            .graphicsLayer {
+                alpha = fade.value
+                scaleX = pop.value
+                scaleY = pop.value
+                // Pop from the tail, so the bubble grows out of the pet's head.
+                val w = size.width.coerceAtLeast(1f)
+                val left = bubbleLeft(headX(), w, preferredTail, minLeft(), maxRight)
+                transformOrigin = TransformOrigin(bubbleTailX(headX(), left, w, tailEdge) / w, 1f)
+            }
+            .width(IntrinsicSize.Max),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    softGlow(Color.Black, alpha = 0.6f, cornerRadius = 16.dp.toPx(), spread = 14.dp, offsetY = 4.dp.toPx())
+                }
+                .background(BubbleWhite, RoundedCornerShape(16.dp))
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = lastText.uppercase(),
+                style = displayStyle(28.sp, color = Ink, tracking = 0.05f, lineHeight = 30.sp),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+            )
+        }
+        Canvas(Modifier.fillMaxWidth().height(14.dp)) {
+            val left = bubbleLeft(headX(), size.width, preferredTail, minLeft(), maxRight)
+            val cx = bubbleTailX(headX(), left, size.width, tailEdge)
+            val half = BubbleTailWidth.toPx() / 2f
+            tailPath.reset()
+            tailPath.moveTo(cx - half, 0f)
+            tailPath.lineTo(cx + half, 0f)
+            tailPath.lineTo(cx, size.height)
+            tailPath.close()
+            drawPath(tailPath, BubbleWhite)
+        }
+        // Room under the tail so it floats just clear of the head.
+        Box(Modifier.height(6.dp))
     }
 }
 
 private val BubbleWhite = Color(0xFFF4F0EA)
-
-/** Pop from near the tail, so the bubble grows out of the pet's head. */
-private val BubblePivot = TransformOrigin(0.2f, 1f)
-private val BubblePivotRight = TransformOrigin(0.8f, 1f)

@@ -12,14 +12,15 @@ import kotlin.math.roundToLong
 const val WANDER_STEP_MIN = 0.10f
 const val WANDER_STEP_MAX = 0.22f
 
+/** A stroll covers at least this much of the width, or the pet stays where it is: no shuffling on the spot. */
+const val WANDER_MIN_MOVE = 0.06f
+
 /** Walking pace: this many of the pet's drawn heights per second, which keeps its run cycle's feet from skating. */
 const val WALK_HEIGHTS_PER_SECOND = 0.55f
 
 /** Where the pet sits at home, and where "back toward the middle" heads. */
 private const val HOME_X = 0.5f
 
-/** Closer to the middle than this, heading back to it is just another stroll. */
-private const val AT_HOME = 0.02f
 
 /** The span the pet's centre may stroll over, as fractions of the screen width. */
 data class WanderRange(val min: Float, val max: Float)
@@ -41,31 +42,61 @@ fun wanderRange(screenW: Float, insetPx: Float, cardRightPx: Float, bodyHalfPx: 
 
 /**
  * The next spot for a pet standing at [from] (clamped into [range] first, in case the screen changed):
- * - [toCenter]: back toward the middle by [step], stopping on it rather than walking past it (a pet already
- *   in the middle just strolls);
+ * - [toCenter]: back toward the middle by [step], stopping on it rather than walking past it (a pet less
+ *   than [WANDER_MIN_MOVE] from the middle just strolls instead);
  * - otherwise [step] to the right ([preferRight]) or left, turning around when there is not even half a step
- *   of room that way.
- * The spot is always inside [range].
+ *   of room that way, and stopping at the edge of [range].
+ * A stroll that would cover less than [WANDER_MIN_MOVE] tries the other way; if that is short too, the
+ * result is the start itself (no stroll). The spot is always inside [range].
  */
 fun wanderTarget(from: Float, range: WanderRange, step: Float, toCenter: Boolean, preferRight: Boolean): Float {
     val start = from.coerceIn(range.min, range.max)
     val home = HOME_X.coerceIn(range.min, range.max)
-    if (toCenter && abs(home - start) > AT_HOME) {
+    if (toCenter && abs(home - start) >= WANDER_MIN_MOVE) {
         return if (abs(home - start) <= step) home else start + if (home > start) step else -step
     }
     var dir = if (preferRight) 1f else -1f
     val room = if (dir > 0f) range.max - start else start - range.min
     if (room < step / 2f) dir = -dir
-    return (start + dir * step).coerceIn(range.min, range.max)
+    for (way in floatArrayOf(dir, -dir)) {
+        val target = (start + way * step).coerceIn(range.min, range.max)
+        if (abs(target - start) >= WANDER_MIN_MOVE) return target
+    }
+    return start
 }
 
 /**
- * How long a stroll of [distancePx] takes for a pet drawn [drawnHeightPx] tall (its display scale included)
- * at [walkSpeed] (the roster's factor): [WALK_HEIGHTS_PER_SECOND] drawn heights a second, so a half-height
- * pet takes half-length strides and covers ground at half the pace. Zero for no walk or no pet.
+ * The pace of a pet drawn [drawnHeightPx] tall (its display scale included) at [walkSpeed] (the roster's
+ * factor), in pixels a second: [WALK_HEIGHTS_PER_SECOND] drawn heights a second, so a half-height pet takes
+ * half-length strides and covers ground at half the pace. Every walk on Home moves at this pace, so the
+ * run cycle's feet never skate.
  */
+fun walkPxPerSecond(drawnHeightPx: Float, walkSpeed: Float): Float = WALK_HEIGHTS_PER_SECOND * drawnHeightPx * walkSpeed
+
+/** How long a stroll of [distancePx] takes at [walkPxPerSecond]. Zero for no walk or no pet. */
 fun wanderDurationMs(distancePx: Float, drawnHeightPx: Float, walkSpeed: Float): Long {
-    val pxPerSecond = WALK_HEIGHTS_PER_SECOND * drawnHeightPx * walkSpeed
+    val pxPerSecond = walkPxPerSecond(drawnHeightPx, walkSpeed)
     if (distancePx <= 0f || pxPerSecond <= 0f) return 0L
     return (distancePx / pxPerSecond * 1000f).roundToLong()
+}
+
+/** How far, as a fraction of the [screenW]-wide screen, a pet walks in [ms] at [walkPxPerSecond]. */
+fun walkDistance(ms: Long, screenW: Float, drawnHeightPx: Float, walkSpeed: Float): Float {
+    if (screenW <= 0f || ms <= 0L) return 0f
+    return walkPxPerSecond(drawnHeightPx, walkSpeed).coerceAtLeast(0f) * ms / 1000f / screenW
+}
+
+/** A scene walk's arrival: the pet starts [distance] (a fraction of the width) out and walks in for [ms]. */
+data class Arrival(val distance: Float, val ms: Long)
+
+/**
+ * The arrival into the next scene at [walkPxPerSecond]: from [maxDistance] out when that takes no longer than
+ * [maxMs], otherwise for [maxMs] from only as far out as the pace covers, so a slow walker (Chucky, Michael)
+ * neither skates nor drags. A pet that cannot walk arrives in place.
+ */
+fun arrival(screenW: Float, drawnHeightPx: Float, walkSpeed: Float, maxDistance: Float, maxMs: Long): Arrival {
+    val full = wanderDurationMs(maxDistance * screenW, drawnHeightPx, walkSpeed)
+    if (full <= 0L) return Arrival(0f, 0L)
+    if (full <= maxMs) return Arrival(maxDistance, full)
+    return Arrival(walkDistance(maxMs, screenW, drawnHeightPx, walkSpeed), maxMs)
 }
