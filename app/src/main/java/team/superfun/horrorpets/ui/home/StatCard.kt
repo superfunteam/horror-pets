@@ -9,10 +9,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,19 +27,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -57,8 +48,6 @@ import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
-import team.superfun.horrorpets.ui.common.isTouchInput
-import team.superfun.horrorpets.ui.common.rememberTouchTick
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -84,59 +73,16 @@ enum class BarLevel { OK, WARN, CRITICAL }
 
 /**
  * The status window, top-left: the pet's name, its level (with progress to the next) and status, then Hunger,
- * Fun, Strength and Mood as segmented gauges, in a gold-framed window like the fight's command windows. It is
- * focusable (Up from the action bar); focused it glows and OK opens the pet switcher, which the hint at its
- * foot says.
- *
- * Under a finger (see `isTouchInput`) a tap opens the switcher; the window lights while pressed, and its hint
- * says TAP.
+ * Fun, Strength and Mood as segmented gauges, in a gold-framed window like the fight's command windows. It only
+ * shows: the stable badge (top right) is where the player switches killers.
  */
 @Composable
-fun StatCard(
-    pet: PetState,
-    onOpenSwitcher: () -> Unit,
-    width: Dp,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester = remember { FocusRequester() },
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val pressed by interaction.collectIsPressedAsState()
-    val touch = isTouchInput()
-    val lit = if (touch) pressed else focused
-    val glow = animateFloatAsState(if (lit) 1f else 0f, tween(200), label = "cardGlow")
-    val scale by animateFloatAsState(
-        targetValue = when {
-            touch -> if (pressed) 0.98f else 1f
-            focused -> 1.04f
-            else -> 1f
-        },
-        animationSpec = tween(200),
-        label = "cardScale",
-    )
-    val tick = rememberTouchTick("ui_select")
-
+fun StatCard(pet: PetState, width: Dp, modifier: Modifier = Modifier) {
     Column(
         modifier
             .width(width)
-            .graphicsLayer {
-                // Grow away from the screen corner so the window never leaves the safe inset.
-                transformOrigin = TransformOrigin(0f, 0f)
-                scaleX = scale
-                scaleY = scale
-            }
-            .focusRequester(focusRequester)
-            .focusProperties {
-                left = FocusRequester.Cancel
-                right = FocusRequester.Cancel
-                up = FocusRequester.Cancel
-            }
-            .clickable(interactionSource = interaction, indication = null) {
-                tick()
-                onOpenSwitcher()
-            }
-            .gameFrame(topEnd = 12.dp, bottomStart = 12.dp, lit = { glow.value })
-            .padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 9.dp),
+            .gameFrame(topEnd = 12.dp, bottomStart = 12.dp)
+            .padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
     ) {
         // 30sp, stepping down only if a long name (LEATHERFACE) would not fit a narrow 4:3 window.
         BasicText(
@@ -149,7 +95,7 @@ fun StatCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicText("LV ${pet.level}", style = displayStyle(16.sp, color = Amber, tracking = 0.04f, lineHeight = 18.sp))
             Spacer(Modifier.width(8.dp))
-            XpBar((pet.xp.toFloat() / xpToNext(pet.level)).coerceIn(0f, 1f))
+            XpBar((pet.xp.toFloat() / xpToNext(pet.level)).coerceIn(0f, 1f), Modifier.size(54.dp, 5.dp))
             Spacer(Modifier.weight(1f))
             StatusTagBox(statusOf(pet))
         }
@@ -175,27 +121,16 @@ fun StatCard(
         StatRow(StatIcon.STRENGTH, "Strength", pet.strength, lowIsWarn(pet.strength))
         val moodValue = mood(pet).toDouble()
         StatRow(StatIcon.MOOD, "Mood", moodValue, lowIsWarn(moodValue))
-        Spacer(Modifier.height(4.dp))
-        val key = when {
-            touch -> "TAP"
-            focused -> "OK"
-            else -> "▲"
-        }
-        BasicText(
-            "$key  SWITCH PET",
-            style = displayStyle(11.sp, FontWeight.Bold, color = Amber.copy(alpha = if (lit) 1f else 0.75f), tracking = 0.22f),
-            maxLines = 1,
-        )
     }
 }
 
 private fun lowIsWarn(v: Double): BarLevel = if (v <= LOW_AT) BarLevel.WARN else BarLevel.OK
 
-/** Progress to the next level: a thin slanted gold bar. */
+/** Progress to the next level: a thin slanted gold bar, as big as [modifier] makes it. */
 @Composable
-private fun XpBar(fraction: Float) {
+internal fun XpBar(fraction: Float, modifier: Modifier = Modifier) {
     val shown by animateFloatAsState(fraction, tween(BAR_ANIM_MS), label = "xp")
-    Canvas(Modifier.size(54.dp, 5.dp)) {
+    Canvas(modifier) {
         drawPath(slanted(0f, size.width, size.height), Color.White.copy(alpha = 0.12f))
         if (shown > 0f) drawPath(slanted(0f, size.width * shown, size.height), Brush.horizontalGradient(listOf(Color(0xFFC98A12), Color(0xFFF5C543))))
     }

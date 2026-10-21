@@ -11,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -89,6 +90,7 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.FEED_MUNCHES
 import team.superfun.horrorpets.model.Food
+import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
@@ -181,7 +183,9 @@ fun HomeScreen(
     onCare: (CareAction) -> Unit,
     onWalk: (dir: Int) -> Unit,
     onFight: () -> Unit,
-    onOpenSwitcher: () -> Unit,
+    onOpenStable: () -> Unit,
+    onCloseStable: () -> Unit,
+    onStablePick: (PetId) -> Unit,
     onAnimFinished: (token: Long) -> Unit,
     onToastDone: () -> Unit,
     onExit: () -> Unit,
@@ -196,11 +200,25 @@ fun HomeScreen(
     val tint = remember(scene) { hexColor(scene.tint) }
 
     val playFocus = remember { FocusRequester() }
-    val cardFocus = remember { FocusRequester() }
+    val badgeFocus = remember { FocusRequester() }
+    // The stable's other killers, in roster order, and the one the badge is showing (the stable opens on them).
+    val others = remember(state.game.pets, petId) { PetId.entries.filter { it != petId }.mapNotNull { state.game.pets[it] } }
+    val badgeShown = others.isNotEmpty() && state.toast == null
+    var badgeShows by remember { mutableStateOf<PetId?>(null) }
+    // Focus goes back to the badge when the stable closes (to Play if the badge is gone).
+    var stableWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.stableOpen) {
+        if (state.stableOpen) {
+            stableWasOpen = true
+        } else if (stableWasOpen) {
+            stableWasOpen = false
+            runCatching { if (badgeShown) badgeFocus.requestFocus() else playFocus.requestFocus() }
+        }
+    }
     var lastWasFight by remember { mutableStateOf(false) }
 
     // Only the screen being entered handles Back: a Home that is fading out must never exit the app.
-    GameBackHandler(enabled = focusEntry != null, onBack = onExit)
+    GameBackHandler(enabled = focusEntry != null && !state.stableOpen, onBack = onExit)
     RequestFocusOnEntry(playFocus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
     val latestOnWalk by rememberUpdatedState(onWalk)
@@ -215,6 +233,7 @@ fun HomeScreen(
         withContext(Dispatchers.IO) {
             for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
             for (food in Food.entries) loader.food(food)
+            for (id in state.game.pets.keys) loader.head(id)
             for (art in PLAY_HAND_ART) loader.prop(art)
         }
     }
@@ -516,9 +535,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().padding(inset)) {
             StatCard(
                 pet = pet,
-                onOpenSwitcher = onOpenSwitcher,
                 width = cardWidth,
-                focusRequester = cardFocus,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .onGloballyPositioned { cardRightPx = it.boundsInRoot().right },
@@ -535,6 +552,22 @@ fun HomeScreen(
                 onDismissed = onToastDone,
                 modifier = Modifier.align(Alignment.TopEnd).widthIn(max = toastMax),
             )
+            // The stable's other killers, top right, once there are any: the welcome back has that corner first.
+            AnimatedVisibility(
+                visible = badgeShown,
+                modifier = Modifier.align(Alignment.TopEnd),
+                enter = fadeIn(tween(400)) + slideInHorizontally(tween(400)) { it / 3 },
+                exit = fadeOut(tween(250)),
+            ) {
+                StableBadge(
+                    others = others,
+                    loader = loader,
+                    onOpen = onOpenStable,
+                    onShown = { badgeShows = it },
+                    focusRequester = badgeFocus,
+                    canFocus = !state.stableOpen,
+                )
+            }
             ActionBar(
                 prevSceneTitle = scenes[(sceneIndex - 1).mod(scenes.size)].title,
                 nextSceneTitle = scenes[(sceneIndex + 1).mod(scenes.size)].title,
@@ -548,9 +581,14 @@ fun HomeScreen(
                     onFight()
                 },
                 playFocus = playFocus,
-                statCardFocus = cardFocus,
+                upFocus = if (badgeShown) badgeFocus else null,
                 modifier = Modifier.align(Alignment.BottomCenter),
+                canFocus = !state.stableOpen,
             )
+        }
+
+        if (state.stableOpen) {
+            StableMenu(game = state.game, first = badgeShows, loader = loader, onPick = onStablePick, onClose = onCloseStable)
         }
     }
 }

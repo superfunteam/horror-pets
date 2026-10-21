@@ -27,6 +27,8 @@ import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.fakedeath.FakeDeathScreen
+import team.superfun.horrorpets.ui.fight.UnlockedScreen
+import team.superfun.horrorpets.ui.title.TitleScreen
 import team.superfun.horrorpets.ui.fight.FightScreen
 import team.superfun.horrorpets.ui.fight.ResultsCard
 import team.superfun.horrorpets.ui.fight.VersusScreen
@@ -56,6 +58,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
     val exitFromOnboarding = {
         if (vm.state.value.screen == Screen.Switcher(SwitcherMode.ONBOARD)) onExit()
     }
+    val exitFromTitle = { if (vm.state.value.screen == Screen.Title) onExit() }
 
     LaunchedEffect(vm, sounds) {
         vm.state.collect { s ->
@@ -101,6 +104,8 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                 // The router's own Ink fill (on AnimatedContent) is the only app background; screens draw over it.
                 Screen.Loading -> Box(Modifier.fillMaxSize())
 
+                Screen.Title -> TitleScreen(loader = loader, onStart = vm::onStart, onExit = exitFromTitle, focusEntry = focusEntry)
+
                 is Screen.Switcher -> SwitcherScreen(
                     mode = screen.mode,
                     game = state.game,
@@ -125,7 +130,9 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onCare = vm::onCare,
                     onWalk = vm::onWalk,
                     onFight = vm::onFightPressed,
-                    onOpenSwitcher = vm::openSwitcher,
+                    onOpenStable = vm::openStable,
+                    onCloseStable = vm::closeStable,
+                    onStablePick = vm::onStablePick,
                     onAnimFinished = vm::onAnimFinished,
                     onToastDone = vm::consumeToast,
                     onExit = exitFromHome,
@@ -152,6 +159,15 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onAnimFinished = vm::onAnimFinished,
                     focusEntry = focusEntry,
                     isBusy = { vm.state.value.busy },
+                )
+
+                is Screen.Unlocked -> UnlockedScreen(
+                    pet = screen.pet,
+                    unlocked = state.game.pets.size,
+                    loader = loader,
+                    arena = lastFight?.let { arenaScene(loader, it.opponent, arenaRoll) },
+                    onDone = vm::onUnlockedDone,
+                    focusEntry = focusEntry,
                 )
 
                 is Screen.Results -> {

@@ -4,13 +4,16 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,9 +47,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -59,6 +64,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -81,6 +87,7 @@ import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.SwitcherMode
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -89,6 +96,7 @@ import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.beamLayers
 import team.superfun.horrorpets.ui.common.drawBeam
+import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.placeAt
@@ -168,11 +176,13 @@ private const val IDLE_STAGGER_MS = 230L
  * carries on to the next, or further), with the same nudge at either end. The back gesture is Back, and a
  * touch that starts in the system's gesture strips along the edges is left to the system.
  *
- * The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left out.
+ * It picks the starter of a new game ([SwitcherMode.ONBOARD]): any killer, each showing its special, since none
+ * has stats yet. The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left
+ * out: killers in the stable show their level and status, locked ones a LOCKED tag (beating one unlocks it), and
+ * a counter says how many are unlocked.
  *
- * Where the row starts: on the current pet when switching ([SwitcherMode.SELECT]), and on the first pet
- * when onboarding or choosing an opponent. While onboarding there is nothing to go back to, so Back
- * leaves the app ([onExit]).
+ * The row starts on the first pet. While onboarding there is nothing to go back to, so Back leaves the app
+ * ([onExit]).
  *
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value takes focus and
  * puts the row back on its starting pet; null (the screen is fading out) turns off Back, the keys and touch.
@@ -198,10 +208,7 @@ fun SwitcherScreen(
         PetId.entries.filter { mode != SwitcherMode.OPPONENT || it != game.selected }
     }
     val bodies = remember(loader, pets) { pets.map { loader.manifest(it).bodyScale } }
-    val initial = when (mode) {
-        SwitcherMode.SELECT -> pets.indexOf(game.selected).coerceAtLeast(0)
-        SwitcherMode.ONBOARD, SwitcherMode.OPPONENT -> 0
-    }
+    val initial = 0
     var index by remember(mode) { mutableIntStateOf(initial) }
     // Where the row is: the pet index under the spotlight, fractional while it slides.
     val scroll = remember(mode) { Animatable(initial.toFloat()) }
@@ -378,6 +385,11 @@ fun SwitcherScreen(
                 LineupPet(
                     loader = loader,
                     pet = game.pets[pet] ?: PetState(pet),
+                    label = when {
+                        mode == SwitcherMode.ONBOARD -> LineupLabel.STARTER
+                        game.isUnlocked(pet) -> LineupLabel.STATS
+                        else -> LineupLabel.LOCKED
+                    },
                     i = i,
                     row = row,
                     centerX = w / 2f,
@@ -406,7 +418,86 @@ fun SwitcherScreen(
             )
             Spacer(Modifier.height(14.dp))
             TitleRule()
+            val locked = PetId.entries.count { !game.isUnlocked(it) }
+            val subtitle = when {
+                mode == SwitcherMode.ONBOARD -> "YOU START WITH ONE  ·  BEAT THE OTHERS TO UNLOCK THEM"
+                locked > 0 -> "BEAT A LOCKED KILLER TO UNLOCK THEM"
+                else -> null
+            }
+            if (subtitle != null) {
+                Spacer(Modifier.height(12.dp))
+                BasicText(subtitle, style = displayStyle(15.sp, FontWeight.Bold, color = Gold, tracking = 0.2f), maxLines = 1)
+            }
         }
+        if (mode == SwitcherMode.OPPONENT) {
+            UnlockedCount(
+                game.pets.size,
+                Modifier.align(Alignment.BottomEnd).padding(end = safe.horizontal, bottom = safe.vertical),
+            )
+        }
+    }
+}
+
+private val Gold = Color(0xFFF5C543)
+
+/** What a lineup pet shows under its name. */
+private enum class LineupLabel {
+    /** Its level and status: a killer in the stable. */
+    STATS,
+
+    /** Its special: a starter candidate, which has no stats yet. */
+    STARTER,
+
+    /** A LOCKED tag: a killer the player has not beaten yet. */
+    LOCKED,
+}
+
+/** "N / 7 UNLOCKED" in a small gold frame. */
+@Composable
+private fun UnlockedCount(unlocked: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .gameFrame(topEnd = 7.dp, bottomStart = 7.dp, inner = false)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicText("UNLOCKED", style = displayStyle(14.sp, tracking = 0.14f))
+        BasicText("$unlocked / ${PetId.entries.size}", style = displayStyle(14.sp, color = Gold, tracking = 0.14f))
+    }
+}
+
+/** A LOCKED tag: a padlock and the word, white on glossy blood red with clipped corners. */
+@Composable
+private fun LockedTag() {
+    Row(
+        Modifier
+            .drawBehind {
+                val cut = 7.dp.toPx()
+                val path = Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(size.width - cut, 0f)
+                    lineTo(size.width, cut)
+                    lineTo(size.width, size.height)
+                    lineTo(cut, size.height)
+                    lineTo(0f, size.height - cut)
+                    close()
+                }
+                drawPath(path, Brush.verticalGradient(listOf(Color(0xFFFF7A82), Color(0xFFE0262F), Color(0xFF9A0C18))))
+                drawPath(path, Color.White, style = Stroke(1.5.dp.toPx()))
+            }
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Canvas(Modifier.size(width = 11.dp, height = 14.dp)) {
+            // A padlock: the shackle's arch over the body.
+            val w = size.width
+            val h = size.height
+            drawArc(Color.White, 180f, 180f, useCenter = false, topLeft = Offset(w * 0.18f, 0f), size = Size(w * 0.64f, h * 0.7f), style = Stroke(2.dp.toPx()))
+            drawRoundRect(Color.White, topLeft = Offset(0f, h * 0.42f), size = Size(w, h * 0.58f), cornerRadius = CornerRadius(1.5.dp.toPx()))
+        }
+        BasicText("LOCKED", style = displayStyle(16.sp, tracking = 0.14f))
     }
 }
 
@@ -445,6 +536,7 @@ private val RuleBrush = Brush.horizontalGradient(
 private fun LineupPet(
     loader: AssetLoader,
     pet: PetState,
+    label: LineupLabel,
     i: Int,
     row: () -> Float,
     centerX: Float,
@@ -501,9 +593,25 @@ private fun LineupPet(
             )
         }
         Spacer(Modifier.height(6.dp))
-        Text(text = "LV ${pet.level}", style = displayStyle(22.sp, color = TextLo, tracking = 0.12f, lineHeight = 22.sp))
-        Spacer(Modifier.height(8.dp))
-        StatusChip(statusOf(pet))
+        when (label) {
+            LineupLabel.STATS -> {
+                Text(text = "LV ${pet.level}", style = displayStyle(22.sp, color = TextLo, tracking = 0.12f, lineHeight = 22.sp))
+                Spacer(Modifier.height(8.dp))
+                StatusChip(statusOf(pet))
+            }
+            LineupLabel.STARTER -> {
+                BasicText(
+                    pet.id.spec.special.displayName.uppercase(),
+                    style = displayStyle(17.sp, FontWeight.Bold, color = Gold, tracking = 0.14f).copy(textAlign = TextAlign.Center),
+                    maxLines = 1,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 17.sp, stepSize = 1.sp),
+                )
+            }
+            LineupLabel.LOCKED -> {
+                Spacer(Modifier.height(4.dp))
+                LockedTag()
+            }
+        }
     }
 }
 

@@ -8,6 +8,8 @@ Outputs:
   app/src/main/res/drawable-{xhdpi,xxhdpi,xxxhdpi}/banner.png   320x180 / 480x270 / 640x360
   app/src/main/res/mipmap-{mdpi..xxxhdpi}/ic_launcher.png         48 / 72 / 96 / 144 / 192
   docs/banner.png                                                 1280x720 (README header)
+  sprites-final/title/{cover,logo}.webp                           the title screen's art and logo, apart, so the
+                                                                  screen can crop the art and size the logo to fit
 
 Usage: tools/.venv/bin/python -I tools/make_branding.py
 """
@@ -29,6 +31,8 @@ BLOOD = (193, 18, 31)
 BANNERS = {"xhdpi": (320, 180), "xxhdpi": (480, 270), "xxxhdpi": (640, 360)}
 ICONS = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 MASTER = (1280, 720)
+TITLE_ART = (1920, 1080)
+TITLE_LOGO_WIDTH = 1200
 LOGO_WIDTH = 0.58  # of the cover width
 LOGO_TOP = 0.04    # of the cover height
 HALO_OPACITY = 0.75
@@ -80,6 +84,14 @@ def icon_master(size: int = 768) -> Image.Image:
 
 
 def main() -> int:
+    title = ROOT / "sprites-final/title"
+    title.mkdir(parents=True, exist_ok=True)
+    Image.open(COVER_ART).convert("RGB").resize(TITLE_ART, Image.LANCZOS).save(title / "cover.webp", "WEBP", quality=85, method=6)
+    logo = Image.open(LOGO).convert("RGBA")
+    logo = logo.crop(logo.getbbox())
+    logo = logo.resize((TITLE_LOGO_WIDTH, round(logo.height * TITLE_LOGO_WIDTH / logo.width)), Image.LANCZOS)
+    logo.save(title / "logo.webp", "WEBP", quality=90, alpha_quality=100, method=6)
+    print("sprites-final/title/cover.webp, logo.webp")
     master = banner_master()
     (ROOT / "docs").mkdir(exist_ok=True)
     master.save(ROOT / "docs/banner.png", optimize=True)

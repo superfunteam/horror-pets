@@ -22,10 +22,9 @@ enum class PetId(val displayName: String) {
  * hunger is a need meter: 0 = full, 100 = starving.
  * funLevel is the "Fun" stat (`fun` is a Kotlin keyword); the UI label stays "Fun".
  * moodBonus is a transient -30..30 nudge on mood that decays back to 0 over time.
- * freshJoin marks a pet that has just joined: a save from before it existed (Chucky and Michael in a v0.1.0
- * save, Leatherface in a v0.2.0 one) is given it at its defaults with this set, so the time the player was
- * away before it existed never decays it nor fakes its death. It is saved, so it survives a launch under a
- * stale clock, and cleared the first time the time away is actually applied (see `applyElapsed`).
+ * freshJoin marks a pet that has just joined the stable (unlocked by beating it), so time that passed before it
+ * joined never decays it nor fakes its death. It is saved, so it survives a launch under a stale clock, and
+ * cleared the first time the time away is actually applied (see `applyElapsed`).
  */
 @Serializable
 data class PetState(
@@ -43,13 +42,21 @@ data class PetState(
     val freshJoin: Boolean = false,
 )
 
+/**
+ * The whole save. [pets] is the player's stable: only the killers they have unlocked (the starter they picked,
+ * then each killer they beat), so a fresh game has none and no [selected] one. [selected] is always in [pets].
+ * Version 2 introduced the stable; a version-1 save (every killer unlocked) is read as a fresh game.
+ */
 @Serializable
 data class GameState(
-    val version: Int = 1,
-    val pets: Map<PetId, PetState> = PetId.entries.associateWith { PetState(it) },
+    val version: Int = 2,
+    val pets: Map<PetId, PetState> = emptyMap(),
     val selected: PetId? = null,
     val lastSeenMs: Long? = null,
-)
+) {
+    /** Whether [id] is in the stable. */
+    fun isUnlocked(id: PetId): Boolean = id in pets
+}
 
 /**
  * What happened while the app was closed. [biggestStat] is the display label ("Hunger", "Fun" or

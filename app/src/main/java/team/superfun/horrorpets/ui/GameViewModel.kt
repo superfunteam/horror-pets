@@ -90,6 +90,9 @@ class GameViewModel(
     private var lastFood: Food? = null
     private var lastGag: PlayGag? = null
 
+    /** What happened while the app was closed, read at launch and toasted once Start takes the player Home. */
+    private var pendingAway: AwaySummary? = null
+
     /** The action whose animations are playing, if any. [UiState.petAnim] is its current step. */
     private var running: Running? = null
 
@@ -103,20 +106,33 @@ class GameViewModel(
 
     // ---- lifecycle ---------------------------------------------------------------------------
 
-    /** Loads the save, applies the time since it was last seen, and picks the first screen. */
+    /** Loads the save, applies the time since it was last seen, and shows the title screen. */
     fun start() {
         if (started) return
         started = true
         scope.launch {
             val loaded = loadOrNull() ?: GameState().also { savingDisabled = true }
             val (game, away) = applyElapsed(loaded, clock.nowMs(), clockFloorMs)
-            val base = _state.value.copy(game = game)
-            _state.value = if (game.selected == null) {
-                base.copy(screen = Screen.Switcher(SwitcherMode.ONBOARD), voice = base.voice + "choose_your_killer")
-            } else {
-                base.copy(screen = Screen.Home).routeFakeDeath().withAwayToast(away)
-            }
+            pendingAway = away
+            _state.value = _state.value.copy(game = game, screen = Screen.Title)
             persist(game)
+        }
+    }
+
+    /**
+     * Start pressed on the title screen: a new game goes to the starter pick, anyone else Home (to their pet's fake
+     * death first, if it is due), with the welcome back for the time they were away.
+     */
+    fun onStart() {
+        val s = _state.value
+        if (s.screen != Screen.Title) return
+        val away = pendingAway
+        pendingAway = null
+        _state.value = if (s.game.selected == null) {
+            s.copy(screen = Screen.Switcher(SwitcherMode.ONBOARD), voice = s.voice + "choose_your_killer")
+        } else {
+            val home = s.copy(screen = Screen.Home).routeFakeDeath()
+            if (away == null) home else home.withAwayToast(away)
         }
     }
 
@@ -214,12 +230,28 @@ class GameViewModel(
         }
     }
 
-    // ---- switcher, versus, fake death --------------------------------------------------------
+    // ---- the stable, the carousel, versus, fake death -----------------------------------------
 
-    fun openSwitcher() {
+    /** Opens the stable over Home, when there is someone else in it to go see. */
+    fun openStable() {
         val s = _state.value
-        if (s.homePet() == null) return
-        _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.SELECT), refuse = null)
+        if (s.homePet() == null || s.game.pets.size < 2) return
+        _state.value = s.copy(stableOpen = true, refuse = null)
+    }
+
+    fun closeStable() {
+        val s = _state.value
+        if (!s.stableOpen) return
+        _state.value = s.copy(stableOpen = false)
+    }
+
+    /** Goes to see [p], a killer in the stable (a locked one is ignored), and closes the stable. */
+    fun onStablePick(p: PetId) {
+        val s = _state.value
+        if (!s.stableOpen || !s.game.isUnlocked(p)) return
+        val game = s.game.copy(selected = p)
+        _state.value = s.copy(game = game, stableOpen = false).routeFakeDeath()
+        if (game != s.game) persist(game)
     }
 
     /** Opens the opponent switcher, or refuses when the selected pet is too hungry to fight. */
@@ -246,15 +278,16 @@ class GameViewModel(
                 )
             }
 
-            SwitcherMode.SELECT, SwitcherMode.ONBOARD -> {
-                val game = s.game.copy(selected = p)
+            SwitcherMode.ONBOARD -> {
+                // The starter is the whole stable to begin with: the others are unlocked by beating them.
+                val game = s.game.copy(pets = s.game.pets + (p to (s.game.pets[p] ?: PetState(p))), selected = p)
                 _state.value = s.copy(game = game, screen = Screen.Home).routeFakeDeath()
-                if (game != s.game) persist(game)
+                persist(game)
             }
         }
     }
 
-    /** Back out of the switcher. There is nothing to go back to while onboarding. */
+    /** Back out of the opponent pick. There is nothing to go back to while picking the starter. */
     fun onSwitcherBack() {
         val s = _state.value
         val switcher = s.screen as? Screen.Switcher ?: return
@@ -312,24 +345,37 @@ class GameViewModel(
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 
-    /** The turn's animation is over. A finished fight turns into its results and the pet is paid. */
+    /**
+     * The turn's animation is over. A finished fight turns into its results and the pet is paid; beating a killer
+     * the player did not have unlocks it (it joins the stable at its defaults) and shows that before the results.
+     */
     private fun finishTurn(s: UiState): UiState {
         val fight = (s.screen as? Screen.Fight)?.fight ?: return s
         val winner = fight.winner ?: return s
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
+        val results = Screen.Results(reward, won = won, ran = fight.playerRan)
+        val unlock = fight.cpu.id.takeIf { won && !fight.playerRan && !s.game.isUnlocked(it) }
         val voice = when {
             fight.playerRan -> emptyList()
             won -> listOf("you_win")
             else -> listOf("you_lose")
-        }
+        } + if (unlock != null) listOf("unlocked") else emptyList()
+        val game = s.game.withPet(reward.pet).let { g -> if (unlock == null) g else g.withPet(PetState(unlock, freshJoin = true)) }
         return s.copy(
-            game = s.game.withPet(reward.pet),
-            screen = Screen.Results(reward, won = won, ran = fight.playerRan),
-            sfx = s.sfx + if (reward.levelsGained > 0) listOf("levelup") else emptyList(),
+            game = game,
+            screen = if (unlock == null) results else Screen.Unlocked(unlock, results),
+            sfx = s.sfx + (if (reward.levelsGained > 0) listOf("levelup") else emptyList()) + (if (unlock != null) listOf("unlock") else emptyList()),
             voice = s.voice + voice,
         )
+    }
+
+    /** The unlock has been shown: on to the fight's results. */
+    fun onUnlockedDone() {
+        val s = _state.value
+        val unlocked = s.screen as? Screen.Unlocked ?: return
+        _state.value = s.copy(screen = unlocked.results)
     }
 
     fun onResultsDone() {
@@ -368,9 +414,9 @@ class GameViewModel(
 
     // ---- helpers -----------------------------------------------------------------------------
 
-    /** The selected pet when Home is taking input (not busy), else null. */
+    /** The selected pet when Home is taking input (not busy, the stable not open), else null. */
     private fun UiState.homePet(): PetState? {
-        if (screen != Screen.Home || busy) return null
+        if (screen != Screen.Home || busy || stableOpen) return null
         return game.selected?.let { game.pets[it] }
     }
 
@@ -389,7 +435,7 @@ class GameViewModel(
         _state.value = s.copy(refuse = reason, sfx = s.sfx + "refuse").beginAction(listOf(Anim.FAIL))
     }
 
-    private fun UiState.goHome(): UiState = copy(screen = Screen.Home, refuse = null).routeFakeDeath()
+    private fun UiState.goHome(): UiState = copy(screen = Screen.Home, refuse = null, stableOpen = false).routeFakeDeath()
 
     /**
      * A pet whose fake death has not been shown yet is shown it the moment Home would take over.

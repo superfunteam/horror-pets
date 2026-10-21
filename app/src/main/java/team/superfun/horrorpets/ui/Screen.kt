@@ -11,13 +11,19 @@ import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 
-/** Why the pet switcher is open. In [OPPONENT] mode the UI hides the selected pet (`UiState.game.selected`). */
-enum class SwitcherMode { SELECT, ONBOARD, OPPONENT }
+/**
+ * Why the spotlight carousel is open: picking the starter of a new game ([ONBOARD], any of the killers), or an
+ * opponent to fight ([OPPONENT], every killer but the selected one, locked ones included: beating one unlocks it).
+ */
+enum class SwitcherMode { ONBOARD, OPPONENT }
 
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
 sealed interface Screen {
     /** The save is still being read. */
     data object Loading : Screen
+
+    /** The title screen, on every launch: the cover, the logo and PRESS START. */
+    data object Title : Screen
 
     data class Switcher(val mode: SwitcherMode) : Screen
 
@@ -45,6 +51,9 @@ sealed interface Screen {
     ) : Screen
 
     data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean) : Screen
+
+    /** The player just beat [pet], a killer they did not have, and it joined their stable; [results] come next. */
+    data class Unlocked(val pet: PetId, val results: Results) : Screen
 }
 
 /**
@@ -68,6 +77,7 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val food: Food? = nul
  *   action starts or the screen changes, so key a timed chip on [petAnim]'s token as well when the
  *   same reason can repeat.
  * - [sfx] and [voice] are queues of audio file base names; the UI plays them and calls `consumeSounds()`.
+ * - [stableOpen] is whether the stable menu is up over Home (Home takes no other input meanwhile).
  */
 data class UiState(
     val screen: Screen = Screen.Loading,
@@ -78,4 +88,5 @@ data class UiState(
     val refuse: RefuseReason? = null,
     val sfx: List<String> = emptyList(),
     val voice: List<String> = emptyList(),
+    val stableOpen: Boolean = false,
 )

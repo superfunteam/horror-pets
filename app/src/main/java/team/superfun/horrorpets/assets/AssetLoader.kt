@@ -90,6 +90,9 @@ class AssetLoader(context: Context) {
     /** The picture of [food], to drop in when a pet is fed. */
     fun food(food: Food): ImageBitmap = prop("sprites/food/${food.file}")
 
+    /** [pet]'s head (`sprites/<pet>/head.webp`, cut by tools/make_heads.py), for the stable badge and menus. */
+    fun head(pet: PetId): ImageBitmap = prop("sprites/${pet.dir}/head.webp")
+
     /** A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. */
     fun prop(path: String): ImageBitmap = synchronized(propLock) {
         props.getOrPut(path) { decode(path) }

@@ -16,7 +16,10 @@ class DecayTest {
     /** A valid 2025 timestamp, comfortably above Tuning.MIN_VALID_EPOCH_MS. */
     private val t0 = 1_760_000_000_000L
 
-    private fun seen(at: Long = t0, selected: PetId? = null) = GameState(lastSeenMs = at, selected = selected)
+    /** A stable with every killer in it, so decay can be checked on all of them. */
+    private val everyone = PetId.entries.associateWith { PetState(it) }
+
+    private fun seen(at: Long = t0, selected: PetId? = null) = GameState(pets = everyone, lastSeenMs = at, selected = selected)
 
     private fun assertPetEquals(expected: PetState, actual: PetState, delta: Double = 1e-9) {
         assertEquals(expected.id, actual.id)
@@ -34,7 +37,7 @@ class DecayTest {
 
     @Test
     fun firstRunSetsLastSeenWithoutDecay() {
-        val state = GameState(lastSeenMs = null)
+        val state = GameState(pets = everyone, lastSeenMs = null)
         val (next, summary) = applyElapsed(state, t0)
         assertEquals(state.pets, next.pets)
         assertEquals(t0, next.lastSeenMs)
@@ -122,7 +125,7 @@ class DecayTest {
 
     @Test
     fun clockBeforeFloorIsIgnored() {
-        val fresh = GameState(lastSeenMs = null)
+        val fresh = GameState(pets = everyone, lastSeenMs = null)
         val (a, aSummary) = applyElapsed(fresh, 5_000)
         assertEquals(fresh.pets, a.pets)
         assertNull(a.lastSeenMs)
@@ -167,7 +170,7 @@ class DecayTest {
         assertEquals(0L, summary.elapsedMs)
         assertTrue(summary.fakeDeath.isEmpty())
 
-        val fresh = GameState(lastSeenMs = null)
+        val fresh = GameState(pets = everyone, lastSeenMs = null)
         assertNull(applyElapsed(fresh, floor - 1, floorMs = floor).first.lastSeenMs)
         assertEquals(floor, applyElapsed(fresh, floor, floorMs = floor).first.lastSeenMs)
     }
@@ -282,7 +285,7 @@ class DecayTest {
     fun theFreshMarkIsClearedEvenWhenNoTimeHasPassed() {
         val (next, _) = applyElapsed(joining(seen(), PetId.MICHAEL), t0)
         assertTrue(next.pets.values.none { it.freshJoin })
-        val (firstRun, _) = applyElapsed(joining(GameState(), PetId.MICHAEL), t0)
+        val (firstRun, _) = applyElapsed(joining(GameState(pets = everyone), PetId.MICHAEL), t0)
         assertTrue(firstRun.pets.values.none { it.freshJoin })
     }
 

@@ -658,6 +658,13 @@ def sfx_all() -> dict[str, np.ndarray]:
     s["jingle"] = jg
     mm = int(0.7 * SR)
     t = np.arange(mm) / SR
+    ul = rng_for("unlock")  # the unlock fanfare, on its own stream
+    fan = np.zeros(int(1.6 * SR))
+    for k, nm in enumerate(["G4", "C5", "E5", "G5", "C6"]):
+        place(fan, bell(note_hz(nm), 1.0, ((1, 1), (2, 0.35), (3, 0.12))), k * 0.07, 0.45)
+    shimmer = highpass(noise(ul, int(1.0 * SR)), 6000) * env_adsr(int(1.0 * SR), 0.2, 0.3, 0.4, 0.5) * 0.15
+    place(fan, shimmer, 0.3)
+    s["unlock"] = reverb(ul, fan, 1.8, 0.35)
     s["boing"] = sine(180 * (1 + 0.35 * np.sin(2 * np.pi * 9 * t) * np.exp(-t / 0.25)) + 120 * np.exp(-t / 0.05), mm) \
         * env_exp(mm, 0.25)
     boom_n = int(2.0 * SR)

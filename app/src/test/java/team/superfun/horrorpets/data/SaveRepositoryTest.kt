@@ -17,6 +17,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.PetState
 
 /** The on-disk key names are part of the save format: spelled out here, not borrowed from the code. */
 private val SAVE = stringPreferencesKey("save_json")
@@ -39,7 +40,7 @@ private class MemoryDataStore(initial: Preferences = emptyPreferences()) : DataS
 }
 
 class SaveRepositoryTest {
-    private val state = GameState(selected = PetId.FREDDY, lastSeenMs = 1_760_000_000_000L)
+    private val state = GameState(pets = mapOf(PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.FREDDY, lastSeenMs = 1_760_000_000_000L)
 
     private fun storeWith(save: String?, backup: String? = null) = MemoryDataStore(
         mutablePreferencesOf().apply {
@@ -77,7 +78,7 @@ class SaveRepositoryTest {
 
     @Test
     fun aSaveFromANewerBuildIsBackedUpToo() = runTest {
-        val newer = """{"version":2,"selected":"JASON"}"""
+        val newer = """{"version":3,"selected":"JASON"}"""
         val disk = storeWith(newer)
         val repo = SaveRepository(disk)
         assertEquals(GameState(), repo.load())

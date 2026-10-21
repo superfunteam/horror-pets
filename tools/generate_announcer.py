@@ -60,6 +60,7 @@ LINES = {
     "you_lose": "[shouting] YOU LOSE!!!",
     "perfect": "[shouting] PERFECT!!!",
     "choose_your_killer": "[shouting] CHOOSE YOUR KILLER!!!",
+    "unlocked": "[shouting] UNLOCKED!!!",
     # fight reactions, one pool per moment (ui/fight/Callouts.kt)
     "critical_hit": "[shouting] CRITICAL HIT!!!",
     "right_on_the_money": "[shouting] RIGHT ON THE MONEY!!!",
