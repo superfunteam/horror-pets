@@ -8,10 +8,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -46,6 +45,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -99,6 +99,7 @@ import team.superfun.horrorpets.ui.common.SpritePose
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.detectWalkSwipes
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.ignoreOkUnless
 import team.superfun.horrorpets.ui.common.placeAt
@@ -637,55 +638,71 @@ private class JobSlot {
     }
 }
 
-/** The scene dots: the active one is this wide, the others 10dp, and [SceneDotGap] apart. */
-private val ActiveSceneDot = 14.dp
-private val SceneDotGap = 12.dp
+/** The scene marker's diamonds: the current scene's is this wide, the others [SceneDot], [SceneDotGap] apart. */
+private val ActiveSceneDot = 9.dp
+private val SceneDot = 7.dp
+private val SceneDotGap = 8.dp
+
+/** The scene marker's gold tag pads its diamonds (and, after a walk, the scene's name) this much each side. */
+private val MarkerPadding = 14.dp
 
 /**
  * How wide the welcome-back toast (top right) may be on a [screenWidth]-wide screen: from the safe [inset]
- * in to a little short of the [sceneCount] scene dots at the top centre. A long toast (the 6-day, 3-digit
- * kind) steps its text down to fit instead of covering the dots, at any font scale.
+ * in to a little short of the [sceneCount]-scene marker at the top centre. A long toast (the 6-day, 3-digit
+ * kind) steps its text down to fit instead of covering the marker, at any font scale.
  */
 private fun toastMaxWidth(screenWidth: Dp, inset: Dp, sceneCount: Int): Dp {
-    val dotsHalf = ((10.dp + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
-    return screenWidth / 2f - inset - dotsHalf - 16.dp
+    val dotsHalf = ((SceneDot + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
+    return screenWidth / 2f - inset - dotsHalf - MarkerPadding - 16.dp
 }
 
-/** Scene dots at the top centre; after a walk, the new scene's name fades in under them for a few seconds. */
+/**
+ * The scene marker, top centre: a small gold-framed tag of diamonds, one per scene with the current one lit;
+ * after a walk, the new scene's name slides out beside them for a few seconds.
+ */
 @Composable
 private fun SceneMarker(count: Int, index: Int, title: String, showTitle: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier.padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+        modifier
+            .gameFrame(topEnd = 7.dp, bottomStart = 7.dp, inner = false)
+            .height(28.dp)
+            .padding(horizontal = MarkerPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(SceneDotGap), verticalAlignment = Alignment.CenterVertically) {
-            repeat(count) { i -> SceneDot(active = i == index) }
+            repeat(count) { i -> SceneDiamond(active = i == index) }
         }
         AnimatedVisibility(
             visible = showTitle,
-            enter = fadeIn(tween(400)) + expandVertically(tween(300)),
-            exit = fadeOut(tween(600)) + shrinkVertically(tween(600)),
+            enter = fadeIn(tween(400)) + expandHorizontally(tween(300)),
+            exit = fadeOut(tween(600)) + shrinkHorizontally(tween(600)),
         ) {
             Text(
                 text = title.uppercase(),
-                style = displayStyle(22.sp, tracking = 0.14f, halo = true),
+                style = displayStyle(14.sp, tracking = 0.16f),
                 maxLines = 1,
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier.padding(start = 10.dp),
             )
         }
     }
 }
 
 @Composable
-private fun SceneDot(active: Boolean) {
-    val size by animateDpAsState(if (active) ActiveSceneDot else 10.dp, tween(250), label = "dotSize")
-    val color by animateColorAsState(if (active) TextHi else TextHi.copy(alpha = 0.35f), tween(250), label = "dotColor")
+private fun SceneDiamond(active: Boolean) {
+    val size by animateDpAsState(if (active) ActiveSceneDot else SceneDot, tween(250), label = "dotSize")
+    val color by animateColorAsState(if (active) SceneGold else TextHi.copy(alpha = 0.3f), tween(250), label = "dotColor")
     Box(
         Modifier
             .size(size)
             .drawBehind {
-                if (active) softGlow(Color.White, alpha = 0.35f, cornerRadius = this.size.minDimension / 2f, spread = 6.dp, layers = 4)
+                if (active) softGlow(SceneGold, alpha = 0.4f, cornerRadius = 0f, spread = 5.dp, layers = 4)
             }
-            .background(color, CircleShape),
+            .rotate(45f)
+            .background(color),
     )
 }
+
+private val SceneGold = Color(0xFFF5C543)
 
 /** The bubble's tail: where it sits from the bubble's left edge when there is room, and its width. */
 private val BubbleTailInset = 40.dp
