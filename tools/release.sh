@@ -91,7 +91,7 @@ find_keytool() {
 # Prints the Android SDK root.
 find_sdk() {
   local candidate local_dir
-  local_dir="$(sed -n 's/^sdk\.dir=//{p;q;}' "$ROOT/local.properties" 2>/dev/null || true)"
+  local_dir="$(after_first 'sdk\.dir=' "$ROOT/local.properties" 2>/dev/null || true)"
   for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$local_dir" \
     "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
     if [ -n "$candidate" ] && [ -d "$candidate/build-tools" ]; then
@@ -116,9 +116,17 @@ find_build_tools() {
   return 1
 }
 
+# Prints what follows REGEX on the first line that starts with it, then stops. Reads the files given,
+# or stdin. Written with separate -e blocks so it works with both BSD (macOS) and GNU sed.
+after_first() {
+  local re="$1"
+  shift
+  sed -n -e "/^$re/{" -e "s/^$re//" -e p -e q -e '}' "$@"
+}
+
 # Reads KEY from release.properties without sourcing (executing) the file.
 prop() {
-  sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//{p;q;}" "$PROPS" | sed 's/[[:space:]]*$//'
+  after_first "[[:space:]]*$1[[:space:]]*=[[:space:]]*" "$PROPS" | sed 's/[[:space:]]*$//'
 }
 
 # Sourced (for testing the functions above) instead of executed: stop here.
@@ -288,7 +296,7 @@ case "$SIGNER_OUT" in
 esac
 
 # The APK must be signed by *our* key, not a debug key: compare certificate digests.
-APK_DIGEST="$(printf '%s\n' "$SIGNER_OUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //{p;q;}' || true)"
+APK_DIGEST="$(printf '%s\n' "$SIGNER_OUT" | after_first 'Signer #1 certificate SHA-256 digest: ' || true)"
 KEYSTORE_DIGEST="$(HP_FP_PASSWORD="$STORE_PASSWORD" "$KEYTOOL" -list -keystore "$KEYSTORE" -alias "$KEY_ALIAS" \
   -storepass:env HP_FP_PASSWORD 2>/dev/null \
   | sed -n 's/^Certificate fingerprint (SHA-256): //p' | tr -d ':' | tr 'A-F' 'a-f' || true)"
@@ -300,7 +308,7 @@ info "Signed with the release key (SHA-256 $APK_DIGEST)"
 
 info "Checking APK metadata"
 BADGING="$("$AAPT2" dump badging "$BUILT_APK")"
-PACKAGE_LINE="$(printf '%s\n' "$BADGING" | sed -n 's/^package: //{p;q;}' || true)"
+PACKAGE_LINE="$(printf '%s\n' "$BADGING" | after_first 'package: ' || true)"
 printf 'package: %s\n' "$PACKAGE_LINE"
 case "$PACKAGE_LINE" in
   *"versionCode='$EXPECTED_VERSION_CODE'"*) ;;
