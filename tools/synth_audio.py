@@ -16,7 +16,12 @@ from scipy import signal
 
 ROOT = Path(__file__).resolve().parents[1]
 SR = 48_000
-RNG = np.random.default_rng(1313)
+SEED = 1313
+
+
+def rng_for(name: str) -> np.random.Generator:
+    """Per-asset generator seeded from the asset name, so `--only NAME` renders exactly what a full run does."""
+    return np.random.default_rng([SEED, *name.encode()])
 
 
 # ---------------------------------------------------------------- primitives
@@ -47,12 +52,12 @@ def env_adsr(n: int, a: float, d: float, s: float, r: float) -> np.ndarray:
     return e * np.clip((total - t) / max(r, 1e-6), 0, 1) * (t <= total) if r > 0 else e * (t >= 0) * (t <= rel_start + r)
 
 
-def noise(n: int) -> np.ndarray:
-    return RNG.standard_normal(n)
+def noise(rng: np.random.Generator, n: int) -> np.ndarray:
+    return rng.standard_normal(n)
 
 
-def brown(n: int) -> np.ndarray:
-    x = np.cumsum(RNG.standard_normal(n))
+def brown(rng: np.random.Generator, n: int) -> np.ndarray:
+    x = np.cumsum(rng.standard_normal(n))
     x = signal.lfilter([1, -1], [1, -0.995], x)
     return x / (np.abs(x).max() + 1e-9)
 
@@ -80,9 +85,10 @@ def sine(freq: float | np.ndarray, n: int, phase: float = 0.0) -> np.ndarray:
     return np.sin(ph)
 
 
-def reverb(x: np.ndarray, seconds: float = 2.5, mix: float = 0.3, damp: float = 6000) -> np.ndarray:
+def reverb(rng: np.random.Generator, x: np.ndarray, seconds: float = 2.5, mix: float = 0.3,
+           damp: float = 6000) -> np.ndarray:
     n = int(seconds * SR)
-    ir = noise(n) * np.exp(-np.arange(n) / SR * 6.9 / seconds)
+    ir = noise(rng, n) * np.exp(-np.arange(n) / SR * 6.9 / seconds)
     ir = lowpass(ir, damp)
     ir /= np.sqrt((ir ** 2).sum())
     wet = signal.fftconvolve(x, ir)[: len(x)]
@@ -119,11 +125,11 @@ def edge_fade(x: np.ndarray, ms: float = 5) -> np.ndarray:
     return x
 
 
-def pluck(freq: float, dur: float, bright: float = 0.5) -> np.ndarray:
+def pluck(rng: np.random.Generator, freq: float, dur: float, bright: float = 0.5) -> np.ndarray:
     """Karplus-Strong string pluck."""
     n = int(dur * SR)
     period = int(SR / freq)
-    buf = lowpass(noise(period * 4), 900 + 2400 * bright)[-period:]  # softer excitation = rounder pizzicato
+    buf = lowpass(noise(rng, period * 4), 900 + 2400 * bright)[-period:]  # softer excitation = rounder pizzicato
     buf = buf / (np.abs(buf).max() + 1e-9) * 0.5
     out = np.zeros(n)
     k = 0
@@ -143,19 +149,20 @@ def bell(freq: float, dur: float, partials=((1, 1), (2.76, 0.5), (5.4, 0.25), (8
     return out
 
 
-def music_box_note(freq: float, dur: float = 1.6) -> np.ndarray:
+def music_box_note(rng: np.random.Generator, freq: float, dur: float = 1.6) -> np.ndarray:
     n = int(dur * SR)
     tone = sine(freq, n) + 0.35 * sine(freq * 2.0, n) + 0.12 * sine(freq * 4.2, n) + 0.06 * sine(freq * 6.8, n)
-    click = highpass(noise(n), 3000) * env_exp(n, 0.004)
+    click = highpass(noise(rng, n), 3000) * env_exp(n, 0.004)
     return (tone * env_exp(n, 0.55, 0.001) + 0.15 * click) * 0.5
 
 
-def pad(freqs: list[float], dur: float, cutoff: float = 900, detune: float = 0.004) -> np.ndarray:
+def pad(rng: np.random.Generator, freqs: list[float], dur: float, cutoff: float = 900,
+        detune: float = 0.004) -> np.ndarray:
     n = int(dur * SR)
     out = np.zeros(n)
     for f in freqs:
         for d in (-detune, 0, detune):
-            out += saw(f * (1 + d), n, RNG.random())
+            out += saw(f * (1 + d), n, rng.random())
     out = lowpass(out, cutoff, 2) / (len(freqs) * 3)
     return out * env_adsr(n, dur * 0.25, 0.1, 1.0, dur * 0.3)
 
@@ -179,31 +186,32 @@ def level_music(x: np.ndarray, rms_db: float = -20.0, ceiling_db: float = -1.0) 
 # ---------------------------------------------------------------- music
 
 def music_jason() -> np.ndarray:
+    rng = rng_for("jason")
     L, F = 72.0, 3.0
     n = int((L + F) * SR)
     mix = np.zeros(n)
     # lake: low brown noise with slow lapping
     lap = 0.6 + 0.4 * np.sin(2 * np.pi * 0.11 * t_axis(L + F))
-    mix += lowpass(brown(n), 500) * lap * 0.25
+    mix += lowpass(brown(rng, n), 500) * lap * 0.25
     # crickets: chirp triplets of narrow band noise, scattered
     for _ in range(140):
-        at = RNG.uniform(0, L + F - 1)
-        hz = RNG.uniform(3800, 5200)
+        at = rng.uniform(0, L + F - 1)
+        hz = rng.uniform(3800, 5200)
         chirp = np.zeros(int(0.25 * SR))
         for k in range(3):
-            place(chirp, bandpass(noise(int(0.035 * SR)), hz - 150, hz + 150, 2) * env_exp(int(0.035 * SR), 0.012), k * 0.045)
-        place(mix, chirp, at, RNG.uniform(0.04, 0.12))
+            place(chirp, bandpass(noise(rng, int(0.035 * SR)), hz - 150, hz + 150, 2) * env_exp(int(0.035 * SR), 0.012), k * 0.045)
+        place(mix, chirp, at, rng.uniform(0.04, 0.12))
     # low drone that swells in and out
     tt = t_axis(L + F)
     swell = 0.5 + 0.5 * np.sin(2 * np.pi * tt / 24 - np.pi / 2)
     drone = lowpass(saw(note_hz("D2"), n) + saw(note_hz("D2") * 1.003, n) + 0.6 * saw(note_hz("A2"), n), 380)
     mix += drone * swell * 0.05
     # breathy pulses: soft filtered breaths in an uneven 3-pulse figure every 6s
-    for bar in range(int((L + F) / 6)):
+    for bar in range(int((L + F) / 6) + 1):  # +1: the last bar starts inside the crossfade tail
         for k, g in enumerate((1.0, 0.7, 0.5)):
-            b = bandpass(noise(int(0.16 * SR)), 1800, 3600) * env_adsr(int(0.16 * SR), 0.02, 0.05, 0.4, 0.08)
+            b = bandpass(noise(rng, int(0.16 * SR)), 1800, 3600) * env_adsr(int(0.16 * SR), 0.02, 0.05, 0.4, 0.08)
             place(mix, b, bar * 6 + 1.2 + k * 0.22, 0.05 * g)
-    mix = reverb(mix, 2.8, 0.35)
+    mix = reverb(rng, mix, 2.8, 0.35)
     return widen(loopify(mix, L, F))
 
 
@@ -217,6 +225,7 @@ FREDDY_CHORDS = [["A3", "C4", "E4"], ["F3", "A3", "C4"], ["D3", "F3", "A3"], ["E
 
 
 def music_freddy() -> np.ndarray:
+    rng = rng_for("freddy")
     bpm = 84
     beat = 60 / bpm
     beats = sum(b for _, b in FREDDY_MELODY)  # 32
@@ -228,43 +237,45 @@ def music_freddy() -> np.ndarray:
     for rep in range(4):  # the 4th pass only feeds the loop crossfade, so it matches pass 1
         style = rep % 3
         for name, b in FREDDY_MELODY:
-            hz = note_hz(name) * (1 + RNG.uniform(-0.002, 0.002))
-            place(mix, music_box_note(hz * (2 if style == 1 else 1)), t, 0.4 if style == 1 else 0.55)
+            hz = note_hz(name) * (1 + rng.uniform(-0.002, 0.002))
+            place(mix, music_box_note(rng, hz * (2 if style == 1 else 1)), t, 0.4 if style == 1 else 0.55)
             if style == 2:
-                place(mix, music_box_note(hz * 2 ** (-9 / 12)), t + 0.01, 0.25)
+                place(mix, music_box_note(rng, hz * 2 ** (-9 / 12)), t + 0.01, 0.25)
             t += b * beat
     bar = 8 * beat
     for i in range(int((L + F) / bar) + 1):
         chord = FREDDY_CHORDS[i % 4]
-        place(mix, pad([note_hz(c) / 2 for c in chord], bar + 1.0, 700), i * bar, 0.35)
-    mix = reverb(mix, 3.0, 0.4)
+        place(mix, pad(rng, [note_hz(c) / 2 for c in chord], bar + 1.0, 700), i * bar, 0.35)
+    mix = reverb(rng, mix, 3.0, 0.4)
     # slight tape wobble for unease
     mix = mix * (1 + 0.01 * np.sin(2 * np.pi * 0.3 * t_axis((len(mix)) / SR)))
     return widen(loopify(mix, L, F), 17)
 
 
 def music_pinhead() -> np.ndarray:
+    rng = rng_for("pinhead")
     L, F = 80.0, 4.0
     n = int((L + F) * SR)
     tt = t_axis(L + F)
     mix = 0.18 * sine(55.0, n) + 0.16 * sine(55.35, n) + 0.08 * sine(82.41, n) + 0.05 * sine(110.6, n)
     mix *= 0.8 + 0.2 * np.sin(2 * np.pi * tt / 20)
-    mix += lowpass(brown(n), 200) * 0.12
+    mix += lowpass(brown(rng, n), 200) * 0.12
     for at in np.arange(3.0, L + F - 4, 9.5):
-        place(mix, bell(note_hz("C#3") * RNG.choice([1, 1.5, 0.75]), 6.0), at + RNG.uniform(-1, 1), 0.22)
+        place(mix, bell(note_hz("C#3") * rng.choice([1, 1.5, 0.75]), 6.0), at + rng.uniform(-1, 1), 0.22)
     for _ in range(10):
-        dur = RNG.uniform(0.6, 1.4)
+        dur = rng.uniform(0.6, 1.4)
         m = int(dur * SR)
-        f = np.linspace(RNG.uniform(300, 600), RNG.uniform(900, 1400), m)
-        creak = bandpass(noise(m) * (0.5 + 0.5 * signal.square(2 * np.pi * np.cumsum(f / 40) / SR * 40)), 250, 1600)
-        place(mix, creak * env_adsr(m, 0.1, 0.2, 0.6, 0.3), RNG.uniform(0, L), 0.05)
+        f = np.linspace(rng.uniform(300, 600), rng.uniform(900, 1400), m)
+        creak = bandpass(noise(rng, m) * (0.5 + 0.5 * signal.square(2 * np.pi * np.cumsum(f / 40) / SR * 40)), 250, 1600)
+        place(mix, creak * env_adsr(m, 0.1, 0.2, 0.6, 0.3), rng.uniform(0, L), 0.05)
     for _ in range(40):  # distant chain clinks
-        place(mix, bell(RNG.uniform(1800, 3200), 0.3, ((1, 1), (2.3, 0.4))), RNG.uniform(0, L + F - 1), 0.03)
-    mix = reverb(mix, 4.5, 0.45, 4000)
+        place(mix, bell(rng.uniform(1800, 3200), 0.3, ((1, 1), (2.3, 0.4))), rng.uniform(0, L + F - 1), 0.03)
+    mix = reverb(rng, mix, 4.5, 0.45, 4000)
     return widen(loopify(mix, L, F), 23)
 
 
 def music_ghostface() -> np.ndarray:
+    rng = rng_for("ghostface")
     bpm = 100
     beat = 60 / bpm
     L = 128 * beat
@@ -274,7 +285,7 @@ def music_ghostface() -> np.ndarray:
     ostinato = ["E3", "G3", "B3", "G3", "E3", "G3", "C4", "B3", "E3", "G3", "B3", "G3", "D#3", "F#3", "B3", "F#3"]
     for i in range(int((L + F) / (beat / 2))):
         name = ostinato[i % len(ostinato)]
-        place(mix, pluck(note_hz(name), 0.4, 0.2), i * beat / 2, 0.28)
+        place(mix, pluck(rng, note_hz(name), 0.4, 0.2), i * beat / 2, 0.28)
     cello = lowpass(saw(note_hz("E2"), n) + saw(note_hz("E2") * 1.002, n), 500) * 0.08
     mix += cello * (0.6 + 0.4 * np.sin(2 * np.pi * t_axis(L + F) / (16 * beat)))
     ring_n = int(1.2 * SR)
@@ -285,7 +296,7 @@ def music_ghostface() -> np.ndarray:
         at = k * 16 * beat + 12 * beat
         place(mix, ring, at, 0.07)
         place(mix, ring, at + 1.8, 0.05)
-    mix = lowpass(reverb(mix, 2.0, 0.25), 5000)
+    mix = lowpass(reverb(rng, mix, 2.0, 0.25), 5000)
     return widen(loopify(mix, L, F), 9)
 
 
@@ -295,14 +306,14 @@ def drum_kick() -> np.ndarray:
     return sine(f, m) * env_exp(m, 0.18, 0.001)
 
 
-def drum_snare() -> np.ndarray:
+def drum_snare(rng: np.random.Generator) -> np.ndarray:
     m = int(0.25 * SR)
-    return (0.6 * bandpass(noise(m), 1500, 7000) + 0.5 * sine(190, m)) * env_exp(m, 0.08, 0.001)
+    return (0.6 * bandpass(noise(rng, m), 1500, 7000) + 0.5 * sine(190, m)) * env_exp(m, 0.08, 0.001)
 
 
-def drum_hat() -> np.ndarray:
+def drum_hat(rng: np.random.Generator) -> np.ndarray:
     m = int(0.06 * SR)
-    return highpass(noise(m), 7000) * env_exp(m, 0.02, 0.0005)
+    return highpass(noise(rng, m), 7000) * env_exp(m, 0.02, 0.0005)
 
 
 def drum_tom(hz: float) -> np.ndarray:
@@ -312,9 +323,10 @@ def drum_tom(hz: float) -> np.ndarray:
 
 
 def music_fight() -> np.ndarray:
+    rng = rng_for("fight")
     bpm = 120
     beat = 60 / bpm
-    bars = 24
+    bars = 32  # 32 bars x 4 beats at 120 BPM = 64 s
     L = bars * 4 * beat
     F = 1.0
     n = int((L + F) * SR)
@@ -325,9 +337,9 @@ def music_fight() -> np.ndarray:
         if b % 4 in (0, 2):
             place(mix, drum_kick(), t, 0.9)
         if b % 4 in (1, 3):
-            place(mix, drum_snare(), t, 0.45)
+            place(mix, drum_snare(rng), t, 0.45)
         for h in (0, 0.5):
-            place(mix, drum_hat(), t + h * beat, 0.18)
+            place(mix, drum_hat(rng), t + h * beat, 0.18)
         if b % 16 == 15:
             for k, hz in enumerate((140, 110, 85)):
                 place(mix, drum_tom(hz), t + k * beat / 3, 0.5)
@@ -343,11 +355,12 @@ def music_fight() -> np.ndarray:
         st = signal.lfilter(*signal.butter(2, 2000, fs=SR), st)  # gentle tame
         st = st * env_exp(m, 0.18, 0.004) * (cutoff_env / cutoff_env.max())
         place(mix, st, bar * 4 * beat + 2.5 * beat, 0.08)
-    mix = reverb(mix, 1.2, 0.15)
+    mix = reverb(rng, mix, 1.2, 0.15)
     return widen(loopify(mix, L, F), 7)
 
 
 def music_switcher() -> np.ndarray:
+    rng = rng_for("switcher")
     L, F = 60.0, 3.0
     n = int((L + F) * SR)
     tt = t_axis(L + F)
@@ -357,50 +370,51 @@ def music_switcher() -> np.ndarray:
     step = SR // 10
     for i in range(0, n, step):  # block-wise filter sweep
         out[i:i + step] = lowpass(raw[max(0, i - 4800):i + step], float(cutoff[i]))[-len(raw[i:i + step]):]
-    mix = out * 0.25 + lowpass(brown(n), 300) * 0.15
+    mix = out * 0.25 + lowpass(brown(rng, n), 300) * 0.15
     for at in np.arange(5, L + F - 3, 15):
         boom = drum_tom(42)
         place(mix, lowpass(boom, 200), at, 0.6)
-    mix = reverb(mix, 3.5, 0.4)
+    mix = reverb(rng, mix, 3.5, 0.4)
     return widen(loopify(mix, L, F), 13)
 
 
 # ---------------------------------------------------------------- sfx
 
-def swoosh(dur: float, lo: float, hi: float, down: bool = True) -> np.ndarray:
+def swoosh(rng: np.random.Generator, dur: float, lo: float, hi: float, down: bool = True) -> np.ndarray:
     m = int(dur * SR)
     out = np.zeros(m)
     seg = SR // 100
     freqs = np.linspace(hi, lo, m // seg + 1) if down else np.linspace(lo, hi, m // seg + 1)
-    src = noise(m)
+    src = noise(rng, m)
     for k, i in enumerate(range(0, m, seg)):
         f = freqs[k]
         out[i:i + seg] = bandpass(src[max(0, i - 2 * seg):i + seg], f * 0.7, min(f * 1.4, SR / 2 - 100))[-len(src[i:i + seg]):]
     return out * np.sin(np.linspace(0, np.pi, m)) ** 1.5
 
 
-def punch(weight: float = 1.0) -> np.ndarray:
+def punch(rng: np.random.Generator, weight: float = 1.0) -> np.ndarray:
     m = int(0.4 * SR)
     f = 55 + 120 * np.exp(-np.arange(m) / SR / (0.03 * weight))
     body = sine(f, m) * env_exp(m, 0.12 * weight, 0.001)
-    crack = bandpass(noise(m), 800, 5000) * env_exp(m, 0.015 * weight, 0.0005)
+    crack = bandpass(noise(rng, m), 800, 5000) * env_exp(m, 0.015 * weight, 0.0005)
     return body + 0.6 * crack
 
 
-def clang(base: float = 520, dur: float = 0.6) -> np.ndarray:
+def clang(rng: np.random.Generator, base: float = 520, dur: float = 0.6) -> np.ndarray:
     return bell(base, dur, ((1, 1), (2.41, 0.7), (3.87, 0.5), (5.13, 0.4), (7.2, 0.25))) + \
-        0.4 * highpass(noise(int(dur * SR)), 2000) * env_exp(int(dur * SR), 0.01)
+        0.4 * highpass(noise(rng, int(dur * SR)), 2000) * env_exp(int(dur * SR), 0.01)
 
 
 def sfx_all() -> dict[str, np.ndarray]:
+    rng = rng_for("sfx")
     s: dict[str, np.ndarray] = {}
     m = int(0.06 * SR)
-    s["ui_move"] = sine(1250, m) * env_exp(m, 0.015) + 0.2 * highpass(noise(m), 4000) * env_exp(m, 0.003)
+    s["ui_move"] = sine(1250, m) * env_exp(m, 0.015) + 0.2 * highpass(noise(rng, m), 4000) * env_exp(m, 0.003)
     m = int(0.18 * SR)
     blip = lambda hz, d: sine(hz, int(d * SR)) * env_exp(int(d * SR), d / 3)  # noqa: E731
     s["ui_select"] = np.concatenate([blip(880, 0.07), blip(1320, 0.11)])
     s["ui_back"] = np.concatenate([blip(990, 0.07), blip(660, 0.11)])
-    crunch = lambda: bandpass(noise(int(0.12 * SR)), 300, 1800) * env_exp(int(0.12 * SR), 0.04) + 0.6 * punch(0.4)[: int(0.12 * SR)]  # noqa: E731
+    crunch = lambda: bandpass(noise(rng, int(0.12 * SR)), 300, 1800) * env_exp(int(0.12 * SR), 0.04) + 0.6 * punch(rng, 0.4)[: int(0.12 * SR)]  # noqa: E731
     chomp = np.zeros(int(0.55 * SR))
     place(chomp, crunch(), 0.0)
     place(chomp, crunch(), 0.24, 0.85)
@@ -411,55 +425,55 @@ def sfx_all() -> dict[str, np.ndarray]:
     for k in range(5):
         place(sparkle, bell(2000 + 400 * k, 0.2), 0.25 + 0.04 * k, 0.15)
     s["play"] = sine(f, m) * env_adsr(m, 0.01, 0.1, 0.7, 0.15) * 0.6 + sparkle
-    s["train"] = swoosh(0.35, 400, 4000) * 0.9
-    s["hit"] = punch(1.0)
-    s["heavy_hit"] = punch(1.8) + 0.5 * lowpass(noise(int(0.4 * SR)), 300) * env_exp(int(0.4 * SR), 0.15)
-    crit = punch(1.6)
-    ring = clang(1400, 0.6)
+    s["train"] = swoosh(rng, 0.35, 400, 4000) * 0.9
+    s["hit"] = punch(rng, 1.0)
+    s["heavy_hit"] = punch(rng, 1.8) + 0.5 * lowpass(noise(rng, int(0.4 * SR)), 300) * env_exp(int(0.4 * SR), 0.15)
+    crit = punch(rng, 1.6)
+    ring = clang(rng, 1400, 0.6)
     crit_out = np.zeros(int(0.7 * SR))
     place(crit_out, crit, 0)
     place(crit_out, ring, 0.0, 0.35)
     s["crit"] = crit_out
-    s["block"] = clang(520, 0.5)
-    s["miss"] = swoosh(0.28, 600, 3000) * 0.7
+    s["block"] = clang(rng, 520, 0.5)
+    s["miss"] = swoosh(rng, 0.28, 600, 3000) * 0.7
     sj = np.zeros(int(0.9 * SR))
     for k in range(3):
-        place(sj, swoosh(0.18, 1500, 7000), k * 0.16)
-    place(sj, clang(2200, 0.5), 0.5, 0.4)
+        place(sj, swoosh(rng, 0.18, 1500, 7000), k * 0.16)
+    place(sj, clang(rng, 2200, 0.5), 0.5, 0.4)
     s["special_jason"] = sj
     sf = np.zeros(int(1.2 * SR))
     for k in range(4):
         mm = int(0.6 * SR)
         fr = np.linspace(2600 + 150 * k, 1700 + 150 * k, mm)
-        place(sf, sine(fr, mm) * env_exp(mm, 0.25) * 0.3 + bandpass(noise(mm), 2000, 6000) * env_exp(mm, 0.1) * 0.3, k * 0.03)
-    s["special_freddy"] = reverb(sf, 1.5, 0.45)
+        place(sf, sine(fr, mm) * env_exp(mm, 0.25) * 0.3 + bandpass(noise(rng, mm), 2000, 6000) * env_exp(mm, 0.1) * 0.3, k * 0.03)
+    s["special_freddy"] = reverb(rng, sf, 1.5, 0.45)
     sp = np.zeros(int(1.4 * SR))
     for _ in range(18):
-        place(sp, bell(RNG.uniform(1500, 3500), 0.25, ((1, 1), (2.3, 0.5))), RNG.uniform(0, 0.8), 0.35)
-    place(sp, punch(2.2), 0.75, 0.9)
-    s["special_pinhead"] = reverb(sp, 1.8, 0.35)
+        place(sp, bell(rng.uniform(1500, 3500), 0.25, ((1, 1), (2.3, 0.5))), rng.uniform(0, 0.8), 0.35)
+    place(sp, punch(rng, 2.2), 0.75, 0.9)
+    s["special_pinhead"] = reverb(rng, sp, 1.8, 0.35)
     sg = np.zeros(int(1.0 * SR))
     for k in range(5):
-        place(sg, swoosh(0.12, 2000, 8000) + 0.4 * punch(0.5)[: int(0.12 * SR)], k * 0.11)
+        place(sg, swoosh(rng, 0.12, 2000, 8000) + 0.4 * punch(rng, 0.5)[: int(0.12 * SR)], k * 0.11)
     rn = int(0.3 * SR)
     place(sg, lowpass((sine(440, rn) + sine(480, rn)) * (signal.square(2 * np.pi * 20 * np.arange(rn) / SR) > 0), 3000) * 0.25, 0.65)
     s["special_ghostface"] = sg
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
-    s["ko"] = reverb(boom + 0.3 * lowpass(noise(boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)
-    sting = pad([note_hz("A2"), note_hz("C3"), note_hz("E3"), note_hz("G#3")], 3.0, 1200)
+    s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)
+    sting = pad(rng, [note_hz("A2"), note_hz("C3"), note_hz("E3"), note_hz("G#3")], 3.0, 1200)
     place(sting, bell(note_hz("A4"), 2.5), 0.2, 0.3)
-    s["tombstone"] = reverb(sting, 2.5, 0.4)
+    s["tombstone"] = reverb(rng, sting, 2.5, 0.4)
     gl = np.zeros(int(0.6 * SR))
     for k in range(10):
-        mm = int(RNG.uniform(0.02, 0.06) * SR)
-        tone = signal.square(2 * np.pi * RNG.uniform(200, 2000) * np.arange(mm) / SR) * 0.3 + noise(mm) * 0.2
+        mm = int(rng.uniform(0.02, 0.06) * SR)
+        tone = signal.square(2 * np.pi * rng.uniform(200, 2000) * np.arange(mm) / SR) * 0.3 + noise(rng, mm) * 0.2
         place(gl, np.round(tone * 4) / 4, k * 0.055)
     s["gotcha"] = gl
     lv = np.zeros(int(1.2 * SR))
     for k, nm in enumerate(["C5", "E5", "G5", "C6"]):
         place(lv, bell(note_hz(nm), 0.8, ((1, 1), (2, 0.3), (3, 0.1))), k * 0.09, 0.5)
-    s["levelup"] = reverb(lv, 1.5, 0.3)
+    s["levelup"] = reverb(rng, lv, 1.5, 0.3)
     rf = np.zeros(int(0.5 * SR))
     for k, hz in enumerate((330, 247)):
         mm = int(0.18 * SR)
@@ -502,7 +516,7 @@ def main() -> int:
         print(f"music/{name}.ogg {len(x) / SR:.1f}s")
     if not args.only or "sfx" in args.only:
         for name, x in sfx_all().items():
-            write_ogg(edge_fade(normalize(x, -1.0)), out / "sfx" / f"{name}.ogg", "64k")
+            write_ogg(normalize(edge_fade(x), -1.0), out / "sfx" / f"{name}.ogg", "64k")
             print(f"sfx/{name}.ogg {len(x) / SR:.2f}s")
     return 0
 
