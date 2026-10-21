@@ -144,7 +144,7 @@ private const val RISE_MS = 260L
  * OK skips to the end after 2s. [onDone] is called exactly once, by the skip or at the end. Back does
  * nothing: the reveal has to be seen.
  *
- * Music (Task 15): the router plays no track on this screen, so the pet's music fades out as it starts.
+ * Music: the router plays no track on this screen, so the pet's music fades out as it starts.
  */
 @Composable
 fun FakeDeathScreen(

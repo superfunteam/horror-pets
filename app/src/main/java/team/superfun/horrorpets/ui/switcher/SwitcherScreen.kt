@@ -138,7 +138,7 @@ private const val IDLE_STAGGER_MS = 230L
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value takes focus and
  * puts the spotlight back on its starting pet; null (the screen is fading out) turns off Back and the keys.
  *
- * Music (Task 15): this screen's track is `switcher`, chosen by the router from the screen type.
+ * Music: this screen's track is `switcher`, chosen by the router from the screen type.
  */
 @Composable
 fun SwitcherScreen(

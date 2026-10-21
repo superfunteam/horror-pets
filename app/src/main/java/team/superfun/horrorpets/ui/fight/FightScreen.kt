@@ -542,7 +542,6 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     }
 
     /** Plays [anim] once and returns when it ends, or after [timeoutMs] if it never reports. */
-    /** Plays [anim] once and returns when it ends, or after [timeoutMs] if it never reports. */
     suspend fun play(anim: Anim, timeoutMs: Long) {
         val p = show(anim)
         withTimeoutOrNull(timeoutMs) { p.ended.await() }

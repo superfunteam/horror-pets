@@ -3,6 +3,7 @@ package team.superfun.horrorpets.model
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class ModelTest {
@@ -33,7 +34,7 @@ class ModelTest {
         assertEquals(1, p.level)
         assertEquals(0, p.xp)
         assertEquals(0.0, p.moodBonus, 0.0)
-        assertEquals(false, p.fakeDeathPending)
+        assertFalse(p.fakeDeathPending)
     }
 
     @Test
