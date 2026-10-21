@@ -1,8 +1,10 @@
 package team.superfun.horrorpets.ui.fight
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
@@ -10,6 +12,9 @@ import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialStyle
+import team.superfun.horrorpets.model.spec
+import kotlin.random.Random
 
 class TurnPlanTest {
     @Test
@@ -67,6 +72,64 @@ class TurnPlanTest {
     }
 
     @Test
+    fun aDancersSpecialIsItsDanceAndEveryOtherSwingIsAnAttack() {
+        val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+        assertEquals(Anim.DANCE, swingAnim(special, dancesSpecial = true))
+        assertEquals(Anim.ATTACK, swingAnim(special, dancesSpecial = false))
+        for (event in listOf(
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false),
+            FightEvent.Hit(Side.CPU, Move.HEAVY, 35, crit = true),
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 8, crit = false, counter = true),
+            FightEvent.Miss(Side.CPU, Move.HEAVY),
+            FightEvent.Blocked(Side.PLAYER),
+        )) {
+            assertEquals("$event", Anim.ATTACK, swingAnim(event, dancesSpecial = true))
+        }
+    }
+
+    @Test
+    fun aDancedSpecialIsDancedOnlyWhenTheSpritesShipADance() {
+        assertTrue(dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = true))
+        // Saw Dance on sprites without a dance strip: a plain ATTACK swing, never a missing strip.
+        assertFalse(dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = false))
+        val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+        assertEquals(Anim.ATTACK, swingAnim(special, dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = false)))
+        // A special that is not danced swings its ATTACK even when the pet could dance.
+        for (style in SpecialStyle.entries - SpecialStyle.SAW_DANCE) {
+            assertFalse("$style", dancesSpecial(style, hasDance = true))
+            assertEquals("$style", Anim.ATTACK, swingAnim(special, dancesSpecial(style, hasDance = true)))
+        }
+    }
+
+    @Test
+    fun onlyTheSawDanceIsDanced() {
+        assertEquals(listOf(SpecialStyle.SAW_DANCE), SpecialStyle.entries.filter { it.danced })
+        assertEquals(SpecialStyle.SAW_DANCE, PetId.LEATHERFACE.spec.special)
+    }
+
+    @Test
+    fun aDanceLandsAThirdOfTheWayInAndIsDancedToTheEnd() {
+        // Leatherface's dance: 90 x5 then 110, 550 ms. A third in (183 ms) is the third frame, the saw overhead.
+        val dance = AnimSpec("dance.png", 6, listOf(90, 90, 90, 90, 90, 110), loop = false)
+        assertEquals(180L, swingImpactMs(Anim.DANCE, dance))
+        // The rest of his spin (370 ms) fits in the usual hold, so he finishes it before hopping back.
+        assertEquals(AFTER_IMPACT_MS, swingHoldMs(Anim.DANCE, dance, impact = 180L))
+        // A longer dance is danced to its end: 1200 ms, landing 400 ms in, holds the 800 ms left.
+        val long = AnimSpec("dance.png", 6, List(6) { 200 }, loop = false)
+        assertEquals(400L, swingImpactMs(Anim.DANCE, long))
+        assertEquals(800L, swingHoldMs(Anim.DANCE, long, impact = 400L))
+        assertEquals(0L, swingImpactMs(Anim.DANCE, AnimSpec("dance.png", 0, emptyList(), loop = false)))
+    }
+
+    @Test
+    fun anAttackStillLandsOnItsSnapFrameAndCutsItsRecoveryShort() {
+        val attack = AnimSpec("attack.png", 6, listOf(300, 140, 180, 75, 140, 360), loop = false)
+        assertEquals(impactMs(attack), swingImpactMs(Anim.ATTACK, attack))
+        assertEquals(AFTER_IMPACT_MS, swingHoldMs(Anim.ATTACK, attack, impact = 620L))
+        assertEquals(420L, AFTER_IMPACT_MS)
+    }
+
+    @Test
     fun noEventsNoBeats() {
         assertTrue(beatsOf(emptyList(), winner = Side.CPU).isEmpty())
     }
@@ -106,30 +169,41 @@ class TurnSoundsTest {
     fun specialsUseTheAttackersPetSound() {
         assertEquals(listOf("special_jason"), sounds(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)).sfx)
         assertEquals(listOf("special_freddy"), sounds(FightEvent.Hit(Side.CPU, Move.SPECIAL, 40, crit = false)).sfx)
+        val sawDance = FightState(
+            player = Fighter(PetId.LEATHERFACE, 1, 100, 100, 20.0, 50, 0),
+            cpu = Fighter(PetId.MICHAEL, 1, 100, 100, 20.0, 50, 0),
+        )
+        assertEquals(listOf("special_leatherface"), TurnSounds(sawDance).of(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)).sfx)
     }
 
     @Test
-    fun critsPlayCritAndTheAnnouncerOncePerTurn() {
+    fun critsPlayCritWithoutCallouts() {
         val s = sounds(
             FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true),
             FightEvent.Hit(Side.CPU, Move.HEAVY, 30, crit = true),
         )
         assertEquals(listOf("crit", "crit"), s.sfx)
-        assertEquals(listOf("critical"), s.voice)
+        assertTrue(s.voice.isEmpty())
     }
 
     @Test
-    fun theAnnouncerSaysCriticalWithTheFirstCritNotLater() {
-        val turn = TurnSounds(fight)
-        assertTrue(turn.of(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)).voice.isEmpty())
-        assertEquals(listOf("critical"), turn.of(FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)).voice)
+    fun theCalloutIsSaidOnceWithTheEventItReactsTo() {
+        val crit = FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), crit, crit)
+        val turn = TurnSounds(fight, events, Callouts(Random(7)))
+        assertTrue(turn.of(events[0]).voice.isEmpty())
+        val said = turn.of(crit).voice
+        assertEquals(1, said.size)
+        assertTrue(said.single() in Moment.CRIT.lines)
+        assertTrue(turn.of(crit).voice.isEmpty())
     }
 
     @Test
-    fun eachTurnAnnouncesItsOwnCrit() {
-        val crit = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true)
-        assertEquals(listOf("critical"), TurnSounds(fight).of(crit).voice)
-        assertEquals(listOf("critical"), TurnSounds(fight).of(crit).voice)
+    fun theTurnThatEndsTheFightLeavesTheCallToKnockout() {
+        val over = fight.copy(winner = Side.PLAYER)
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 60, crit = true), FightEvent.Ko(Side.CPU))
+        val turn = TurnSounds(over, events, Callouts(Random(7)))
+        assertEquals(listOf("ko"), events.flatMap { turn.of(it).voice })
     }
 
     @Test
@@ -160,6 +234,70 @@ class TurnSoundsTest {
             FightEvent.Interrupted(Side.PLAYER),
         )
         assertEquals(listOf("miss", "hit"), s.sfx)
+    }
+}
+
+/** The announcer's reactions: which moment of a turn gets the call, how often, and never twice in a row. */
+class CalloutsTest {
+    /** A random source that always rolls [roll] and always picks the first line. */
+    private fun fixed(roll: Float) = object : Random() {
+        override fun nextBits(bitCount: Int) = 0
+        override fun nextFloat() = roll
+    }
+
+    private val block = FightEvent.Blocked(Side.CPU)
+    private val counter = FightEvent.Hit(Side.CPU, Move.STRIKE, 6, crit = false, counter = true)
+    private val heavy = FightEvent.Hit(Side.PLAYER, Move.HEAVY, 18, crit = false)
+    private val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+    private val crit = FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)
+    private val miss = FightEvent.Miss(Side.PLAYER, Move.HEAVY)
+
+    @Test
+    fun momentsAreSpecialsCritsHeaviesBlocksAndWhiffs() {
+        assertEquals(Moment.SPECIAL, momentOf(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = true)))
+        assertEquals(Moment.CRIT, momentOf(FightEvent.Hit(Side.PLAYER, Move.HEAVY, 30, crit = true)))
+        assertEquals(Moment.HEAVY, momentOf(heavy))
+        assertEquals(Moment.BLOCK, momentOf(block))
+        assertEquals(Moment.MISS, momentOf(miss))
+        assertEquals(null, momentOf(counter))
+        assertEquals(null, momentOf(FightEvent.Hit(Side.CPU, Move.STRIKE, 9, crit = false)))
+        assertEquals(null, momentOf(FightEvent.Interrupted(Side.PLAYER)))
+    }
+
+    @Test
+    fun theBiggestMomentOfTheTurnGetsTheCall() {
+        val call = Callouts(fixed(0f)).pick(listOf(miss, block, counter, crit, special), finishing = false)
+        assertEquals(special, call?.event)
+        assertTrue(call!!.line in Moment.SPECIAL.lines)
+    }
+
+    @Test
+    fun specialsAndCritsAlwaysGetACall() {
+        assertEquals(special, Callouts(fixed(0.999f)).pick(listOf(special), finishing = false)?.event)
+        assertEquals(crit, Callouts(fixed(0.999f)).pick(listOf(crit), finishing = false)?.event)
+    }
+
+    @Test
+    fun smallerMomentsOnlySometimes() {
+        for (e in listOf(heavy, block, miss)) {
+            assertEquals(null, Callouts(fixed(0.999f)).pick(listOf(e), finishing = false))
+            assertEquals(e, Callouts(fixed(0f)).pick(listOf(e), finishing = false)?.event)
+        }
+    }
+
+    @Test
+    fun quietTurnsAndTheFinishingTurnGetNone() {
+        assertEquals(null, Callouts(fixed(0f)).pick(listOf(counter, FightEvent.SpecialReady(Side.CPU)), finishing = false))
+        assertEquals(null, Callouts(fixed(0f)).pick(emptyList(), finishing = false))
+        assertEquals(null, Callouts(fixed(0f)).pick(listOf(special), finishing = true))
+    }
+
+    @Test
+    fun neverTheSameLineTwiceInARow() {
+        val callouts = Callouts(Random(42))
+        val said = List(300) { callouts.pick(listOf(if (it % 3 == 0) special else crit), finishing = false)!!.line }
+        said.zipWithNext().forEach { (a, b) -> assertFalse("$a twice", a == b) }
+        assertEquals(Moment.SPECIAL.lines.toSet() + Moment.CRIT.lines, said.toSet())
     }
 }
 

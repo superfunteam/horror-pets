@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.ui.fight
 
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
@@ -8,6 +9,7 @@ import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
+import team.superfun.horrorpets.model.SpecialStyle
 
 /** One step of a fight turn's playback, in the order the fight screen plays them. */
 internal sealed interface Beat {
@@ -51,34 +53,39 @@ private val Silent = FightSounds(emptyList(), emptyList())
 /**
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
  * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
- * instead, and the announcer says `critical` with the turn's first crit only; a miss is `miss`, a block
- * `block`, and a KO is the `ko` boom with the announcer saying `ko`. Interrupts and a filled meter are silent.
+ * instead; a miss is `miss`, a block `block`, and a KO is the `ko` boom with the announcer saying `ko`.
+ * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
+ * one from [events], is said with the event it reacts to.
  *
- * Make one per turn: it remembers whether the announcer has already called a crit. [fight] is the state
- * after the turn, used to tell which pet a side is.
+ * Make one per turn, from the turn's [events]. [fight] is the state after the turn, used to tell which pet
+ * a side is and whether the turn ended the fight.
  */
-internal class TurnSounds(private val fight: FightState) {
-    private var criticalCalled = false
+internal class TurnSounds(
+    private val fight: FightState,
+    events: List<FightEvent> = emptyList(),
+    callouts: Callouts? = null,
+) {
+    private var callout = callouts?.pick(events, finishing = fight.winner != null)
 
-    fun of(event: FightEvent): FightSounds = when (event) {
-        is FightEvent.Hit -> when {
-            event.crit -> {
-                val voice = if (criticalCalled) emptyList() else listOf("critical")
-                criticalCalled = true
-                FightSounds(listOf("crit"), voice)
+    fun of(event: FightEvent): FightSounds {
+        val sfx = when (event) {
+            is FightEvent.Hit -> when {
+                event.crit -> "crit"
+                event.move == Move.HEAVY -> "heavy_hit"
+                event.move == Move.SPECIAL -> {
+                    val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
+                    "special_${attacker.id.name.lowercase()}"
+                }
+                else -> "hit"
             }
-            event.move == Move.HEAVY -> FightSounds(listOf("heavy_hit"), emptyList())
-            event.move == Move.SPECIAL -> {
-                val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
-                FightSounds(listOf("special_${attacker.id.name.lowercase()}"), emptyList())
-            }
-            else -> FightSounds(listOf("hit"), emptyList())
+            is FightEvent.Miss -> "miss"
+            is FightEvent.Blocked -> "block"
+            is FightEvent.Ko -> return FightSounds(listOf("ko"), listOf("ko"))
+            is FightEvent.Interrupted, is FightEvent.SpecialReady -> return Silent
         }
-
-        is FightEvent.Miss -> FightSounds(listOf("miss"), emptyList())
-        is FightEvent.Blocked -> FightSounds(listOf("block"), emptyList())
-        is FightEvent.Ko -> FightSounds(listOf("ko"), listOf("ko"))
-        is FightEvent.Interrupted, is FightEvent.SpecialReady -> Silent
+        val call = callout?.takeIf { it.event == event }
+        if (call != null) callout = null
+        return FightSounds(listOf(sfx), listOfNotNull(call?.line))
     }
 }
 
@@ -92,6 +99,51 @@ internal fun impactMs(attack: AnimSpec): Long {
     var snap = 0
     for (i in d.indices) if (d[i] < d[snap]) snap = i
     return d.take(snap).sumOf { it.coerceAtLeast(0).toLong() }
+}
+
+/** The attacker hops back this long after the impact, cutting the end of its swing's recovery short. */
+internal const val AFTER_IMPACT_MS = 420L
+
+/**
+ * Whether a pet performs its special with its DANCE: its special [style] is danced (Saw Dance) and its sprites
+ * ship a dance ([hasDance]). A danced special on sprites without one swings an ATTACK like any other.
+ */
+internal fun dancesSpecial(style: SpecialStyle, hasDance: Boolean): Boolean = style.danced && hasDance
+
+/**
+ * What an attacker plays for the swing that delivers [event]: its DANCE for a special it dances
+ * ([dancesSpecial]: its special is `danced` and its sprites ship a dance, as Leatherface's Saw Dance does),
+ * otherwise ATTACK.
+ */
+internal fun swingAnim(event: FightEvent, dancesSpecial: Boolean): Anim =
+    if (dancesSpecial && event is FightEvent.Hit && event.move == Move.SPECIAL) Anim.DANCE else Anim.ATTACK
+
+/**
+ * When a [swing] played from [spec] lands, in ms from its first frame. An ATTACK lands on its snap frame
+ * (see [impactMs]). A DANCE has no snap: it lands at the start of the frame on screen a third of the way
+ * through, once the wind-up is done (Leatherface's saw is overhead).
+ */
+internal fun swingImpactMs(swing: Anim, spec: AnimSpec): Long {
+    if (swing != Anim.DANCE) return impactMs(spec)
+    val third = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() } / 3
+    var start = 0L
+    for (d in spec.durationsMs) {
+        val end = start + d.coerceAtLeast(0)
+        if (end > third) return start
+        start = end
+    }
+    return start
+}
+
+/**
+ * How long the attacker keeps swinging after the [impact] before it hops back: [AFTER_IMPACT_MS] for an
+ * ATTACK, whose last frames only ease back to standing, and the rest of a DANCE (never less), which is
+ * danced to its end.
+ */
+internal fun swingHoldMs(swing: Anim, spec: AnimSpec, impact: Long): Long {
+    if (swing != Anim.DANCE) return AFTER_IMPACT_MS
+    val rest = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() } - impact
+    return maxOf(AFTER_IMPACT_MS, rest)
 }
 
 /** Where a side's HP bar and special meter stand, in hit points and meter points. */

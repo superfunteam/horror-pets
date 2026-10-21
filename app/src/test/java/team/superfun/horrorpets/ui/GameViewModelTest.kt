@@ -125,6 +125,8 @@ private class Rig(
         rng = rng,
         scope = scope,
         feedAnim = { if (it == PetId.FREDDY || it == PetId.GHOSTFACE) Anim.WORK else Anim.REVIEW },
+        // As the real manifests have it: only Leatherface ships a dance.
+        canDance = { it == PetId.LEATHERFACE },
         onError = { errors += it },
         clockFloorMs = clockFloorMs,
     )
@@ -207,8 +209,11 @@ class GameViewModelTest {
 
     private val originalFour = listOf(PetId.JASON, PetId.FREDDY, PetId.PINHEAD, PetId.GHOSTFACE)
 
+    /** The killers added since v0.1.0. */
+    private val sinceV010 = listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE)
+
     @Test
-    fun anUpgradeAfterAWeekAwayFakeKillsTheOriginalFourButChuckyAndMichaelArriveFresh() {
+    fun aV010UpgradeAfterAWeekAwayFakeKillsTheOriginalFourButTheNewcomersArriveFresh() {
         val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
         val rig = Rig(loaded).started()
 
@@ -219,8 +224,8 @@ class GameViewModelTest {
             assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
         }
         assertEquals(Screen.FakeDeath(PetId.GHOSTFACE), rig.ui.screen)
-        // The two new killers have only just arrived: no time away, no fake death, nothing decayed.
-        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+        // The three killers added since v0.1.0 have only just arrived: no time away, no fake death, nothing decayed.
+        for (id in sinceV010) {
             assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
             assertEquals("$id saved", PetState(id), rig.store.last.pets.getValue(id))
         }
@@ -236,19 +241,19 @@ class GameViewModelTest {
     @Test
     fun anUpgradeUnderAStaleClockKeepsTheNewcomersFreshUntilTheClockIsGood() {
         // First launch after the update, before the TV's clock has synced: nothing is applied, and the save
-        // written now must still say that Chucky and Michael have only just joined.
+        // written now must still say that Chucky, Michael and Leatherface have only just joined.
         val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
         val stale = Rig(loaded, clock = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)).started()
         val saved = stale.store.last
-        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) assertTrue("$id", saved.pets.getValue(id).freshJoin)
+        for (id in sinceV010) assertTrue("$id", saved.pets.getValue(id).freshJoin)
         assertEquals(T0 - 8 * DAY, saved.lastSeenMs)
 
-        // Next launch with a good clock: the original four decay and fake-die, the new two arrive fresh.
+        // Next launch with a good clock: the original four decay and fake-die, the new three arrive fresh.
         val reloaded = SaveCodec.decode(SaveCodec.encode(saved))
         val good = Rig(reloaded).started()
         val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
         for (id in originalFour) assertEquals("$id", asBefore.pets.getValue(id), good.game.pets.getValue(id))
-        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+        for (id in sinceV010) {
             assertEquals("$id", PetState(id), good.game.pets.getValue(id))
             assertEquals("$id saved", PetState(id), good.store.last.pets.getValue(id))
         }
@@ -259,13 +264,66 @@ class GameViewModelTest {
         val loaded = SaveCodec.decode(v010Save(T0 - 10 * HOUR))
         val rig = Rig(loaded).started()
         assertEquals(12.5 + 40.0, rig.game.pets.getValue(PetId.JASON).hunger, 1e-9)
-        assertEquals(PetState(PetId.CHUCKY), rig.game.pets.getValue(PetId.CHUCKY))
-        assertEquals(PetState(PetId.MICHAEL), rig.game.pets.getValue(PetId.MICHAEL))
+        for (id in sinceV010) assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
 
         // Once they have joined, they decay like everyone else.
         rig.clock.now = T0 + 10 * HOUR
         rig.vm.tick()
         assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.CHUCKY).hunger, 1e-9)
+        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.LEATHERFACE).hunger, 1e-9)
+    }
+
+    /** A save as v0.2.0 wrote it (six pets, every field, the fresh-join mark included), last seen [lastSeenMs]. */
+    private fun v020Save(lastSeenMs: Long): String = """
+        {"version":1,"pets":{
+        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false},
+        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":false,"freshJoin":false},
+        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":false},
+        "GHOSTFACE":{"id":"GHOSTFACE","hunger":30.0,"funLevel":55.0,"strength":61.0,"level":7,"xp":640,"moodBonus":12.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false,"freshJoin":false},
+        "CHUCKY":{"id":"CHUCKY","hunger":35.0,"funLevel":70.0,"strength":26.0,"level":2,"xp":40,"moodBonus":0.0,"wins":2,"losses":1,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false},
+        "MICHAEL":{"id":"MICHAEL","hunger":45.0,"funLevel":50.0,"strength":44.0,"level":4,"xp":210,"moodBonus":-3.0,"wins":6,"losses":4,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":false}},
+        "selected":"MICHAEL","lastSeenMs":$lastSeenMs}
+    """.trimIndent()
+
+    private val v020Six = listOf(PetId.JASON, PetId.FREDDY, PetId.PINHEAD, PetId.GHOSTFACE, PetId.CHUCKY, PetId.MICHAEL)
+
+    @Test
+    fun aV020UpgradeAfterAWeekAwayFakeKillsTheSixButLeatherfaceArrivesFresh() {
+        val loaded = SaveCodec.decode(v020Save(T0 - 8 * DAY))
+        val rig = Rig(loaded).started()
+
+        // The six killers v0.2.0 had decay and fake-die exactly as they did before the update.
+        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in v020Six }), T0).first
+        for (id in v020Six) {
+            assertEquals("$id", asBefore.pets.getValue(id), rig.game.pets.getValue(id))
+            assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
+        }
+        assertEquals(Screen.FakeDeath(PetId.MICHAEL), rig.ui.screen)
+        // Leatherface has only just arrived: no time away, no fake death, nothing decayed, in memory and saved.
+        assertEquals(PetState(PetId.LEATHERFACE), rig.game.pets.getValue(PetId.LEATHERFACE))
+        assertEquals(PetState(PetId.LEATHERFACE), rig.store.last.pets.getValue(PetId.LEATHERFACE))
+        assertEquals(T0, rig.store.last.lastSeenMs)
+
+        // After the reveal, picking Leatherface goes straight Home: no R.I.P. for a pet that just moved in.
+        rig.vm.onFakeDeathDone()
+        rig.vm.openSwitcher()
+        rig.vm.onSwitcherPick(PetId.LEATHERFACE)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(PetId.LEATHERFACE, rig.game.selected)
+    }
+
+    @Test
+    fun aV020UpgradeAfterTenHoursDecaysTheSixButNotLeatherface() {
+        val loaded = SaveCodec.decode(v020Save(T0 - 10 * HOUR))
+        val rig = Rig(loaded).started()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(45.0 + 40.0, rig.game.pets.getValue(PetId.MICHAEL).hunger, 1e-9)
+        assertEquals(PetState(PetId.LEATHERFACE), rig.game.pets.getValue(PetId.LEATHERFACE))
+
+        // Once he has joined, he decays like everyone else.
+        rig.clock.now = T0 + 10 * HOUR
+        rig.vm.tick()
+        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.LEATHERFACE).hunger, 1e-9)
     }
 
     @Test
@@ -395,9 +453,9 @@ class GameViewModelTest {
         rig.vm.onFightPressed()
         assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
         assertFalse(rig.ui.busy)
-        // The UI derives the candidates from game.selected: everyone else, so five of six pets.
+        // The UI derives the candidates from game.selected: everyone else, so six of seven pets.
         val opponents = PetId.entries.filter { it != rig.game.selected }
-        assertEquals(5, opponents.size)
+        assertEquals(6, opponents.size)
         assertFalse(PetId.JASON in opponents)
 
         rig.vm.onSwitcherPick(PetId.JASON) // never a legal opponent
@@ -517,6 +575,56 @@ class GameViewModelTest {
         assertNull(rig.ui.petAnim)
         assertFalse(rig.ui.busy)
         assertEquals(65.0, rig.jason.funLevel, 1e-9)
+    }
+
+    @Test
+    fun playOnAPetWithADanceIsOneDance() {
+        val leatherface = PetState(PetId.LEATHERFACE, hunger = 20.0, funLevel = 40.0)
+        val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(leatherface))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val dance = rig.ui.petAnim!!
+        assertEquals(Anim.DANCE, dance.anim)
+        assertTrue(rig.ui.busy)
+        // The same care as anyone's PLAY, applied once at the start, with the same sound.
+        val pet = rig.game.pets.getValue(PetId.LEATHERFACE)
+        assertEquals(65.0, pet.funLevel, 1e-9)
+        assertEquals(28.0, pet.hunger, 1e-9)
+        assertEquals(listOf("play"), rig.ui.sfx)
+
+        // One request, one report: the dance's finish ends the action.
+        rig.vm.onAnimFinished(dance.token)
+        assertNull(rig.ui.petAnim)
+        assertFalse(rig.ui.busy)
+        // A late repeat of its token is ignored.
+        rig.vm.onAnimFinished(dance.token)
+        assertNull(rig.ui.petAnim)
+        assertFalse(rig.ui.busy)
+        assertEquals(65.0, rig.game.pets.getValue(PetId.LEATHERFACE).funLevel, 1e-9)
+    }
+
+    @Test
+    fun playOnEveryPetWithoutADanceStillJumpsThenWaves() {
+        for (id in PetId.entries - PetId.LEATHERFACE) {
+            val rig = Rig(gameOf(selected = id, pets = arrayOf(PetState(id, funLevel = 40.0)))).started()
+            rig.vm.onCare(CareAction.PLAY)
+            assertEquals("$id", Anim.JUMP, rig.ui.petAnim!!.anim)
+            rig.finishAnim()
+            assertEquals("$id", Anim.WAVE, rig.ui.petAnim!!.anim)
+            rig.finishAnim()
+            assertFalse("$id", rig.ui.busy)
+        }
+    }
+
+    @Test
+    fun trainAndFeedAreTheSameForADancer() {
+        val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(PetState(PetId.LEATHERFACE, hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        assertEquals(Anim.REVIEW, rig.ui.petAnim!!.anim)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
+        rig.finishAnim()
+        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
     }
 
     @Test

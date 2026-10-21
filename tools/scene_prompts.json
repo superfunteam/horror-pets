@@ -108,6 +108,24 @@
       "id": "department",
       "title": "Department Store",
       "prompt": "A generic late-1980s department store sales floor after closing: racks of pastel clothing and shoulder-padded jackets, a glass cosmetics counter, faceless mannequins at the sides, a silver escalator in the background, a drop ceiling with fluorescent panels (a few off), mirrored columns, a checkerboard linoleum aisle. No signs, logos, letters or price tags. The glossy linoleum aisle forms the open floor in the foreground."
+    },
+    {
+      "pet": "leatherface",
+      "id": "house",
+      "title": "The House",
+      "prompt": "A remote two-story white wooden farmhouse in rural Texas in the summer of 1973, under a hot, cloudless blue afternoon sky: steep gables, a tin roof, a wraparound porch with white railings, big shady trees with an old wooden swing, a small weathered shed at the side. Scorched dry grass and a pale dirt driveway. Harsh bright sunlight and long tree shadows, eerily quiet. The dusty dirt yard forms the open floor in the foreground. No people, no vehicles, no signs."
+    },
+    {
+      "pet": "leatherface",
+      "id": "dining",
+      "title": "The Dining Room",
+      "prompt": "A dim, grimy 1970s farmhouse dining room at night: a long, worn, scarred wooden table with mismatched plates, bottles and a lantern, high-backed wooden chairs with nobody seated, a full human skeleton propped in a corner as a grim decoration, animal skulls and small bones arranged on the table, mounted deer antlers on stained wallpaper, a dresser with a lamp. Warm low lamplight and drifting dust. Not gory. Scuffed wooden floorboards form the open floor in the foreground. No people."
+    },
+    {
+      "pet": "leatherface",
+      "id": "butcher",
+      "title": "The Butcher Room",
+      "prompt": "A dark, filthy farmhouse basement workshop: two big rusty steel meat hooks hanging from heavy chains in the foreground sides, more chains hanging from wooden beams, a stained cream-tiled support pillar, an old clawfoot bathtub with peeling enamel, a wooden workbench with tools and a gas can, metal shelving and stacked pallets, a single harsh bare bulb and a shaft of light from a small window. Spooky and grimy but not gory, no meat or bodies. A cracked dirty concrete floor forms the open floor in the foreground. No people."
     }
   ]
 }

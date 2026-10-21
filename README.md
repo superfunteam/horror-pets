@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Virtual Pet Slasher 2 Turbo: Jason, Freddy, Pinhead, Ghostface, Chucky and Michael brawling under the title logo" width="720">
+  <img src="docs/banner.png" alt="Virtual Pet Slasher 2 Turbo: Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface brawling under the title logo" width="720">
 </p>
 
 # Virtual Pet Slasher 2 Turbo
 
 Virtual pets from your favorite horror films, right on your TV. It is a Tamagotchi for the living room:
-six chibi slasher icons live on your Android TV, and you feed them, play with them, train them and make
+seven chibi slasher icons live on your Android TV, and you feed them, play with them, train them and make
 them fight. Everything runs offline, with a D-pad remote and nothing else.
 
 <p align="center">
@@ -15,10 +15,10 @@ them fight. Everything runs offline, with a D-pad remote and nothing else.
 
 ## Features
 
-- **Six killers:** Jason, Freddy, Pinhead, Ghostface, Chucky and Michael, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. Pick yours from a spotlight carousel.
+- **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. Pick yours from a spotlight carousel. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
-- **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks, specials and an announcer. Win XP, level up.
+- **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
 - **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stat card, swipe
   left or right to walk between scenes, tap or swipe through the pet lineup (tap the pet in the spotlight to
@@ -74,11 +74,11 @@ The generators live in `tools/` and need Python 3, `ffmpeg` (with libopus) and `
 python3 -m venv tools/.venv && tools/.venv/bin/pip install -r tools/requirements.txt
 tools/.venv/bin/python -I -m pytest tools/tests -q
 tools/.venv/bin/python -I tools/synth_audio.py                          # original music and sfx, no key needed
-OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
+ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
 ```
 
-The OpenAI key is read from the `OPENAI_API_KEY` environment variable only. Never write it to a file or commit it.
+The keys are read from the `OPENAI_API_KEY` (scenes, cover) and `ELEVENLABS_API_KEY` (announcer) environment variables only. Never write them to a file or commit them.
 
 ## Releasing
 
@@ -107,4 +107,4 @@ and only then tags that exact commit, pushes the tag and publishes. If the push 
 
 - Fonts: Barlow Condensed and Inter, under the SIL Open Font License 1.1 (text in `app/src/main/assets/licenses/OFL.txt`).
 - Audio: music and sound effects are original and synthesized; the announcer is generated text-to-speech. Details in [`audio-final/CREDITS.md`](audio-final/CREDITS.md).
-- Virtual Pet Slasher 2 Turbo is a fan project. Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and the films they come from belong to their respective rights holders. It is not affiliated with or endorsed by any of them, and it is not for sale.
+- Virtual Pet Slasher 2 Turbo is a fan project. Jason (*Friday the 13th*), Freddy (*A Nightmare on Elm Street*), Pinhead (*Hellraiser*), Ghostface (*Scream*), Chucky (*Child's Play*), Michael (*Halloween*) and Leatherface (*The Texas Chain Saw Massacre*), and the films they come from, belong to their respective rights holders. It is not affiliated with or endorsed by any of them, and it is not for sale.

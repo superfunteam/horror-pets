@@ -8,7 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SpriteManifestTest {
-    private val pets = listOf("jason", "freddy", "pinhead", "ghostface", "chucky", "michael")
+    private val pets = listOf("jason", "freddy", "pinhead", "ghostface", "chucky", "michael", "leatherface")
+
+    /** The pets that shipped before the optional animations: the twelve every pet has, and nothing else. */
+    private val plainPets = pets - "leatherface"
 
     @Test
     fun parsesAllTwelveAnims() {
@@ -22,24 +25,68 @@ class SpriteManifestTest {
     }
 
     @Test
-    fun animKeysMatchTheManifestKeysExactly() {
-        assertEquals(12, Anim.entries.size)
-        val m = parseManifest(AssetFixtures.manifest("jason"))
-        assertEquals(Anim.entries.map { it.key }.toSet(), m.animations.keys)
+    fun theRequiredAnimKeysMatchTheManifestKeysExactly() {
+        assertEquals(12, Anim.required.size)
+        assertEquals(Anim.entries - Anim.DANCE, Anim.required)
+        for (pet in plainPets) {
+            val m = parseManifest(AssetFixtures.manifest(pet))
+            assertEquals(pet, Anim.required.map { it.key }.toSet(), m.animations.keys)
+        }
     }
 
     @Test
-    fun everyRealManifestResolvesEveryAnim() {
+    fun danceIsTheOnlyOptionalAnim() {
+        assertEquals(listOf(Anim.DANCE), Anim.entries.filter { it.optional })
+        assertEquals("dance", Anim.DANCE.key)
+        assertEquals(Anim.DANCE, Anim.fromKey("dance"))
+    }
+
+    @Test
+    fun everyRealManifestResolvesEveryAnimItHas() {
         for (pet in pets) {
             val m = parseManifest(AssetFixtures.manifest(pet))
             assertEquals(pet, m.pet)
             for (anim in Anim.entries) {
+                if (anim.optional && !m.has(anim)) continue
+                assertTrue("$pet ${anim.key}", m.has(anim))
                 val spec = m.spec(anim)
                 assertEquals("$pet ${anim.key} file", "${anim.key}.png", spec.file)
                 assertEquals("$pet ${anim.key} timeline", spec.frames, spec.durationsMs.size)
                 assertTrue("$pet ${anim.key} durations", spec.durationsMs.all { it > 0 })
             }
         }
+    }
+
+    @Test
+    fun theSixOriginalManifestsParseAsBeforeWithoutADance() {
+        for (pet in plainPets) {
+            val m = parseManifest(AssetFixtures.manifest(pet))
+            assertEquals(pet, 12, m.animations.size)
+            assertFalse(pet, m.has(Anim.DANCE))
+            for (anim in Anim.required) assertTrue("$pet ${anim.key}", m.has(anim))
+        }
+    }
+
+    @Test
+    fun leatherfacesManifestHasThirteenAnimsWithHisChainsawDance() {
+        val m = parseManifest(AssetFixtures.manifest("leatherface"))
+        assertEquals("leatherface", m.pet)
+        assertEquals(13, m.animations.size)
+        assertEquals((Anim.required + Anim.DANCE).map { it.key }.toSet(), m.animations.keys)
+        assertTrue(m.has(Anim.DANCE))
+        val dance = m.spec(Anim.DANCE)
+        assertEquals(AnimSpec("dance.png", 6, listOf(90, 90, 90, 90, 90, 110), loop = false), dance)
+        assertEquals(listOf(384, 416), m.cell)
+        assertEquals(398, m.baselineY)
+        assertEquals(192, m.anchorX)
+    }
+
+    @Test
+    fun aManifestWithoutTheDanceStillAsksLoudlyForIt() {
+        // has() is how a caller checks first; spec() on a missing optional animation is still a broken call.
+        val m = parseManifest(AssetFixtures.manifest("jason"))
+        assertFalse(m.has(Anim.DANCE))
+        assertThrows(IllegalStateException::class.java) { m.spec(Anim.DANCE) }
     }
 
     @Test
@@ -59,6 +106,7 @@ class SpriteManifestTest {
         assertEquals(Anim.WORK, parseManifest(AssetFixtures.manifest("ghostface")).feedAnim())
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("chucky")).feedAnim())
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("michael")).feedAnim())
+        assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("leatherface")).feedAnim())
     }
 
     @Test
@@ -92,7 +140,7 @@ class SpriteManifestTest {
     @Test
     fun unknownFeedOrMissingAnimIsALoudError() {
         val m = parseManifest(AssetFixtures.manifest("jason"))
-        assertThrows(IllegalStateException::class.java) { m.copy(feed = "dance").feedAnim() }
+        assertThrows(IllegalStateException::class.java) { m.copy(feed = "moonwalk").feedAnim() }
         assertThrows(IllegalStateException::class.java) {
             m.copy(animations = m.animations - Anim.WAVE.key).spec(Anim.WAVE)
         }

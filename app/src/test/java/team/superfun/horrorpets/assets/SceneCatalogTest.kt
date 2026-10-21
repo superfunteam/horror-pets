@@ -63,7 +63,7 @@ class SceneCatalogTest {
         val scene = """{"id":"a","title":"A","file":"x/a.webp","floorY":0.75,"tint":"#000000",
             "tintStrength":0.1,"shadowOpacity":0.5,"accent":"#FFFFFF"}"""
         val json = """{"Jason":[$scene],"freddy":[$scene],"PINHEAD":[$scene],"ghostface":[$scene],"Chucky":[$scene],
-            "MICHAEL":[$scene],"bigfoot":[$scene]}"""
+            "MICHAEL":[$scene],"LeatherFace":[$scene],"bigfoot":[$scene]}"""
         val parsed = parseScenes(json)
         assertEquals(PetId.entries.toSet(), parsed.keys)
         assertNotNull(parsed[PetId.JASON])
@@ -73,7 +73,8 @@ class SceneCatalogTest {
     fun aCatalogMissingAPetIsALoudError() {
         val scene = """{"id":"a","title":"A","file":"x/a.webp","floorY":0.75,"tint":"#000000",
             "tintStrength":0.1,"shadowOpacity":0.5,"accent":"#FFFFFF"}"""
-        val others = """"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene],"chucky":[$scene],"michael":[$scene]"""
+        val others = """"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene],"chucky":[$scene],"michael":[$scene],
+            "leatherface":[$scene]"""
         assertEquals(PetId.entries.toSet(), parseScenes("""{"jason":[$scene],$others}""").keys)
         assertThrows(IllegalArgumentException::class.java) {
             parseScenes("""{$others}""")
@@ -85,5 +86,21 @@ class SceneCatalogTest {
         assertThrows(IllegalArgumentException::class.java) {
             parseScenes("""{"jason":[$scene],"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene]}""")
         }
+        // So is a v0.2.0 catalog (six killers, no Leatherface).
+        assertThrows(IllegalArgumentException::class.java) {
+            parseScenes(
+                """{"jason":[$scene],"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene],"chucky":[$scene],"michael":[$scene]}""",
+            )
+        }
+    }
+
+    @Test
+    fun leatherfacesHouseIsInDaylight() {
+        // The house is a daytime scene in harsh sun: only a light touch of tint on the sprite.
+        val house = catalog.getValue(PetId.LEATHERFACE).first()
+        assertEquals("house", house.id)
+        assertEquals("leatherface/house.webp", house.file)
+        assertEquals(listOf("house", "dining", "butcher"), catalog.getValue(PetId.LEATHERFACE).map { it.id })
+        assertTrue(house.tintStrength < catalog.getValue(PetId.LEATHERFACE)[1].tintStrength)
     }
 }

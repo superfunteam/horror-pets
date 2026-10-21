@@ -127,13 +127,15 @@ class SaveCodecTest {
         "selected":"GHOSTFACE","lastSeenMs":1761000000000}
     """.trimIndent()
 
+    /** The killers v0.1.0 did not have: every one of them joins a v0.1.0 save fresh. */
+    private val sinceV010 = setOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE)
+
     @Test
-    fun aV010SaveGainsChuckyAndMichaelAndKeepsTheOriginalFour() {
+    fun aV010SaveGainsTheNewKillersAndKeepsTheOriginalFour() {
         val decoded = SaveCodec.decode(v010Save)
         assertEquals(PetId.entries.toSet(), decoded.pets.keys)
-        assertEquals(6, decoded.pets.size)
-        assertEquals(PetState(PetId.CHUCKY, freshJoin = true), decoded.pets.getValue(PetId.CHUCKY))
-        assertEquals(PetState(PetId.MICHAEL, freshJoin = true), decoded.pets.getValue(PetId.MICHAEL))
+        assertEquals(7, decoded.pets.size)
+        for (id in sinceV010) assertEquals("$id", PetState(id, freshJoin = true), decoded.pets.getValue(id))
         assertEquals(
             PetState(PetId.JASON, 12.5, 64.0, 31.0, level = 3, xp = 120, moodBonus = 4.5, wins = 5, losses = 2, sceneIndex = 1),
             decoded.pets.getValue(PetId.JASON),
@@ -151,13 +153,54 @@ class SaveCodecTest {
         assertEquals(1_761_000_000_000L, decoded.lastSeenMs)
         assertEquals(1, decoded.version)
         // The pets the save did not have join fresh, so the time away does not touch them.
-        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.fresh)
+        assertEquals(sinceV010, decoded.fresh)
         // Saved again before the time away was applied (a stale clock), the mark is written out and kept.
         val again = SaveCodec.decode(SaveCodec.encode(decoded))
         assertEquals(decoded, again)
-        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), again.fresh)
+        assertEquals(sinceV010, again.fresh)
         assertTrue(SaveCodec.encode(decoded).contains("\"MICHAEL\""))
         assertTrue(SaveCodec.encode(decoded).contains("\"freshJoin\":true"))
+    }
+
+    /** A save exactly as v0.2.0 (six pets, with the fresh-join mark) wrote it, Chucky mid-join under a stale clock. */
+    private val v020Save = """
+        {"version":1,"pets":{
+        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false},
+        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":true,"freshJoin":false},
+        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":false},
+        "GHOSTFACE":{"id":"GHOSTFACE","hunger":88.0,"funLevel":5.0,"strength":61.0,"level":7,"xp":640,"moodBonus":30.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false,"freshJoin":false},
+        "CHUCKY":{"id":"CHUCKY","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":0.0,"wins":0,"losses":0,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":true},
+        "MICHAEL":{"id":"MICHAEL","hunger":55.0,"funLevel":41.0,"strength":44.0,"level":4,"xp":210,"moodBonus":-3.0,"wins":6,"losses":4,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false}},
+        "selected":"MICHAEL","lastSeenMs":1777000000000}
+    """.trimIndent()
+
+    @Test
+    fun aV020SaveGainsLeatherfaceFreshAndKeepsTheSix() {
+        val decoded = SaveCodec.decode(v020Save)
+        assertEquals(PetId.entries.toSet(), decoded.pets.keys)
+        assertEquals(7, decoded.pets.size)
+        // Leatherface was not in the save: he joins at his defaults, marked fresh.
+        assertEquals(PetState(PetId.LEATHERFACE, freshJoin = true), decoded.pets.getValue(PetId.LEATHERFACE))
+        // The six are kept exactly, Chucky's own fresh-join mark (a v0.1.0 upgrade not yet applied) included.
+        assertEquals(setOf(PetId.CHUCKY, PetId.LEATHERFACE), decoded.fresh)
+        assertEquals(
+            PetState(PetId.MICHAEL, 55.0, 41.0, 44.0, level = 4, xp = 210, moodBonus = -3.0, wins = 6, losses = 4, sceneIndex = 1),
+            decoded.pets.getValue(PetId.MICHAEL),
+        )
+        assertEquals(
+            PetState(PetId.GHOSTFACE, 88.0, 5.0, 61.0, level = 7, xp = 640, moodBonus = 30.0, wins = 12, losses = 9, sceneIndex = 2),
+            decoded.pets.getValue(PetId.GHOSTFACE),
+        )
+        assertEquals(
+            PetState(PetId.FREDDY, 40.0, 22.25, 18.0, level = 2, xp = 15, wins = 1, losses = 3, sceneIndex = 2, fakeDeathPending = true),
+            decoded.pets.getValue(PetId.FREDDY),
+        )
+        assertEquals(PetId.MICHAEL, decoded.selected)
+        assertEquals(1_777_000_000_000L, decoded.lastSeenMs)
+        // Saved again before the time away was applied, Leatherface's mark is written out and kept.
+        val again = SaveCodec.decode(SaveCodec.encode(decoded))
+        assertEquals(decoded, again)
+        assertTrue(SaveCodec.encode(decoded).contains("\"LEATHERFACE\""))
     }
 
     @Test
@@ -337,7 +380,7 @@ class SaveCodecTest {
         assertEquals(4, decoded.pets.getValue(PetId.FREDDY).level)
         assertEquals(9, decoded.pets.getValue(PetId.PINHEAD).wins)
         // A damaged entry is still a pet the player had: only the pets with no entry join fresh.
-        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.fresh)
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE), decoded.fresh)
     }
 
     @Test

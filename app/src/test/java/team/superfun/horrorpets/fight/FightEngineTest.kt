@@ -736,6 +736,93 @@ class FightEngineTest {
         }
     }
 
+    // ---------------------------------------------------------------- Leatherface
+
+    @Test
+    fun leatherfaceHasPlainHp() {
+        assertEquals(68, buildFighter(PetState(PetId.LEATHERFACE, hunger = 0.0, level = 1)).maxHp)
+    }
+
+    @Test
+    fun leatherfacesHeavyHitsTwentyPercentHarder() {
+        // Chainsaw: 16 * 1.8 * 1.2 = 34.56.
+        val s = stateOf(player = fighter(id = PetId.LEATHERFACE))
+        val r = resolve(s, Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.HEAVY, 35, false), r.events.single())
+        assertEquals(65, r.state.cpu.hp)
+    }
+
+    @Test
+    fun leatherfacesHeavyBonusAppliesBeforeTheCritAndStacksWithVariance() {
+        val s = stateOf(player = fighter(id = PetId.LEATHERFACE))
+        val crit = resolve(s, Move.HEAVY, Move.HEAVY, ScriptedRandom.attacks(Roll(crit = 0.0), Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.HEAVY, 60, true), crit.events.first()) // 16 * 1.8 * 1.2 * 1.75 = 60.48
+        val high = resolve(s, Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(variance = 1.0)))
+        assertEquals(40, (high.events.single() as Hit).damage) // 16 * 1.15 * 1.8 * 1.2 = 39.744
+        val low = resolve(s, Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(variance = 0.0)))
+        assertEquals(29, (low.events.single() as Hit).damage) // 16 * 0.85 * 1.8 * 1.2 = 29.376
+    }
+
+    @Test
+    fun leatherfacesBonusIsForHisHeavyOnly() {
+        val leatherface = fighter(id = PetId.LEATHERFACE, meter = 100)
+        val strike = resolve(stateOf(player = leatherface), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(16, (strike.events.first() as Hit).damage)
+        val counter = resolve(stateOf(player = leatherface), Move.BLOCK, Move.STRIKE, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 8, false, counter = true), counter.events.last())
+        val special = resolve(stateOf(player = leatherface), Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(40, (special.events.single() as Hit).damage)
+    }
+
+    @Test
+    fun leatherfaceHeavyHitsHarderOnTheCpuSideToo() {
+        val s = stateOf(cpu = fighter(id = PetId.LEATHERFACE))
+        val r = resolve(s, Move.BLOCK, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.CPU, Move.HEAVY, 35, false), r.events.single())
+        assertEquals(65, r.state.player.hp)
+    }
+
+    @Test
+    fun leatherfaceTakesHeaviesLikeAnyoneElse() {
+        // His passive is his own swing: a HEAVY aimed at him does the usual 29.
+        val r = resolve(stateOf(cpu = fighter(id = PetId.LEATHERFACE)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(29, (r.events.single() as Hit).damage)
+    }
+
+    @Test
+    fun leatherfaceStillDoesAtLeastOneDamage() {
+        val s = stateOf(player = fighter(id = PetId.LEATHERFACE, strength = -200.0))
+        val r = resolve(s, Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(1, (r.events.single() as Hit).damage)
+    }
+
+    @Test
+    fun nobodyElseGetsTheHeavyBonus() {
+        for (id in PetId.entries - PetId.LEATHERFACE) {
+            val r = resolve(stateOf(player = fighter(id = id)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+            assertEquals("$id", 29, (r.events.single() as Hit).damage)
+        }
+    }
+
+    @Test
+    fun leatherfaceSawingIntoMichaelAppliesBothAndRoundsOnce() {
+        // 16 * 1.8 * 1.2 * 0.85 = 29.376 -> 29 (rounding 35 first and then scaling would give 30).
+        val s = stateOf(player = fighter(id = PetId.LEATHERFACE), cpu = fighter(id = PetId.MICHAEL))
+        val r = resolve(s, Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(29, (r.events.single() as Hit).damage)
+    }
+
+    @Test
+    fun leatherfaceMissesAndCritsLikeAnyoneElse() {
+        // A HEAVY at him misses on 0.15 like anyone's; his own HEAVY misses on 0.15 and crits on 5% at mood 0.
+        val hitHim = resolve(stateOf(cpu = fighter(id = PetId.LEATHERFACE)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(miss = 0.151)))
+        assertTrue(hitHim.events.single() is Hit)
+        val missed = resolve(stateOf(player = fighter(id = PetId.LEATHERFACE)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(miss = 0.149)))
+        assertEquals(Miss(Side.PLAYER, Move.HEAVY), missed.events.single())
+        val critRoll = resolve(stateOf(player = fighter(id = PetId.LEATHERFACE)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(crit = 0.051)))
+        assertFalse((critRoll.events.single() as Hit).crit)
+    }
+
     // ---------------------------------------------------------------- whole fights
 
     @Test

@@ -10,6 +10,7 @@ import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
+import team.superfun.horrorpets.ui.fight.Moment
 
 /**
  * Adding a killer is an enum entry, a roster entry and its asset folders. This checks the folders: every
@@ -30,10 +31,19 @@ class RosterAssetsTest {
             val manifest = parseManifest(file("sprites-final/$dir/manifest.json").readText())
             assertEquals("$id", dir, manifest.pet)
             for (anim in Anim.entries) {
+                // An optional animation (the dance) need not be there, but one the manifest lists must be.
+                if (anim.optional && !manifest.has(anim)) continue
                 assertTrue("$id ${anim.key}", file("sprites-final/$dir/${manifest.spec(anim).file}").isFile)
             }
             assertTrue("$id feed", runCatching { manifest.feedAnim() }.isSuccess)
         }
+    }
+
+    @Test
+    fun leatherfaceHasHisDance() {
+        val manifest = parseManifest(file("sprites-final/leatherface/manifest.json").readText())
+        assertTrue(manifest.has(Anim.DANCE))
+        assertTrue(file("sprites-final/leatherface/${manifest.spec(Anim.DANCE).file}").isFile)
     }
 
     @Test
@@ -54,6 +64,9 @@ class RosterAssetsTest {
             assertTrue("$id: roster ${id.spec.specialHitMs} ms, clip $measured ms", abs(measured - id.spec.specialHitMs) <= 20L)
         }
         assertEquals(420L, PetId.MICHAEL.spec.specialHitMs)
+        // special_leatherface opens at full level: its first 10 ms window (nothing before it) rises highest, so
+        // its hit is at 0 ms; the rev at about 320 ms rises far less over the already-loud pull before it.
+        assertEquals(0L, PetId.LEATHERFACE.spec.specialHitMs)
     }
 
     /**
@@ -104,6 +117,14 @@ class RosterAssetsTest {
             )) {
                 assertTrue(path, file(path).isFile)
             }
+        }
+    }
+
+    @Test
+    fun everyFightCalloutHasItsLine() {
+        for (line in Moment.entries.flatMap { it.lines }.distinct()) {
+            val path = "audio-final/voice/$line.wav"
+            assertTrue(path, file(path).isFile)
         }
     }
 }

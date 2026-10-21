@@ -13,6 +13,7 @@ enum class PetId(val displayName: String) {
     GHOSTFACE("Ghostface"),
     CHUCKY("Chucky"),
     MICHAEL("Michael"),
+    LEATHERFACE("Leatherface"),
 }
 
 /**
@@ -22,9 +23,9 @@ enum class PetId(val displayName: String) {
  * funLevel is the "Fun" stat (`fun` is a Kotlin keyword); the UI label stays "Fun".
  * moodBonus is a transient -30..30 nudge on mood that decays back to 0 over time.
  * freshJoin marks a pet that has just joined: a save from before it existed (Chucky and Michael in a v0.1.0
- * save) is given it at its defaults with this set, so the time the player was away before it existed never
- * decays it nor fakes its death. It is saved, so it survives a launch under a stale clock, and cleared the
- * first time the time away is actually applied (see `applyElapsed`).
+ * save, Leatherface in a v0.2.0 one) is given it at its defaults with this set, so the time the player was
+ * away before it existed never decays it nor fakes its death. It is saved, so it survives a launch under a
+ * stale clock, and cleared the first time the time away is actually applied (see `applyElapsed`).
  */
 @Serializable
 data class PetState(

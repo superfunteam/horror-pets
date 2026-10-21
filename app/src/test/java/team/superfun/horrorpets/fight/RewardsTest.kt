@@ -117,7 +117,7 @@ class RewardsTest {
 
     @Test
     fun rewardsAreTheSameForEveryPet() {
-        // Passives only change the fight itself: Chucky and Michael are paid like everyone else.
+        // Passives only change the fight itself: Chucky, Michael and Leatherface are paid like everyone else.
         val reference = pet()
         for (id in PetId.entries) {
             val p = reference.copy(id = id)

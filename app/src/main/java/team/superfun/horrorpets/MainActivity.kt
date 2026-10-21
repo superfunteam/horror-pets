@@ -29,8 +29,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.feedAnim
+import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     rng = Random.Default,
                     scope = null, // viewModelScope: main-confined, as the view model requires
                     feedAnim = { loader.manifest(it).feedAnim() },
+                    canDance = { loader.manifest(it).has(Anim.DANCE) },
                     onError = { Log.e(TAG, "Save or load failed; carrying on from memory", it) },
                     clockFloorMs = clockFloorMs(appContext),
                 )

@@ -38,16 +38,18 @@ REFERENCES = [  # (pet, base render, how the prompt describes them)
     ("ghostface", "sprites-source/ghostface/full-resolution/ghostface-base.png", "the black-hooded figure in the white screaming mask with a knife"),
     ("chucky", "sprites-source/chucky/outputs/chucky/chucky-base.png", "the small red-haired doll in denim overalls with a knife"),
     ("michael", "sprites-source/michael/work/michael/decoded/base.png", "the pale-masked man in navy coveralls with a kitchen knife"),
+    ("leatherface", "sprites-source/leatherface/work/little-leatherface/decoded/base.png",
+     "the big stitched-mask butcher in a yellow apron revving a chainsaw"),
 ]
 
 ART_PROMPT = (
     "Epic key-art splash screen for a fighting game, rendered in the exact glossy 3D chibi collectible-figure style of the "
     "reference images. Keep every character exactly on-model (proportions, outfits, masks, colors, weapons): {cast}. "
-    "All six burst toward the camera from every direction like a superhero team-up poster or a platform-fighter splash screen — "
+    "All seven burst toward the camera from every direction like a superhero team-up poster or a platform-fighter splash screen — "
     "leaping, lunging and swinging their weapons at each other, dramatic foreshortening and perspective, motion streaks, sparks, "
     "flying debris, under a stormy red-and-purple night sky with lightning and strong colored rim light. "
-    "The small doll is clearly about half the height of the others. COMPOSITION IS CRITICAL: arrange the six around the left "
-    "edge, right edge and bottom of the frame, three per side, faces and weapons angled in toward the center; the whole "
+    "The small doll is clearly about half the height of the others. COMPOSITION IS CRITICAL: arrange the seven around the left "
+    "edge, right edge and bottom of the frame (three on each side and one charging up from the bottom center), faces and weapons angled in toward the center; the whole "
     "upper-center region (the middle 60% of the width, top 45% of the height) must be EMPTY stormy sky with no character, head, "
     "hand or weapon in it, reserved for a big title logo. No text, letters, numbers, logos or watermark anywhere. Landscape 16:9."
 )
