@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +80,16 @@ internal fun FightHud(player: Fighter, cpu: Fighter, turn: Int, playerValues: Hu
     }
 }
 
+/**
+ * Every widest form the HP count `"hp/maxHp"` can take: as many digits as [maxHp] has, each in every digit
+ * (the font's figures are not all one width), and the full count itself. The count reserves the widest of
+ * these, so it keeps one width as the HP drains and the name beside it is sized once per fight.
+ */
+internal fun hpCountCandidates(maxHp: Int): List<String> {
+    val digits = maxHp.toString().length
+    return (0..9).map { d -> "$d".repeat(digits) + "/$maxHp" } + "$maxHp/$maxHp"
+}
+
 @Composable
 private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: Modifier = Modifier) {
     val hpShown by remember(values) { derivedStateOf { values.hp().roundToInt().coerceAtLeast(0) } }
@@ -89,10 +101,20 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
         label = "hudPulseValue",
     )
     val align = if (mirrored) Alignment.End else Alignment.Start
+    val countStyle = displayStyle(22.sp, color = TextHi, tracking = 0.04f, halo = true, lineHeight = 22.sp)
+        .copy(textAlign = if (mirrored) TextAlign.Start else TextAlign.End)
+    // The count's widest form, measured once per fighter (and font scale): it never changes width mid-fight.
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val density = LocalDensity.current
+    val countWidth = remember(f.maxHp, measurer, density) {
+        val px = hpCountCandidates(f.maxHp).maxOf { measurer.measure(it, countStyle, maxLines = 1).size.width }
+        with(density) { px.toDp() }
+    }
     Column(modifier, horizontalAlignment = align) {
-        // Name and level at the outer edge, the HP count at the inner end, over the bar. The count and the
-        // level are measured first; the name gets the room left between them and steps down to fit it, so a
-        // long name (LEATHERFACE on 4:3) never pushes the count off its end.
+        // Name and level at the outer edge, the HP count at the inner end, over the bar. The count (at its
+        // reserved width) and the level are measured first; the name gets the room left between them and
+        // steps down to fit it, so a long name (LEATHERFACE on 4:3) never pushes the count off its end, and
+        // keeps its size while the HP drains.
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.Bottom) {
             val name = @Composable {
                 Row(
@@ -114,9 +136,9 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
             val count = @Composable {
                 BasicText(
                     text = "$hpShown/${f.maxHp}",
-                    style = displayStyle(22.sp, color = TextHi, tracking = 0.04f, halo = true, lineHeight = 22.sp)
-                        .copy(textAlign = if (mirrored) TextAlign.Start else TextAlign.End),
+                    style = countStyle,
                     maxLines = 1,
+                    modifier = Modifier.width(countWidth),
                 )
             }
             if (mirrored) {
