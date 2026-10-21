@@ -47,8 +47,8 @@ object SaveCodec {
      * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, and
      *   so is a missing one; the other pets are kept;
      * - a pet with no entry at all (a killer added since the save was written, like Chucky and Michael in
-     *   a v0.1.0 save) joins at its defaults with [PetState.freshJoin] set, so the time away does not
-     *   decay it; a damaged entry is still a pet the player had and does not;
+     *   a v0.1.0 save, or Leatherface in a v0.2.0 one) joins at its defaults with [PetState.freshJoin] set,
+     *   so the time away does not decay it; a damaged entry is still a pet the player had and does not;
      * - an unknown `selected` pet reads as none, so the player picks again.
      * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;

@@ -213,7 +213,7 @@ class GameViewModelTest {
     private val sinceV010 = listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE)
 
     @Test
-    fun anUpgradeAfterAWeekAwayFakeKillsTheOriginalFourButChuckyAndMichaelArriveFresh() {
+    fun aV010UpgradeAfterAWeekAwayFakeKillsTheOriginalFourButTheNewcomersArriveFresh() {
         val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
         val rig = Rig(loaded).started()
 
@@ -224,7 +224,7 @@ class GameViewModelTest {
             assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
         }
         assertEquals(Screen.FakeDeath(PetId.GHOSTFACE), rig.ui.screen)
-        // The two new killers have only just arrived: no time away, no fake death, nothing decayed.
+        // The three killers added since v0.1.0 have only just arrived: no time away, no fake death, nothing decayed.
         for (id in sinceV010) {
             assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
             assertEquals("$id saved", PetState(id), rig.store.last.pets.getValue(id))
@@ -241,14 +241,14 @@ class GameViewModelTest {
     @Test
     fun anUpgradeUnderAStaleClockKeepsTheNewcomersFreshUntilTheClockIsGood() {
         // First launch after the update, before the TV's clock has synced: nothing is applied, and the save
-        // written now must still say that Chucky and Michael have only just joined.
+        // written now must still say that Chucky, Michael and Leatherface have only just joined.
         val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
         val stale = Rig(loaded, clock = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)).started()
         val saved = stale.store.last
         for (id in sinceV010) assertTrue("$id", saved.pets.getValue(id).freshJoin)
         assertEquals(T0 - 8 * DAY, saved.lastSeenMs)
 
-        // Next launch with a good clock: the original four decay and fake-die, the new two arrive fresh.
+        // Next launch with a good clock: the original four decay and fake-die, the new three arrive fresh.
         val reloaded = SaveCodec.decode(SaveCodec.encode(saved))
         val good = Rig(reloaded).started()
         val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
