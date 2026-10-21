@@ -1,6 +1,5 @@
 package team.superfun.horrorpets.ui.fight
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -55,15 +54,16 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
-import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
-import team.superfun.horrorpets.ui.common.safeInsetPadding
+import team.superfun.horrorpets.ui.common.rememberTouchTick
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -109,7 +109,7 @@ private const val SEAM_LEAN = 0.07f
  * into the centre with a 300ms screen shake; then FIGHT! (with the announcer's `fight`) and [onDone].
  *
  * The announcer's "<player> VERSUS <opponent>" was queued by the view model as the card opened, and VS
- * lands with its "versus". OK skips straight to the fight; Back calls [onBack] (no fight exists yet, so
+ * lands with its "versus". OK (or a tap) skips straight to the fight; Back calls [onBack] (no fight exists yet, so
  * the player just goes back to choosing an opponent). The first of the two ends the card: [onDone] or
  * [onBack] is called exactly once, and the timeline stops. [focusEntry] gates OK and Back (see
  * `RequestFocusOnEntry`); a held Back's repeats are dropped by `MainActivity`.
@@ -132,6 +132,7 @@ fun VersusScreen(
     val interaction = remember { MutableInteractionSource() }
     val latestOnDone by rememberUpdatedState(onDone)
     val latestOnBack by rememberUpdatedState(onBack)
+    val skipTick = rememberTouchTick("ui_select")
     val playerScenes = remember(loader, player) { loader.scenes().getValue(player) }
     val playerScene = playerScenes[(game.pets[player]?.sceneIndex ?: 0).mod(playerScenes.size)]
     val arena = remember(loader, opponent, arenaRoll) { arenaScene(loader, opponent, arenaRoll) }
@@ -151,7 +152,7 @@ fun VersusScreen(
         latestOnDone()
     }
 
-    BackHandler(enabled = focusEntry != null) {
+    GameBackHandler(enabled = focusEntry != null) {
         if (!done[0]) {
             done[0] = true // stops the timeline: no "fight!" call, no onDone, as the card fades out
             latestOnBack()
@@ -198,7 +199,10 @@ fun VersusScreen(
             .fillMaxSize()
             .focusRequester(focus)
             .clickable(interactionSource = interaction, indication = null) {
-                if (focusEntry != null) finish()
+                if (focusEntry != null && !done[0]) {
+                    skipTick()
+                    finish()
+                }
             },
     ) {
         val w = constraints.maxWidth.toFloat()
@@ -206,7 +210,8 @@ fun VersusScreen(
         val density = LocalDensity.current
         val shakePx = with(density) { 16.dp.toPx() }
         val cellH = h * CELL
-        val halfWidth = with(density) { (w * (0.5f - SAFE_INSET_FRACTION) - 24.dp.toPx()).coerceAtLeast(0f).toDp() }
+        val safe = safeInset()
+        val halfWidth = with(density) { (w / 2f - safe.horizontal.toPx() - 24.dp.toPx()).coerceAtLeast(0f).toDp() }
         // Both names at one size, set by the longer name, so JASON never towers over GHOSTFACE.
         val nameSize = nameSizeFor(halfWidth, max(player.displayName.length, opponent.displayName.length))
 
@@ -251,7 +256,7 @@ fun VersusScreen(
         }
 
         // Names, VS and FIGHT! hold still over the shaking card, inside the safe inset.
-        Box(Modifier.fillMaxSize().padding(safeInsetPadding())) {
+        Box(Modifier.fillMaxSize().padding(horizontal = safe.horizontal, vertical = safe.vertical)) {
             if (playerName) {
                 FighterName(
                     name = player.displayName.uppercase(),

@@ -49,6 +49,7 @@ import team.superfun.horrorpets.ui.common.PILL_FOCUS_SCALE
 import team.superfun.horrorpets.ui.common.PillHeight
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.common.pillLabelStyle
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.theme.TextLo
@@ -103,7 +104,7 @@ private val DividerWidth = 3.dp
  * The home action row, bottom centre: `◀ | PLAY FEED TRAIN FIGHT | ▶`.
  *
  * The arrows walk to the previous / next scene; while one is focused, a caption above it names the
- * scene it leads to. Up from any pill goes to [statCardFocus]. The row is one focus group with a
+ * scene it leads to (not under a finger, where nothing is focused). Up from any pill goes to [statCardFocus]. The row is one focus group with a
  * restorer, so coming back into it (Down from the stat card) lands on the pill that last had focus,
  * or on PLAY ([playFocus], also the screen's initial focus) when none has yet.
  *
@@ -125,6 +126,7 @@ fun ActionBar(
     val nextInteraction = remember { MutableInteractionSource() }
     val prevFocused by prevInteraction.collectIsFocusedAsState()
     val nextFocused by nextInteraction.collectIsFocusedAsState()
+    val touch = isTouchInput()
     val upToCard = Modifier.focusProperties { up = statCardFocus }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -154,8 +156,8 @@ fun ActionBar(
             ArrowPill(left = false, onClick = { onWalk(1) }, interaction = nextInteraction, metrics = m, modifier = upToCard)
         }
 
-        WalkCaption(prevSceneTitle, visible = prevFocused, modifier = Modifier.align(Alignment.TopStart))
-        WalkCaption(nextSceneTitle, visible = nextFocused, modifier = Modifier.align(Alignment.TopEnd))
+        WalkCaption(prevSceneTitle, visible = prevFocused && !touch, modifier = Modifier.align(Alignment.TopStart))
+        WalkCaption(nextSceneTitle, visible = nextFocused && !touch, modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
@@ -187,8 +189,8 @@ private fun ArrowPill(
         minWidth = metrics.arrowWidth,
         horizontalPadding = 0.dp,
         interactionSource = interaction,
-    ) { focused ->
-        Chevron(left = left, color = if (focused) TextHi else TextHi.copy(alpha = 0.88f), modifier = Modifier.size(metrics.chevron))
+    ) { lit ->
+        Chevron(left = left, color = if (lit) TextHi else TextHi.copy(alpha = 0.88f), modifier = Modifier.size(metrics.chevron))
     }
 }
 

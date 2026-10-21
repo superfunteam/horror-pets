@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.assets
 
 import kotlin.math.max
+import kotlin.math.min
 
 /** How a scene image is drawn into a view: scaled by [scale], top-left at ([offsetX], [offsetY]) in view pixels. */
 data class Crop(val scale: Float, val offsetX: Float, val offsetY: Float)
@@ -14,13 +15,27 @@ private const val FLOOR_EPSILON_PX = 0.01f
 /** Relative extra zoom for the same reason, when the floor rule has to be met by zooming. */
 private const val ZOOM_EPSILON = 1.0001f
 
+/** The screen shape the scenes are composed for (the TV's 16:9). */
+private const val DESIGN_ASPECT = 16f / 9f
+
+/**
+ * Where the floor line [floorY] (a fraction of an [imgW] x [imgH] image's height) lands, as a fraction of the
+ * view's height, in the plain cover crop on a 16:9 view.
+ */
+fun floorOn16x9(imgW: Int, imgH: Int, floorY: Float): Float {
+    val h = max(1f, DESIGN_ASPECT * imgH / imgW) // the image's height, in view heights
+    return (1f - h) / 2f + floorY * h
+}
+
 /**
  * "Cover" fit: the image is scaled by `max(viewW/imgW, viewH/imgH)` so it fills the view, then centered
  * on both axes (offsets are negative on the axis where it overflows).
  *
  * When [floorY] (the floor line as a fraction of the full image height) is given, the crop is also
  * adjusted so [floorYOnScreen] is at most [FLOOR_MAX_VIEW_FRACTION] of [viewH], which keeps the pet out of the
- * bottom safe inset. The image always keeps covering the whole view (no gap at any edge), so:
+ * bottom safe inset. On a view wider than 16:9 (a 20:9 phone) the plain crop takes more off the top and bottom
+ * and so moves the floor further down, behind the action bar, so there the floor is also kept no lower than
+ * a 16:9 view has it ([floorOn16x9]). The image always keeps covering the whole view (no gap at any edge), so:
  *  1. if the centered crop already satisfies the rule, nothing changes;
  *  2. otherwise the image is pushed up (offsetY decreases) as far as the vertical overflow allows;
  *  3. if the overflow is not enough, the image is also zoomed in just enough, bottom edge flush with
@@ -33,7 +48,9 @@ fun coverCrop(imgW: Int, imgH: Int, viewW: Int, viewH: Int, floorY: Float? = nul
     var offsetY = (viewH - imgH * scale) / 2f
 
     if (floorY != null && floorY < 1f) {
-        val maxFloor = FLOOR_MAX_VIEW_FRACTION * viewH
+        val wide = viewW.toLong() * 9 > viewH.toLong() * 16
+        val maxFraction = if (wide) min(FLOOR_MAX_VIEW_FRACTION, floorOn16x9(imgW, imgH, floorY)) else FLOOR_MAX_VIEW_FRACTION
+        val maxFloor = maxFraction * viewH
         val excess = offsetY + floorY * imgH * scale - maxFloor
         if (excess > 0f) {
             val highestOffsetY = viewH - imgH * scale // pushing further would uncover the bottom edge

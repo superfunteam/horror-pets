@@ -41,7 +41,6 @@ import kotlin.math.roundToInt
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
-import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
@@ -97,17 +96,18 @@ internal class FloatText(
 
 /**
  * The fight's floating numbers ("RPG damage numbers"). Each one animates itself in a layer (no
- * recomposition per frame) and reports [onDone] once it has faded, so the caller can drop it.
+ * recomposition per frame) and reports [onDone] once it has faded, so the caller can drop it. They keep
+ * [inset] pixels (the screen's safe inset) clear of the left and right edges.
  */
 @Composable
-internal fun FloatingNumbers(items: List<FloatText>, top: () -> Float, onDone: (FloatText) -> Unit) {
+internal fun FloatingNumbers(items: List<FloatText>, top: () -> Float, inset: Float, onDone: (FloatText) -> Unit) {
     for (item in items) {
-        key(item.id) { FloatingText(item, top, onDone) }
+        key(item.id) { FloatingText(item, top, inset, onDone) }
     }
 }
 
 @Composable
-private fun FloatingText(item: FloatText, top: () -> Float, onDone: (FloatText) -> Unit) {
+private fun FloatingText(item: FloatText, top: () -> Float, inset: Float, onDone: (FloatText) -> Unit) {
     val t = remember { Animatable(0f) }
     val done by rememberUpdatedState(onDone)
     LaunchedEffect(Unit) {
@@ -120,7 +120,7 @@ private fun FloatingText(item: FloatText, top: () -> Float, onDone: (FloatText) 
     val popScale = if (item.kind == FloatKind.CRIT) 1.3f else 1.25f
     Column(
         Modifier
-            .placeInBounds(x = { item.x }, y = { item.y }, top = top, popScale = popScale, rise = rise, rim = rim)
+            .placeInBounds(x = { item.x }, y = { item.y }, top = top, inset = inset, popScale = popScale, rise = rise, rim = rim)
             .graphicsLayer {
                 val p = t.value
                 val up = 1f - (1f - p) * (1f - p) * (1f - p) // ease out: quick off the mark, then drifting
@@ -149,8 +149,9 @@ private val FloatRim = 8.dp
 /**
  * Places a floating word with its bottom centre at ([x], [y]), moved as little as needed to stay in
  * bounds for its whole life:
- * - sideways inside the safe inset, even at its [popScale] (a fighter stands at 30% of the width, and on
- *   4:3 or a CRT a wide "CRITICAL! · COUNTER" centred there would reach into the overscan);
+ * - sideways inside the safe inset ([inset] pixels from each side), even at its [popScale] (a fighter
+ *   stands at 30% of the width, and on 4:3 or a CRT a wide "CRITICAL! · COUNTER" centred there would
+ *   reach into the overscan);
  * - down, so that neither its popped-in size nor its top after rising [rise] pixels comes above [top]
  *   (the bottom of the HUD), which on a small screen a labelled crit would otherwise reach.
  * [rim] is extra room for the outline. The word must not be drawn inside a layer that moves (the arena's
@@ -160,13 +161,14 @@ internal fun Modifier.placeInBounds(
     x: () -> Float,
     y: () -> Float,
     top: () -> Float,
+    inset: Float,
     popScale: Float,
     rise: Float,
     rim: Float,
 ): Modifier = layout { measurable, constraints ->
     val p = measurable.measure(Constraints())
     val w = constraints.maxWidth
-    val side = w * SAFE_INSET_FRACTION + rim + p.width * (popScale - 1f) / 2f
+    val side = inset + rim + p.width * (popScale - 1f) / 2f
     val left = (x() - p.width / 2f).coerceIn(side, max(side, w - side - p.width))
     val above = max(p.height * popScale, p.height + rise) + rim
     val bottom = max(y(), top() + above)
@@ -227,6 +229,7 @@ internal fun calloutText(move: Move, pet: PetId): String = when (move) {
 /**
  * A move callout: the move a fighter just chose, popping up over its head on a glass tag. [progress]
  * runs 0..1 over the callout's life: it springs in, holds, and fades away up. Read in the layer only.
+ * Like the floating numbers, it keeps [inset] pixels clear of the sides.
  */
 @Composable
 internal fun MoveCallout(
@@ -236,6 +239,7 @@ internal fun MoveCallout(
     x: () -> Float,
     y: () -> Float,
     top: () -> Float,
+    inset: Float,
     maxWidth: Dp,
 ) {
     val accent = when (move) {
@@ -250,6 +254,7 @@ internal fun MoveCallout(
                 x = x,
                 y = y,
                 top = top,
+                inset = inset,
                 popScale = CALLOUT_POP,
                 rise = with(LocalDensity.current) { CalloutRise.toPx() },
                 rim = with(LocalDensity.current) { 4.dp.toPx() },

@@ -1,6 +1,5 @@
 package team.superfun.horrorpets.ui.fight
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -16,6 +15,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +57,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -94,6 +98,7 @@ import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.common.FocusPill
 import team.superfun.horrorpets.ui.common.FocusPillSurface
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.GlassPanel
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
@@ -104,7 +109,7 @@ import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
-import team.superfun.horrorpets.ui.common.safeInsetPadding
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
@@ -204,7 +209,8 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
  *    Otherwise the bars settle on the real values and the move pills come back, focus on the last move.
  *
- * Back (or the RUN pill) asks "Run away?"; Yes runs ([Move.RUN]). [focusEntry] is the router's entry key
+ * Back (or the RUN pill, or a phone's back gesture) asks "Run away?"; Yes runs ([Move.RUN]). On a phone the
+ * pills take taps, and the hint above them follows the pill last pressed, as it follows focus on a TV. [focusEntry] is the router's entry key
  * (see `RequestFocusOnEntry`); null (the screen is fading out) turns off Back. [isBusy] reads the view
  * model's `busy` live, so a key that arrives before the screen has recomposed is still turned down.
  */
@@ -262,7 +268,7 @@ fun FightScreen(
         runCatching { requesters.getValue(target).requestFocus() }
     }
 
-    BackHandler(enabled = focusEntry != null && !askRun) {
+    GameBackHandler(enabled = focusEntry != null && !askRun) {
         if (!turnActive && canAct()) {
             returnTo = focusedMove
             askRun = true
@@ -303,6 +309,8 @@ fun FightScreen(
         val shakePx = with(density) { 14.dp.toPx() }
         val jitterPx = with(density) { 4.dp.toPx() }
         val halfWidth = with(density) { (w * 0.4f).toDp() }
+        val safe = safeInset()
+        val insetPx = with(density) { safe.horizontal.toPx() }
         SideEffect {
             stage.width = w
             stage.height = h
@@ -381,14 +389,15 @@ fun FightScreen(
                         x = { w * homeFraction(side) },
                         y = { stage.floor - cellH * rig.body * CALLOUT_AT },
                         top = belowHud,
+                        inset = insetPx,
                         maxWidth = halfWidth,
                     )
                 }
             }
         }
-        FloatingNumbers(stage.floats, top = belowHud, onDone = { stage.floats.remove(it) })
+        FloatingNumbers(stage.floats, top = belowHud, inset = insetPx, onDone = { stage.floats.remove(it) })
 
-        Box(Modifier.fillMaxSize().padding(safeInsetPadding())) {
+        Box(Modifier.fillMaxSize().padding(horizontal = safe.horizontal, vertical = safe.vertical)) {
             FightHud(
                 player = fight.player,
                 cpu = fight.cpu,
@@ -1124,8 +1133,9 @@ private val MovePillWidth = 96.dp
 private val MovePillPadding = 18.dp
 
 /**
- * The move pills, bottom centre: `STRIKE HEAVY BLOCK [SPECIAL] | RUN`, with the focused move explained
- * above them. SPECIAL is there only with a full meter, and glows Amber until picked.
+ * The move pills, bottom centre: `STRIKE HEAVY BLOCK [SPECIAL] | RUN`, with the focused (or, under a
+ * finger, the last pressed) move explained above them. SPECIAL is there only with a full meter, and glows
+ * Amber until picked.
  */
 @Composable
 private fun MoveMenu(
@@ -1185,6 +1195,10 @@ private fun MovePill(
         .onFocusChanged { if (it.isFocused) onFocused(move) }
         .focusRequester(requester)
         .focusProperties { this.canFocus = canFocus }
+    // A finger pressing a pill shows its hint, as focus does (a remote's OK only presses the focused pill).
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    LaunchedEffect(pressed) { if (pressed) onFocused(move) }
     if (move != Move.SPECIAL) {
         FocusPill(
             label = move.name,
@@ -1192,6 +1206,7 @@ private fun MovePill(
             modifier = base,
             minWidth = MovePillWidth,
             horizontalPadding = MovePillPadding,
+            interactionSource = interaction,
         )
         return
     }
@@ -1209,10 +1224,11 @@ private fun MovePill(
         },
         minWidth = MovePillWidth,
         horizontalPadding = MovePillPadding,
-    ) { focused ->
+        interactionSource = interaction,
+    ) { lit ->
         BasicText(
             text = "SPECIAL",
-            style = displayStyle(24.sp, tracking = 0.06f, color = if (focused) TextHi else Amber),
+            style = displayStyle(24.sp, tracking = 0.06f, color = if (lit) TextHi else Amber),
             maxLines = 1,
         )
     }
@@ -1220,15 +1236,19 @@ private fun MovePill(
 
 // ---- "Run away?" ----
 
-/** "Run away?" over a scrim; [modifier] goes on the card (the caller animates it in). */
+/**
+ * "Run away?" over a scrim; [modifier] goes on the card (the caller animates it in). The scrim takes every
+ * touch that misses the two pills, so a tap can never reach the move pills under it.
+ */
 @Composable
 private fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier = Modifier) {
     val noFocus = remember { FocusRequester() }
-    BackHandler(onBack = onNo)
+    GameBackHandler(onBack = onNo)
     LaunchedEffect(Unit) { runCatching { noFocus.requestFocus() } }
     Box(
         Modifier
             .fillMaxSize()
+            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false).consume() } }
             .background(Color.Black.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center,
     ) {

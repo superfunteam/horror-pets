@@ -1,6 +1,5 @@
 package team.superfun.horrorpets.ui.fakedeath
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -73,6 +72,7 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
@@ -83,6 +83,7 @@ import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
+import team.superfun.horrorpets.ui.common.rememberTouchTick
 import team.superfun.horrorpets.ui.common.safeInsetPadding
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -164,6 +165,7 @@ fun FakeDeathScreen(
     val focus = remember { FocusRequester() }
     val interaction = remember { MutableInteractionSource() }
     val latestOnDone by rememberUpdatedState(onDone)
+    val skipTick = rememberTouchTick("ui_select")
 
     // Elapsed ms on the timeline. Draw and layer blocks read it directly (no recomposition per frame);
     // the composition itself only follows [stage], which changes four times.
@@ -185,7 +187,7 @@ fun FakeDeathScreen(
         latestOnDone()
     }
 
-    BackHandler(enabled = focusEntry != null) { /* the reveal has to be seen; OK skips it after 2s */ }
+    GameBackHandler(enabled = focusEntry != null) { /* the reveal has to be seen; OK (or a tap) skips it after 2s */ }
     RequestFocusOnEntry(focus, focusEntry)
 
     // The pet's two strips are ready long before it rises.
@@ -225,7 +227,10 @@ fun FakeDeathScreen(
             .fillMaxSize()
             .focusRequester(focus)
             .clickable(interactionSource = interaction, indication = null) {
-                if (focusEntry != null && clock.longValue >= SKIP_AFTER_MS) finish()
+                if (focusEntry != null && clock.longValue >= SKIP_AFTER_MS && !done.set) {
+                    skipTick()
+                    finish()
+                }
             },
     ) {
         val w = constraints.maxWidth.toFloat()

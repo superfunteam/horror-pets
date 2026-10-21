@@ -66,7 +66,7 @@ class CoverCropTest {
     @Test
     fun alwaysCoversAndKeepsTheFloorInsideTheInsetAcrossAspects() {
         val floors = listOf(0.5f, 0.7531f, 0.85f, 0.9f, 0.95f, 0.97f)
-        val views = listOf(1920 to 1080, 1440 to 1080, 1280 to 720, 640 to 480, 1080 to 1080, 1080 to 1920)
+        val views = listOf(1920 to 1080, 1440 to 1080, 1280 to 720, 640 to 480, 1080 to 1080, 1080 to 1920, 2400 to 1080, 3200 to 1440)
         for (floorY in floors) for ((w, h) in views) {
             val c = coverCrop(1920, 1280, w, h, floorY)
             assertCovers(c, 1920, 1280, w, h)
@@ -75,6 +75,24 @@ class CoverCropTest {
                 floorYOnScreen(c, 1280, floorY) <= 0.90f * h,
             )
         }
+    }
+
+    @Test
+    fun aWiderThan16x9ScreenKeepsTheFloorWhere16x9HasIt() {
+        // The 3:2 scenes' floor (0.7531) is at 80% of a 16:9 screen; centred on a 20:9 phone it would be at 87.5%,
+        // behind the action bar. The phone's crop takes the difference off the top instead.
+        val on16x9 = floorYOnScreen(coverCrop(1920, 1280, 1920, 1080, 0.7531f), 1280, 0.7531f) / 1080f
+        assertEquals(on16x9, floorOn16x9(1920, 1280, 0.7531f), 1e-4f)
+        val phone = coverCrop(1920, 1280, 2400, 1080, floorY = 0.7531f)
+        assertEquals(on16x9 * 1080f, floorYOnScreen(phone, 1280, 0.7531f), 0.05f)
+        assertEquals(1.25f, phone.scale, 1e-4f) // pushed up within the overflow, not zoomed
+        assertCovers(phone, 1920, 1280, 2400, 1080)
+        // Without a floor line, or on a screen no wider than 16:9, the crop is the one it always was.
+        assertEquals(-260f, coverCrop(1920, 1280, 2400, 1080).offsetY, 1e-3f)
+        assertEquals(coverCrop(1920, 1280, 1280, 720), coverCrop(1920, 1280, 1280, 720, floorY = 0.7531f))
+        assertEquals(coverCrop(1920, 1280, 1440, 1080), coverCrop(1920, 1280, 1440, 1080, floorY = 0.7531f))
+        // An image wider than 16:9 fills a 16:9 view top to bottom, so its floor sits at its own fraction.
+        assertEquals(0.7f, floorOn16x9(2400, 900, 0.7f), 1e-6f)
     }
 
     @Test

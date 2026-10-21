@@ -1,16 +1,20 @@
 package team.superfun.horrorpets
 
 import android.annotation.SuppressLint
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -36,7 +40,10 @@ import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.common.LocalTouchDevice
 import team.superfun.horrorpets.ui.common.ProvideScreenDensity
+import team.superfun.horrorpets.ui.common.isTouchDevice
+import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 
 class MainActivity : ComponentActivity() {
@@ -64,8 +71,19 @@ class MainActivity : ComponentActivity() {
     /** One per Activity instance: music, effects and voice. Released in [onDestroy]. */
     private lateinit var audio: GameAudio
 
+    /** Whether this device takes touch (a phone or tablet, never a TV); see `isTouchDevice`. */
+    private var touchDevice = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        touchDevice = detectTouchDevice(this)
+        // On a phone the scene runs under the camera cutout too (Android 15 does this anyway); the UI keeps
+        // clear of it through `safeInset`. A TV has no cutout.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         hideSystemBars()
         audio = GameAudio(this)
         applyDebugTimeTravel(intent)
@@ -90,9 +108,11 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            ProvideScreenDensity {
-                HorrorPetsTheme {
-                    HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
+            CompositionLocalProvider(LocalTouchDevice provides touchDevice) {
+                ProvideScreenDensity {
+                    HorrorPetsTheme {
+                        HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
+                    }
                 }
             }
         }
@@ -135,6 +155,8 @@ class MainActivity : ComponentActivity() {
      * - on Home, Menu opens the pet switcher and Rewind / Fast-forward walk to the neighbouring scene;
      * - the UI tick sounds: a D-pad arrow plays `ui_move` (except in the pet switcher, which times its own),
      *   OK / Enter plays `ui_select` and Back plays `ui_back`. Only a key's first down counts, not its repeats.
+     *   A phone's back gesture can arrive as a Back key too (before Android 16), but the screens tick for a
+     *   gesture themselves (`GameBackHandler`), so a Back key that comes in touch mode stays quiet here.
      *
      * This has to run before the view hierarchy (Compose) sees the key, hence `dispatchKeyEvent`. It is
      * the public `android.app.Activity` method; lint's RestrictedApi hit comes from androidx.core's
@@ -164,7 +186,7 @@ class MainActivity : ComponentActivity() {
         when (keyCode) {
             in MOVE_KEYS -> if (vm.state.value.screen !is Screen.Switcher) audio.sfx("ui_move")
             in SELECT_KEYS -> audio.sfx("ui_select")
-            KeyEvent.KEYCODE_BACK -> audio.sfx("ui_back")
+            KeyEvent.KEYCODE_BACK -> if (!isTouchInput(touchDevice, window.decorView.isInTouchMode)) audio.sfx("ui_back")
         }
     }
 
@@ -273,6 +295,16 @@ class MainActivity : ComponentActivity() {
                 0L
             }
             return max(Tuning.MIN_VALID_EPOCH_MS, installedAt)
+        }
+
+        /** Whether [context]'s device takes touch: it has a touchscreen and is not a TV (see `isTouchDevice`). */
+        fun detectTouchDevice(context: Context): Boolean {
+            val uiMode = (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+            val pm = context.packageManager
+            return isTouchDevice(
+                television = uiMode == Configuration.UI_MODE_TYPE_TELEVISION || pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+                touchscreen = pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN),
+            )
         }
 
         fun assetLoader(context: Context): AssetLoader =

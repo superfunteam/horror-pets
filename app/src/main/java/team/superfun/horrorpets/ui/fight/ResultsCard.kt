@@ -1,6 +1,5 @@
 package team.superfun.horrorpets.ui.fight
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -61,15 +60,16 @@ import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.common.FocusPill
+import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.GlassPanel
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
-import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.ignoreOkUnless
 import team.superfun.horrorpets.ui.common.rememberOkReady
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Ink
@@ -91,7 +91,8 @@ private val CardMaxWidth = 700.dp
  * (`LEVEL UP!` when it wraps), and each stat as before → after with its change. [before] is the pet as it
  * went into the fight; without it (the Activity was recreated) the stats show their values alone.
  * One focused CONTINUE pill, or Back, calls [onDone]. OK is ignored for a moment after the card comes up
- * (see `rememberOkReady`), so an OK mashed through the fight's last turn cannot skip the results. The
+ * (see `rememberOkReady`), so an OK mashed through the fight's last turn cannot skip the results; so is a
+ * tap, on a phone. The
  * view model has already queued `you_win` / `you_lose` (and `levelup`).
  */
 @Composable
@@ -104,7 +105,7 @@ fun ResultsCard(
     focusEntry: Any? = Unit,
 ) {
     val focus = remember { FocusRequester() }
-    BackHandler(enabled = focusEntry != null, onBack = onDone)
+    GameBackHandler(enabled = focusEntry != null, onBack = onDone)
     RequestFocusOnEntry(focus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
 
@@ -120,7 +121,7 @@ fun ResultsCard(
         // Darken the arena so the card owns the screen.
         Spacer(Modifier.fillMaxSize().background(Ink.copy(alpha = 0.62f)))
 
-        val available = maxWidth * (1f - 2f * SAFE_INSET_FRACTION)
+        val available = maxWidth - safeInset().horizontal * 2
         val cardWidth = if (available < CardMaxWidth) available else CardMaxWidth
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             GlassPanel(
