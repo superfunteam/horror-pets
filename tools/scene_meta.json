@@ -1,84 +1,84 @@
 {
   "jason/dock": {
-    "floorY": 0.8,
-    "tint": "#FF8479",
+    "floorY16x9": 0.8,
+    "tint": "#592E2A",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FF7A3D"
   },
   "jason/cabin": {
-    "floorY": 0.8,
-    "tint": "#FF774B",
+    "floorY16x9": 0.8,
+    "tint": "#592A1A",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FFB15C"
   },
   "jason/woods": {
-    "floorY": 0.8,
-    "tint": "#98BEFF",
+    "floorY16x9": 0.8,
+    "tint": "#354359",
     "tintStrength": 0.15,
     "shadowOpacity": 0.55,
     "accent": "#7FA8FF"
   },
   "freddy/boiler": {
-    "floorY": 0.8,
-    "tint": "#FF7E6F",
+    "floorY16x9": 0.8,
+    "tint": "#592C27",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FF5A1F"
   },
   "freddy/bedroom": {
-    "floorY": 0.8,
-    "tint": "#FF8DC9",
+    "floorY16x9": 0.8,
+    "tint": "#593146",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FF5FA2"
   },
   "freddy/house": {
-    "floorY": 0.8,
-    "tint": "#E6E4FF",
+    "floorY16x9": 0.8,
+    "tint": "#515059",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#E0262F"
   },
   "pinhead/attic": {
-    "floorY": 0.8,
-    "tint": "#FFBDC4",
+    "floorY16x9": 0.8,
+    "tint": "#594245",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FFB347"
   },
   "pinhead/labyrinth": {
-    "floorY": 0.8,
-    "tint": "#85B2FF",
+    "floorY16x9": 0.8,
+    "tint": "#2E3E59",
     "tintStrength": 0.15,
     "shadowOpacity": 0.55,
     "accent": "#6FA8FF"
   },
   "pinhead/chamber": {
-    "floorY": 0.8,
-    "tint": "#FFB9E8",
+    "floorY16x9": 0.8,
+    "tint": "#594151",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FF4D2E"
   },
   "ghostface/school": {
-    "floorY": 0.8,
-    "tint": "#FF7B6C",
+    "floorY16x9": 0.8,
+    "tint": "#592B26",
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#FF8A5C"
   },
   "ghostface/house": {
-    "floorY": 0.8,
-    "tint": "#D1D9FF",
+    "floorY16x9": 0.8,
+    "tint": "#494C59",
     "tintStrength": 0.15,
     "shadowOpacity": 0.55,
     "accent": "#FFC46B"
   },
   "ghostface/kitchen": {
-    "floorY": 0.8,
-    "tint": "#FFBAB7",
+    "floorY16x9": 0.8,
+    "tint": "#594140",
     "tintStrength": 0.12,
     "shadowOpacity": 0.6,
     "accent": "#4F8CFF"
