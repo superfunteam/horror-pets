@@ -23,7 +23,10 @@ private const val HOME_X = 0.5f
 
 
 /** The span the pet's centre may stroll over, as fractions of the screen width. */
-data class WanderRange(val min: Float, val max: Float)
+data class WanderRange(val min: Float, val max: Float) {
+    /** [x] brought inside this span: where a pet caught outside it (on its way into a scene) settles. */
+    fun clamp(x: Float): Float = x.coerceIn(min, max)
+}
 
 /**
  * Where a pet may stroll on a [screenW]-wide Home: its body ([bodyHalfPx] either side of its centre) stays

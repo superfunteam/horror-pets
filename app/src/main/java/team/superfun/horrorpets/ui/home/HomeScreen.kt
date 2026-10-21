@@ -227,9 +227,10 @@ fun HomeScreen(
         }
         walkJob.cancel()
         if (dir == 0) {
-            // Anything but a walk plays where the pet is: an arrival cut short stops right there.
+            // Anything but a walk plays where the pet is: an arrival cut short stops right there, but never
+            // outside the span it strolls over (on 4:3 the walk in from the left starts under the stat card).
             walk = null
-            homeX.snapTo((homeX.value + walkX.value).coerceIn(0f, 1f))
+            homeX.snapTo(geometry.range.clamp(homeX.value + walkX.value))
             walkX.snapTo(0f)
             walkAlpha.snapTo(1f)
             return@LaunchedEffect
@@ -345,6 +346,7 @@ fun HomeScreen(
             geometry.screenW = screenW
             geometry.drawnHeightPx = drawnHeightPx
             geometry.walkSpeed = walkSpeed
+            geometry.range = range
         }
         // The bubble keeps between the stat card (as measured) and the right safe inset.
         val cardFallbackPx = insetPx + with(density) { cardWidth.toPx() }
@@ -490,6 +492,7 @@ private class HomeGeometry {
     var screenW = 0f
     var drawnHeightPx = 0f
     var walkSpeed = 1f
+    var range = WanderRange(0f, 1f)
 }
 
 /**

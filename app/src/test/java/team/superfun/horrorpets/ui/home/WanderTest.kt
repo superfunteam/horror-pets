@@ -162,6 +162,19 @@ class WanderTest {
     }
 
     @Test
+    fun aPetInterruptedOnItsWayInSettlesInsideTheRange() {
+        // 1280x960 (4:3): a 64 px inset, the stat card's right edge at 448 px, Jason's half-body 122 px.
+        val square = wanderRange(1280f, 64f, 448f, 122f)
+        // Walking in from the left, a care action catches him at 27% of the width, under the stat card.
+        val settled = square.clamp(0.27f)
+        assertEquals(square.min, settled, 0f)
+        assertTrue("body clear of the card", settled * 1280f - 122f >= 448f - 1e-3f)
+        // From the right, past the inset: back inside it. Anywhere in range: unchanged.
+        assertEquals(square.max, square.clamp(0.95f), 0f)
+        assertEquals(0.6f, square.clamp(0.6f), 0f)
+    }
+
+    @Test
     fun walkingSpeedMatchesTheStride() {
         // 0.55 drawn heights a second: a 500 px pet covers 275 px a second.
         assertEquals(1000L, wanderDurationMs(275f, drawnHeightPx = 500f, walkSpeed = 1f))
