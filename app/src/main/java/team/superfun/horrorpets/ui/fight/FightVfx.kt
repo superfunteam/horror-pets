@@ -536,14 +536,13 @@ private const val SAW_SPARKS = 90
 
 /**
  * The blades' orbits, flattened ellipses round the target's body: centre height and radii as fractions of the
- * body height, tilt in degrees, spin direction (1 runs left to right across the front), and blades on it.
+ * body height, tilt in degrees, and spin direction (1 sweeps right to left across the front).
  */
 private val SawOrbitY = floatArrayOf(-0.06f, 0.17f)
 private val SawOrbitRx = floatArrayOf(0.44f, 0.36f)
 private val SawOrbitRy = floatArrayOf(0.13f, 0.1f)
 private val SawOrbitTilt = floatArrayOf(-14f, 9f)
 private val SawOrbitDir = floatArrayOf(1f, -1f)
-private val SawOrbitBlades = intArrayOf(2, 1)
 
 /** Each blade as (orbit, starting angle in radians). Three blades: two opposite on the upper orbit, one below. */
 private val SawBladeOrbit = intArrayOf(0, 0, 1)
