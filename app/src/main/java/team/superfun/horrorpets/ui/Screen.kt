@@ -4,6 +4,7 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightReward
 import team.superfun.horrorpets.fight.FightState
+import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
@@ -30,8 +31,16 @@ sealed interface Screen {
      * turn 1, and after a RUN). The turn's result is already in [fight]: when `fight.winner` is set the
      * screen still plays the turn out and reports its `PetAnimRequest` finished, and only then does
      * the view model move on to [Results].
+     *
+     * [playerMove] and [cpuMove] are the two moves just played, for the "both moves pop up" callouts.
+     * Both are null before turn 1; [cpuMove] is also null after a RUN, because the CPU never picked.
      */
-    data class Fight(val fight: FightState, val lastEvents: List<FightEvent>) : Screen
+    data class Fight(
+        val fight: FightState,
+        val lastEvents: List<FightEvent>,
+        val playerMove: Move? = null,
+        val cpuMove: Move? = null,
+    ) : Screen
 
     data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean) : Screen
 }

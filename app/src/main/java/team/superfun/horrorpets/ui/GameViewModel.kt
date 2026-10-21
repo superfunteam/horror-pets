@@ -245,12 +245,13 @@ class GameViewModel(
         if (s.busy || fight.winner != null) return
         if (m == Move.SPECIAL && fight.player.meter < FightTuning.METER_MAX) return
 
-        // Running ends the fight before the CPU acts; the engine ignores the CPU's move then.
-        val cpuMove = if (m == Move.RUN) Move.BLOCK else cpuPick(fight, rng)
-        val turn = resolveTurn(fight, m, cpuMove, rng)
+        // Running ends the fight before the CPU acts: it picks nothing, and the engine ignores the
+        // placeholder it is handed.
+        val cpuPicked = if (m == Move.RUN) null else cpuPick(fight, rng)
+        val turn = resolveTurn(fight, m, cpuPicked ?: Move.BLOCK, rng)
         val sounds = fightSounds(turn.events, turn.state)
         _state.value = s.copy(
-            screen = Screen.Fight(turn.state, turn.events),
+            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuPicked),
             sfx = s.sfx + sounds.sfx,
             voice = s.voice + sounds.voice,
         ).beginAction(listOf(Anim.ATTACK), ::finishTurn)
@@ -364,17 +365,22 @@ private fun PetId.soundName(): String = name.lowercase()
 
 /**
  * The welcome-back toast: `"Away 2d 4h · Hunger +80"`, with the days left out when there are none,
- * a real minus sign (U+2212) for losses, and just the time when nothing notable changed. Null when
- * the pet was gone for less than [Tuning.TOAST_MIN_AWAY_MS].
+ * minutes instead of `0h` for an absence under an hour (`"Away 25m · Hunger +2"`), a real minus sign
+ * (U+2212) for losses, and just the time when nothing notable changed. Null when the pet was gone
+ * for less than [Tuning.TOAST_MIN_AWAY_MS].
  */
 internal fun awayToast(away: AwaySummary): String? {
     if (away.elapsedMs < Tuning.TOAST_MIN_AWAY_MS) return null
     val days = away.elapsedMs / Tuning.DAY_MS
     val hours = away.elapsedMs % Tuning.DAY_MS / Tuning.HOUR_MS
-    val time = if (days > 0) "${days}d ${hours}h" else "${hours}h"
+    val time = when {
+        days > 0 -> "${days}d ${hours}h"
+        hours > 0 -> "${hours}h"
+        else -> "${away.elapsedMs / Tuning.MINUTE_MS}m"
+    }
     val stat = away.biggestStat ?: return "Away $time"
-    val sign = if (away.biggestDelta < 0) "−" else "+"
-    return "Away $time · $stat $sign${abs(away.biggestDelta)}"
+    val sign = if (away.biggestDelta < 0) "\u2212" else "+" // a real minus sign, not a hyphen
+    return "Away $time \u00b7 $stat $sign${abs(away.biggestDelta)}"
 }
 
 /** The sound queues' additions for one turn. */

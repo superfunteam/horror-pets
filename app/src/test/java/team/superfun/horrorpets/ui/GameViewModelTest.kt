@@ -168,6 +168,14 @@ class GameViewModelTest {
     }
 
     @Test
+    fun underAnHourAwayToastIsInMinutes() {
+        val rig = Rig(gameOf(lastSeenMs = T0 - 25 * MINUTE))
+        rig.started()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals("Away 25m \u00b7 Hunger +2", rig.ui.toast)
+    }
+
+    @Test
     fun exactlyTenMinutesAwayShowsAToast() {
         val rig = Rig(gameOf(lastSeenMs = T0 - 10 * MINUTE))
         rig.started()
@@ -586,6 +594,8 @@ class GameViewModelTest {
         assertEquals(PetId.FREDDY, fight.fight.cpu.id)
         assertEquals(1, fight.fight.turn)
         assertTrue(fight.lastEvents.isEmpty())
+        assertNull(fight.playerMove)
+        assertNull(fight.cpuMove)
         assertFalse(rig.ui.busy)
 
         rig.vm.onVersusDone() // key repeat
@@ -603,6 +613,8 @@ class GameViewModelTest {
             rig.vm.onMove(Move.STRIKE)
             val fight = rig.ui.screen as Screen.Fight
             assertTrue("a turn's events are on the screen", fight.lastEvents.isNotEmpty())
+            assertEquals(Move.STRIKE, fight.playerMove)
+            assertEquals("the scripted CPU only ever strikes", Move.STRIKE, fight.cpuMove)
             assertTrue(rig.ui.busy)
             assertNotNull(rig.ui.petAnim)
             if (fight.fight.winner != null) {
@@ -656,6 +668,9 @@ class GameViewModelTest {
         var turns = 0
         while (rig.ui.screen is Screen.Fight) {
             rig.vm.onMove(Move.BLOCK)
+            val fight = rig.ui.screen as Screen.Fight
+            assertEquals(Move.BLOCK, fight.playerMove)
+            assertEquals(Move.HEAVY, fight.cpuMove)
             rig.finishAnim()
             check(++turns < 20)
         }
@@ -686,6 +701,8 @@ class GameViewModelTest {
         assertEquals(Side.CPU, fight.fight.winner)
         assertTrue(fight.fight.playerRan)
         assertTrue(fight.lastEvents.isEmpty())
+        assertEquals(Move.RUN, fight.playerMove)
+        assertNull("the CPU never gets to pick when the player runs", fight.cpuMove)
         assertTrue(rig.ui.busy)
         assertNotNull(rig.ui.petAnim)
         assertEquals(before, rig.jason)
@@ -956,6 +973,19 @@ class AwayToastTest {
     @Test
     fun partialHoursAreFlooredAndDaysCarry() {
         assertEquals("Away 1d 23h \u00b7 Fun \u22121", awayToast(away(2 * DAY - 1, "Fun", -1)))
+    }
+
+    @Test
+    fun underAnHourShowsMinutes() {
+        assertEquals("Away 25m \u00b7 Hunger +2", awayToast(away(25 * MINUTE, "Hunger", 2)))
+        assertEquals("Away 10m \u00b7 Fun \u22121", awayToast(away(10 * MINUTE, "Fun", -1)))
+        assertEquals("Away 59m", awayToast(away(HOUR - 1, null, 0)))
+    }
+
+    @Test
+    fun fromOneHourOnItStaysInHours() {
+        assertEquals("Away 1h \u00b7 Fun \u22123", awayToast(away(HOUR, "Fun", -3)))
+        assertEquals("Away 1h", awayToast(away(HOUR + 59 * MINUTE, null, 0)))
     }
 
     @Test
