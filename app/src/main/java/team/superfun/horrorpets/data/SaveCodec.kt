@@ -12,7 +12,7 @@ import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 
-/** The save file format: [GameState] as JSON. Decoding never throws; any unusable save becomes a fresh game. */
+/** The save file format: [GameState] as JSON. Decoding never throws; an unusable save is reported as null or becomes a fresh game. */
 object SaveCodec {
     /** Newest save version this build understands; a higher one was written by a newer build. */
     private const val SUPPORTED_VERSION = 1
@@ -31,44 +31,69 @@ object SaveCodec {
     fun encode(s: GameState): String = format.encodeToString(GameState.serializer(), s)
 
     /**
-     * Returns [GameState] defaults for null, blank, truncated, malformed or wrongly typed JSON and for
-     * a save from a newer version. Otherwise returns the saved state with every [PetId] present (any
-     * missing pet filled with its defaults) and every pet sanitised at this trust boundary:
+     * [decodeOrNull], with a fresh game ([GameState] defaults) in place of a save that cannot be used.
+     * Never throws.
+     */
+    fun decode(json: String?): GameState = decodeOrNull(json) ?: GameState()
+
+    /**
+     * Reads a save, or returns null when the whole save is unusable: not JSON, truncated, not an object,
+     * a wrongly typed top-level field (`version`, `lastSeenMs`, `pets` that is not an object), or a
+     * version newer than this build. No save at all (null or blank) is a first run: [GameState] defaults.
+     *
+     * Otherwise returns the saved state with every [PetId] present, tolerating what a later build or a
+     * damaged entry might leave behind:
+     * - a pet key this build does not know (a character added later) is skipped;
+     * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, and
+     *   so is a missing one; the other pets are kept;
+     * - an unknown `selected` pet reads as none, so the player picks again.
+     * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
      * - hunger, fun and strength are in 0..100 and moodBonus in -30..30 (NaN becomes the field's default);
      * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative.
      * A version below 1 reads as 1.
      */
-    fun decode(json: String?): GameState {
+    fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
-        val decoded = try {
-            val root = reader.parseToJsonElement(json) as? JsonObject ?: return GameState()
-            reader.decodeFromJsonElement(GameState.serializer(), withPetIdsFromKeys(root))
+        return try {
+            val root = reader.parseToJsonElement(json) as? JsonObject ?: return null
+            val pets = when (val p = root["pets"]) {
+                null -> JsonObject(emptyMap())
+                is JsonObject -> p
+                else -> return null
+            }
+            // Pets and the selection are read on their own below, so neither can sink the rest.
+            val rest = reader.decodeFromJsonElement(GameState.serializer(), JsonObject(root - "pets" - "selected"))
+            if (rest.version > SUPPORTED_VERSION) return null
+            rest.copy(
+                version = rest.version.coerceAtLeast(1),
+                selected = petIdOrNull(root["selected"]),
+                pets = PetId.entries.associateWith { id -> petOrDefault(id, pets[id.name]) },
+            )
         } catch (_: Exception) {
-            // SerializationException, IllegalArgumentException (bad enum/number): all mean "unusable save".
-            return GameState()
+            // SerializationException, IllegalArgumentException (bad number): the save as a whole is unusable.
+            null
         }
-        if (decoded.version > SUPPORTED_VERSION) return GameState()
-        return decoded.copy(
-            version = decoded.version.coerceAtLeast(1),
-            pets = PetId.entries.associateWith { id ->
-                decoded.pets[id]?.let { sanitize(it.copy(id = id)) } ?: PetState(id)
-            },
-        )
+    }
+
+    private fun petIdOrNull(e: JsonElement?): PetId? {
+        val name = (e as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+        return PetId.entries.firstOrNull { it.name == name }
     }
 
     /**
-     * [PetState.id] has no default, so an entry without one would fail the whole decode. The map key
-     * already names the pet, so write it into every pet object first. Non-object values are left alone
-     * and still fail the decode.
+     * The pet saved under [id]'s key, sanitised, or [id]'s defaults when the entry is missing or
+     * unreadable. [PetState.id] has no default, so the key is written into the entry before decoding.
      */
-    private fun withPetIdsFromKeys(root: JsonObject): JsonObject {
-        val pets = root["pets"] as? JsonObject ?: return root
-        val withIds: Map<String, JsonElement> = pets.mapValues { (key, pet) ->
-            if (pet is JsonObject) JsonObject(pet + ("id" to JsonPrimitive(key))) else pet
+    private fun petOrDefault(id: PetId, e: JsonElement?): PetState {
+        if (e !is JsonObject) return PetState(id)
+        return try {
+            val pet = reader.decodeFromJsonElement(PetState.serializer(), JsonObject(e + ("id" to JsonPrimitive(id.name))))
+            sanitize(pet.copy(id = id))
+        } catch (_: Exception) {
+            PetState(id)
         }
-        return JsonObject(root + ("pets" to JsonObject(withIds)))
     }
 
     private fun sanitize(p: PetState): PetState {

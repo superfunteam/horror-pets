@@ -40,6 +40,7 @@ object Tuning {
 
     // Clock sanity: 2024-01-01T00:00:00Z. A device clock earlier than this has not synced yet
     // (typical right after a TV boots), so it is treated as unknown: no decay, no lastSeen write.
+    // This is the lowest floor; the app raises it to its install / update time (see applyElapsed).
     const val MIN_VALID_EPOCH_MS = 1_704_067_200_000L
 
     // Leveling: going from level L to L+1 costs XP_PER_LEVEL * L xp.

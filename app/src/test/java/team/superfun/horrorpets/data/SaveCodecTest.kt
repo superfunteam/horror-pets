@@ -1,6 +1,8 @@
 package team.superfun.horrorpets.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.model.GameState
@@ -240,6 +242,56 @@ class SaveCodecTest {
     }
 
     @Test
+    fun unknownPetKeyIsSkippedAndTheValidPetsKept() {
+        // A save written by a later build that added a character.
+        val json = """
+            {"version":1,"selected":"FREDDY","lastSeenMs":1760000000000,
+             "pets":{
+               "JASON":{"id":"JASON","level":3,"wins":4},
+               "CHUCKY":{"id":"CHUCKY","level":12,"hunger":5.0},
+               "FREDDY":{"id":"FREDDY","hunger":61.5}
+             }}
+        """.trimIndent()
+        val decoded = SaveCodec.decode(json)
+        assertEquals(PetId.FREDDY, decoded.selected)
+        assertEquals(1_760_000_000_000L, decoded.lastSeenMs)
+        assertEquals(3, decoded.pets.getValue(PetId.JASON).level)
+        assertEquals(4, decoded.pets.getValue(PetId.JASON).wins)
+        assertEquals(61.5, decoded.pets.getValue(PetId.FREDDY).hunger, 0.0)
+        assertEquals(PetState(PetId.PINHEAD), decoded.pets.getValue(PetId.PINHEAD))
+        assertEquals(PetId.entries.toSet(), decoded.pets.keys)
+    }
+
+    @Test
+    fun oneMalformedPetIsResetAndTheOthersKept() {
+        val json = """
+            {"version":1,"selected":"PINHEAD","lastSeenMs":1760000000000,
+             "pets":{
+               "JASON":{"id":"JASON","hunger":"lots","level":7},
+               "FREDDY":{"id":"FREDDY","level":4},
+               "PINHEAD":{"id":"PINHEAD","wins":9},
+               "GHOSTFACE":42
+             }}
+        """.trimIndent()
+        val decoded = SaveCodec.decode(json)
+        assertEquals(PetId.PINHEAD, decoded.selected)
+        assertEquals(1_760_000_000_000L, decoded.lastSeenMs)
+        assertEquals(PetState(PetId.JASON), decoded.pets.getValue(PetId.JASON))
+        assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
+        assertEquals(4, decoded.pets.getValue(PetId.FREDDY).level)
+        assertEquals(9, decoded.pets.getValue(PetId.PINHEAD).wins)
+    }
+
+    @Test
+    fun unknownSelectedPetIsDroppedAndTheRestKept() {
+        val json = """{"version":1,"selected":"CHUCKY","lastSeenMs":1760000000000,"pets":{"JASON":{"level":3}}}"""
+        val decoded = SaveCodec.decode(json)
+        assertEquals(null, decoded.selected)
+        assertEquals(1_760_000_000_000L, decoded.lastSeenMs)
+        assertEquals(3, decoded.pets.getValue(PetId.JASON).level)
+    }
+
+    @Test
     fun idNormalisedToMapKey() {
         val json = """{"pets":{"JASON":{"id":"FREDDY","level":5}}}"""
         val decoded = SaveCodec.decode(json)
@@ -262,6 +314,38 @@ class SaveCodecTest {
         for (cut in listOf(1, full.length / 4, full.length / 2, full.length - 1)) {
             assertEquals("cut at $cut", defaults, SaveCodec.decode(full.substring(0, cut)))
         }
+    }
+
+    @Test
+    fun decodeOrNullSignalsAWhollyUnreadableSave() {
+        val full = SaveCodec.encode(GameState(selected = PetId.JASON, lastSeenMs = 1_760_000_000_000L))
+        for (corrupt in listOf(
+            "{not json",
+            "[]",
+            "42",
+            full.substring(0, full.length / 2),
+            """{"version":"one"}""",
+            """{"pets":[1,2,3]}""",
+            """{"pets":null}""",
+            """{"lastSeenMs":"yesterday"}""",
+            """{"version":2,"selected":"JASON"}""",
+        )) {
+            assertNull(corrupt, SaveCodec.decodeOrNull(corrupt))
+            // decode() still never throws and falls back to a fresh game.
+            assertEquals(corrupt, defaults, SaveCodec.decode(corrupt))
+        }
+    }
+
+    @Test
+    fun decodeOrNullReadsEverythingElse() {
+        // No save yet is a first run, not a corrupt save.
+        assertEquals(defaults, SaveCodec.decodeOrNull(null))
+        assertEquals(defaults, SaveCodec.decodeOrNull(" "))
+        val state = GameState(selected = PetId.PINHEAD, lastSeenMs = 1_760_000_000_000L)
+        assertEquals(state, SaveCodec.decodeOrNull(SaveCodec.encode(state)))
+        // One bad pet or an unknown one does not make the whole save unreadable.
+        assertNotNull(SaveCodec.decodeOrNull("""{"version":1,"pets":{"JASON":42}}"""))
+        assertNotNull(SaveCodec.decodeOrNull("""{"version":1,"pets":{"CHUCKY":{"level":3}}}"""))
     }
 
     @Test

@@ -8,14 +8,14 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import team.superfun.horrorpets.model.GameState
-import java.io.IOException
 
 /** Where the game is loaded from and saved to. The view model depends on this, not on DataStore. */
 interface SaveStore {
+    /** The saved game. Throws when the store cannot be read (an I/O error), so the caller can retry. */
     suspend fun load(): GameState
+
     suspend fun save(s: GameState)
 }
 
@@ -25,20 +25,40 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
 )
 
-private val SAVE_JSON = stringPreferencesKey("save_json")
+/**
+ * [SaveStore] backed by a Preferences DataStore holding the whole save as one JSON string.
+ *
+ * A save that reads fine but cannot be used at all (corrupt JSON, or one from a newer build) loads as a
+ * fresh game, and the first save after that copies the old JSON to a backup key before replacing it,
+ * in the same write. Only the most recent such backup is kept.
+ */
+class SaveRepository internal constructor(private val store: DataStore<Preferences>) : SaveStore {
+    constructor(context: Context) : this(context.applicationContext.dataStore)
 
-/** [SaveStore] backed by a Preferences DataStore holding the whole save as one JSON string. */
-class SaveRepository(context: Context) : SaveStore {
-    private val store = context.applicationContext.dataStore
+    /** The unusable save [load] found, until a save has backed it up. */
+    @Volatile
+    private var unreadable: String? = null
 
     override suspend fun load(): GameState {
-        val prefs = store.data
-            .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
-            .first()
-        return SaveCodec.decode(prefs[SAVE_JSON])
+        // A read failure (IOException) reaches the caller: it is not an empty save.
+        val json = store.data.first()[SAVE_JSON]
+        val game = SaveCodec.decodeOrNull(json)
+        if (game != null) return game
+        unreadable = json
+        return GameState()
     }
 
     override suspend fun save(s: GameState) {
-        store.edit { it[SAVE_JSON] = SaveCodec.encode(s) }
+        val backup = unreadable
+        store.edit {
+            if (backup != null) it[SAVE_JSON_BACKUP] = backup
+            it[SAVE_JSON] = SaveCodec.encode(s)
+        }
+        unreadable = null
+    }
+
+    private companion object {
+        val SAVE_JSON = stringPreferencesKey("save_json")
+        val SAVE_JSON_BACKUP = stringPreferencesKey("save_json_backup")
     }
 }

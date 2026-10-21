@@ -157,6 +157,38 @@ class DecayTest {
     }
 
     @Test
+    fun nowBelowACustomFloorIsIgnored() {
+        // A stick with no clock battery boots to its firmware build date: after 2024, but before the
+        // app was installed. The floor is the install time, so that date is recognised as stale.
+        val floor = t0 + 30 * day
+        val state = seen(at = t0)
+        val (next, summary) = applyElapsed(state, t0 + 10 * day, floorMs = floor)
+        assertEquals("no decay and no lastSeen write", state, next)
+        assertEquals(0L, summary.elapsedMs)
+        assertTrue(summary.fakeDeath.isEmpty())
+
+        val fresh = GameState(lastSeenMs = null)
+        assertNull(applyElapsed(fresh, floor - 1, floorMs = floor).first.lastSeenMs)
+        assertEquals(floor, applyElapsed(fresh, floor, floorMs = floor).first.lastSeenMs)
+    }
+
+    @Test
+    fun lastSeenBelowACustomFloorIsAFirstRun() {
+        // Saved under a stale boot clock (between 2024 and the floor): not a real absence.
+        val floor = t0 + 30 * day
+        val state = seen(at = t0)
+        val now = floor + 2 * hour
+        val (next, summary) = applyElapsed(state, now, floorMs = floor)
+        assertEquals(state.pets, next.pets)
+        assertEquals(now, next.lastSeenMs)
+        assertEquals(0L, summary.elapsedMs)
+        assertTrue(summary.fakeDeath.isEmpty())
+
+        // The same save with the default floor is a 32-day absence (capped at 30) and a fake death.
+        assertTrue(applyElapsed(state, now).second.fakeDeath.isNotEmpty())
+    }
+
+    @Test
     fun hugeJumpIsCapped() {
         val (next, summary) = applyElapsed(seen(), t0 + 400 * day)
         assertEquals(30 * day, summary.elapsedMs)
