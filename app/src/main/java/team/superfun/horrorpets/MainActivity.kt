@@ -36,6 +36,7 @@ import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.common.ProvideScreenDensity
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 
 class MainActivity : ComponentActivity() {
@@ -89,8 +90,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            HorrorPetsTheme {
-                HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
+            ProvideScreenDensity {
+                HorrorPetsTheme {
+                    HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
+                }
             }
         }
     }
