@@ -4,6 +4,11 @@ Key art is made from every pet's own reference render, so the characters stay on
 generated separately on a transparent background. tools/make_branding.py composites the chosen pair.
 The API key is read from the OPENAI_API_KEY environment variable only.
 
+Inputs and outputs are not in the repo: the base renders come from sprites-source/ (the uncommitted
+working art, see REFERENCES) and every candidate is written to art-work/branding/ (gitignored). The picked
+results are copied by hand into branding/ (cover-art.webp, logo.png), which is committed and is what
+tools/make_branding.py reads, so the cover can be rebuilt without re-running this script or having the key.
+
 Usage: OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_cover.py [--art 2] [--logo 2]
 """
 from __future__ import annotations
