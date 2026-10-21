@@ -36,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -64,6 +63,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.common.rememberTouchTick
 import team.superfun.horrorpets.ui.common.softGlow
@@ -90,7 +90,6 @@ private val CursorGutter = 32.dp
 
 private val WindowChamfer = 11.dp
 private val SpecialGold = Color(0xFFF5C543)
-private val FrameFill = Brush.verticalGradient(listOf(Color(0xF01B1215), Color(0xF0070507)))
 private val LitBand = Brush.horizontalGradient(
     0f to Blood.copy(alpha = 0.95f),
     0.55f to Blood.copy(alpha = 0.55f),
@@ -135,7 +134,7 @@ internal fun CommandWindow(
     Column(
         modifier
             .width(CommandWindowWidth)
-            .commandFrame(topEnd = WindowChamfer, bottomStart = WindowChamfer)
+            .gameFrame(topEnd = WindowChamfer, bottomStart = WindowChamfer)
             .padding(start = 5.dp, end = 5.dp, top = 10.dp, bottom = 8.dp),
     ) {
         BasicText(
@@ -315,51 +314,13 @@ private fun DrawScope.drawMachete() {
     }
 }
 
-/**
- * The command windows' frame: a dark panel with its [topEnd] and [bottomStart] corners cut off, a gold
- * edge and (with [inner]) a faint second gold line inside it.
- */
-internal fun Modifier.commandFrame(topEnd: Dp, bottomStart: Dp, inner: Boolean = true): Modifier = drawWithCache {
-    val stroke = 1.5.dp.toPx()
-    val te = topEnd.toPx()
-    val bs = bottomStart.toPx()
-    val outer = chamfered(size, stroke / 2f, te, bs)
-    val innerInset = 4.5.dp.toPx()
-    // Inset along both edges of a 45° cut, the chamfer comes in by about (2 - √2) of the inset.
-    val innerPath = if (inner) {
-        chamfered(size, innerInset, (te - innerInset * 0.6f).coerceAtLeast(0f), (bs - innerInset * 0.6f).coerceAtLeast(0f))
-    } else {
-        null
-    }
-    val innerStroke = Stroke(1.dp.toPx())
-    onDrawBehind {
-        drawPath(outer, FrameFill)
-        drawPath(outer, Amber, style = Stroke(stroke))
-        if (innerPath != null) drawPath(innerPath, Amber.copy(alpha = 0.28f), style = innerStroke)
-    }
-}
-
-private fun chamfered(size: Size, inset: Float, topEnd: Float, bottomStart: Float): Path = Path().apply {
-    val l = inset
-    val t = inset
-    val r = size.width - inset
-    val b = size.height - inset
-    moveTo(l, t)
-    lineTo(r - topEnd, t)
-    lineTo(r, t + topEnd)
-    lineTo(r, b)
-    lineTo(l + bottomStart, b)
-    lineTo(l, b - bottomStart)
-    close()
-}
-
 /** The explanation of the move under the cursor, in its own small window along the floor. */
 @Composable
 internal fun HelpWindow(hint: String, modifier: Modifier = Modifier) {
     Box(
         modifier
             .height(HelpHeight)
-            .commandFrame(topEnd = 10.dp, bottomStart = 0.dp, inner = false)
+            .gameFrame(topEnd = 10.dp, bottomStart = 0.dp, inner = false)
             .padding(start = 14.dp, end = 24.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -397,7 +358,7 @@ internal fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier =
     ) {
         Column(
             modifier
-                .commandFrame(topEnd = 14.dp, bottomStart = 14.dp)
+                .gameFrame(topEnd = 14.dp, bottomStart = 14.dp)
                 .padding(horizontal = 40.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
