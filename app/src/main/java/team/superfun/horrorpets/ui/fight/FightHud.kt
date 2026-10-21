@@ -90,17 +90,26 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
     )
     val align = if (mirrored) Alignment.End else Alignment.Start
     Column(modifier, horizontalAlignment = align) {
-        // Name and level at the outer edge, the HP count at the inner end, over the bar.
+        // Name and level at the outer edge, the HP count at the inner end, over the bar. The count and the
+        // level are measured first; the name gets the room left between them and steps down to fit it, so a
+        // long name (LEATHERFACE on 4:3) never pushes the count off its end.
         Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.Bottom) {
             val name = @Composable {
-                BasicText(
-                    text = f.id.displayName.uppercase(),
-                    style = displayStyle(32.sp, tracking = 0.06f, halo = true, lineHeight = 32.sp),
-                    maxLines = 1,
-                    autoSize = TextAutoSize.StepBased(minFontSize = 22.sp, maxFontSize = 32.sp, stepSize = 1.sp),
-                )
-                Spacer(Modifier.width(8.dp))
-                BasicText("LV ${f.level}", style = displayStyle(20.sp, color = TextLo, tracking = 0.1f, halo = true, lineHeight = 20.sp), maxLines = 1)
+                Row(
+                    Modifier.weight(1f),
+                    horizontalArrangement = if (mirrored) Arrangement.End else Arrangement.Start,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    BasicText(
+                        text = f.id.displayName.uppercase(),
+                        style = displayStyle(32.sp, tracking = 0.06f, halo = true, lineHeight = 32.sp),
+                        maxLines = 1,
+                        autoSize = TextAutoSize.StepBased(minFontSize = 18.sp, maxFontSize = 32.sp, stepSize = 1.sp),
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    BasicText("LV ${f.level}", style = displayStyle(20.sp, color = TextLo, tracking = 0.1f, halo = true, lineHeight = 20.sp), maxLines = 1)
+                }
             }
             val count = @Composable {
                 BasicText(
@@ -112,11 +121,11 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
             }
             if (mirrored) {
                 count()
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 name()
             } else {
                 name()
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 count()
             }
         }
