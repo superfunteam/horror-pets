@@ -6,14 +6,15 @@ package team.superfun.horrorpets.fight
  */
 object FightTuning {
     // Hit points: (BASE_HP + HP_PER_LEVEL * level) * lerp(1.0, STARVING_HP_FACTOR, hunger / 100),
-    // times JASON_HP_MULT for Jason, rounded.
+    // times the pet's passive HP multiplier (JASON_HP_MULT for Jason), rounded.
     const val BASE_HP = 60
     const val HP_PER_LEVEL = 8
     const val STARVING_HP_FACTOR = 0.7
     const val JASON_HP_MULT = 1.2
 
-    // Damage: (BASE_DAMAGE + strength / STRENGTH_DIVISOR) * variance * move multiplier * crit,
-    // where variance is uniform in 1 +- DAMAGE_VARIANCE, rounded, and at least 1.
+    // Damage: (BASE_DAMAGE + strength / STRENGTH_DIVISOR) * variance * move multiplier * crit
+    // * the defender's damage-taken multiplier, where variance is uniform in 1 +- DAMAGE_VARIANCE,
+    // rounded once at the end, and at least 1.
     const val BASE_DAMAGE = 8.0
     const val STRENGTH_DIVISOR = 8.0
     const val DAMAGE_VARIANCE = 0.15
@@ -22,8 +23,10 @@ object FightTuning {
     const val COUNTER_MULT = 0.5
     const val PINHEAD_COUNTER_MULT = 1.0
     const val SPECIAL_MULT = 2.5
+    const val CHUCKY_STRIKE_MULT = 1.15 // Chucky's STRIKE (not his counters, heavies or special)
+    const val MICHAEL_DAMAGE_TAKEN_MULT = 0.85 // everything that hits Michael, after crits
 
-    // Crits: chance = CRIT_BASE + mood / 100 * CRIT_MOOD_SPAN (+ FREDDY_CRIT_BONUS for Freddy).
+    // Crits: chance = CRIT_BASE + mood / 100 * CRIT_MOOD_SPAN + the pet's passive bonus (FREDDY_CRIT_BONUS).
     const val CRIT_BASE = 0.05
     const val CRIT_MOOD_SPAN = 0.15
     const val FREDDY_CRIT_BONUS = 0.08

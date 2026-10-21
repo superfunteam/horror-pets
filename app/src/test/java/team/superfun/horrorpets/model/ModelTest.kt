@@ -8,9 +8,9 @@ import org.junit.Test
 
 class ModelTest {
     @Test
-    fun fourPetsWithDisplayNames() {
+    fun sixPetsWithDisplayNames() {
         assertEquals(
-            listOf("Jason", "Freddy", "Pinhead", "Ghostface"),
+            listOf("Jason", "Freddy", "Pinhead", "Ghostface", "Chucky", "Michael"),
             PetId.entries.map { it.displayName },
         )
     }
@@ -20,6 +20,8 @@ class ModelTest {
         val s = GameState()
         assertEquals(PetId.entries.toSet(), s.pets.keys)
         assertEquals(PetState(PetId.GHOSTFACE), s.pets.getValue(PetId.GHOSTFACE))
+        assertEquals(PetState(PetId.MICHAEL), s.pets.getValue(PetId.MICHAEL))
+        assertEquals(6, s.pets.size)
         assertEquals(1, s.version)
         assertEquals(null, s.selected)
         assertEquals(null, s.lastSeenMs)

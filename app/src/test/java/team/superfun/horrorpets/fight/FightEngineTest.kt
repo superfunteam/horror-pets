@@ -214,7 +214,7 @@ class FightEngineTest {
 
     @Test
     fun counterIsHalfPowerForEveryoneButPinhead() {
-        for (id in listOf(PetId.JASON, PetId.FREDDY, PetId.GHOSTFACE)) {
+        for (id in PetId.entries - PetId.PINHEAD) {
             val r = resolve(stateOf(player = fighter(id = id)), Move.BLOCK, Move.STRIKE, ScriptedRandom.attacks(Roll()))
             assertEquals("$id", 92, r.state.cpu.hp)
         }
@@ -612,6 +612,128 @@ class FightEngineTest {
         assertEquals(s.cpu, r.state.cpu)
         assertEquals(4, r.state.turn)
         assertEquals(listOf(Move.STRIKE), r.state.playerHistory)
+    }
+
+    // ---------------------------------------------------------------- Chucky and Michael
+
+    @Test
+    fun theNewKillersHavePlainHp() {
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+            assertEquals("$id", 68, buildFighter(PetState(id, hunger = 0.0, level = 1)).maxHp)
+        }
+    }
+
+    @Test
+    fun chuckyStrikesFifteenPercentHarder() {
+        // Scrappy: 16 * 1.15 = 18.4.
+        val s = stateOf(player = fighter(id = PetId.CHUCKY))
+        val r = resolve(s, Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 18, false), r.events.first())
+        assertEquals(82, r.state.cpu.hp)
+    }
+
+    @Test
+    fun chuckysStrikeBonusStacksWithCritsAndVariance() {
+        val s = stateOf(player = fighter(id = PetId.CHUCKY))
+        val crit = resolve(s, Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll(crit = 0.0)))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 32, true), crit.events.first()) // 16 * 1.15 * 1.75 = 32.2
+        val high = resolve(s, Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll(variance = 1.0)))
+        assertEquals(21, (high.events.first() as Hit).damage) // 16 * 1.15 * 1.15 = 21.16
+    }
+
+    @Test
+    fun chuckysBonusIsForHisStrikeOnly() {
+        val chucky = fighter(id = PetId.CHUCKY, meter = 100)
+        val heavy = resolve(stateOf(player = chucky), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(29, (heavy.events.single() as Hit).damage)
+        val counter = resolve(stateOf(player = chucky), Move.BLOCK, Move.STRIKE, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 8, false, counter = true), counter.events.last())
+        val special = resolve(stateOf(player = chucky), Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(40, (special.events.single() as Hit).damage)
+    }
+
+    @Test
+    fun chuckyStrikesHarderOnTheCpuSideToo() {
+        val s = stateOf(cpu = fighter(id = PetId.CHUCKY))
+        val r = resolve(s, Move.HEAVY, Move.STRIKE, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.CPU, Move.STRIKE, 18, false), r.events.first())
+    }
+
+    @Test
+    fun nobodyElseGetsTheStrikeBonus() {
+        for (id in PetId.entries - PetId.CHUCKY) {
+            val r = resolve(stateOf(player = fighter(id = id)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+            assertEquals("$id", 16, (r.events.first() as Hit).damage)
+        }
+    }
+
+    @Test
+    fun michaelTakesFifteenPercentLessFromEverything() {
+        val michael = fighter(id = PetId.MICHAEL)
+        val strike = resolve(stateOf(cpu = michael), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 14, false), strike.events.first()) // 16 * 0.85 = 13.6
+        assertEquals(86, strike.state.cpu.hp)
+        val heavy = resolve(stateOf(cpu = michael), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(24, (heavy.events.single() as Hit).damage) // 28.8 * 0.85 = 24.48
+        val counter = resolve(stateOf(cpu = michael), Move.BLOCK, Move.STRIKE, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 7, false, counter = true), counter.events.last()) // 8 * 0.85 = 6.8
+        val special = resolve(stateOf(player = fighter(meter = 100), cpu = michael), Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(34, (special.events.single() as Hit).damage) // 40 * 0.85
+    }
+
+    @Test
+    fun michaelsReductionAppliesAfterTheCrit() {
+        // 16 * 1.75 = 28, then * 0.85 = 23.8 -> 24, rounded once at the end.
+        val r = resolve(stateOf(cpu = fighter(id = PetId.MICHAEL)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll(crit = 0.0)))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 24, true), r.events.first())
+    }
+
+    @Test
+    fun michaelStillTakesAtLeastOneDamage() {
+        val s = stateOf(player = fighter(strength = -200.0), cpu = fighter(id = PetId.MICHAEL))
+        val r = resolve(s, Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(1, (r.events.first() as Hit).damage)
+        assertEquals(99, r.state.cpu.hp)
+    }
+
+    @Test
+    fun michaelAsThePlayerResistsTheCpusHits() {
+        val r = resolve(stateOf(player = fighter(id = PetId.MICHAEL)), Move.HEAVY, Move.STRIKE, ScriptedRandom.attacks(Roll()))
+        assertEquals(Hit(Side.CPU, Move.STRIKE, 14, false), r.events.first())
+        assertEquals(86, r.state.player.hp)
+    }
+
+    @Test
+    fun michaelHitsNormally() {
+        val r = resolve(stateOf(player = fighter(id = PetId.MICHAEL)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(16, (r.events.first() as Hit).damage)
+    }
+
+    @Test
+    fun nobodyElseResistsDamage() {
+        for (id in PetId.entries - PetId.MICHAEL) {
+            val r = resolve(stateOf(cpu = fighter(id = id)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+            assertEquals("$id", 16, (r.events.first() as Hit).damage)
+        }
+    }
+
+    @Test
+    fun chuckyStabbingMichaelAppliesBothAndRoundsOnce() {
+        // 16 * 1.15 * 0.85 = 15.64 -> 16 (rounding 18 then scaling would give 15).
+        val s = stateOf(player = fighter(id = PetId.CHUCKY), cpu = fighter(id = PetId.MICHAEL))
+        val r = resolve(s, Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll()))
+        assertEquals(16, (r.events.first() as Hit).damage)
+    }
+
+    @Test
+    fun theNewKillersMissAndCritLikeAnyoneElse() {
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+            // 0.08 strike miss with no evade bonus either way; 5% crit at mood 0 with no crit bonus.
+            val hitThem = resolve(stateOf(cpu = fighter(id = id)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll(miss = 0.081)))
+            assertTrue("$id", hitThem.events.first() is Hit)
+            val critRoll = resolve(stateOf(player = fighter(id = id)), Move.STRIKE, Move.HEAVY, ScriptedRandom.attacks(Roll(crit = 0.051)))
+            assertFalse("$id", (critRoll.events.first() as Hit).crit)
+        }
     }
 
     // ---------------------------------------------------------------- whole fights

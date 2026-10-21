@@ -40,6 +40,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
@@ -213,13 +214,8 @@ internal fun OutlinedText(text: String, style: TextStyle, outline: Dp, modifier:
 
 // ---- move callouts ----
 
-/** The signature special of each pet, as its callout names it. */
-fun specialName(pet: PetId): String = when (pet) {
-    PetId.JASON -> "Machete Frenzy"
-    PetId.FREDDY -> "Dream Claws"
-    PetId.PINHEAD -> "Chains"
-    PetId.GHOSTFACE -> "Knife Flurry"
-}
+/** The signature special of each pet, as its callout names it (from the roster). */
+fun specialName(pet: PetId): String = pet.spec.special.displayName
 
 /** The words a move pops up as over the fighter that chose it. */
 internal fun calloutText(move: Move, pet: PetId): String = when (move) {

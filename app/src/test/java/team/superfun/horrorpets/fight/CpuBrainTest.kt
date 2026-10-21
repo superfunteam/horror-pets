@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.model.PetId
 
 class CpuBrainTest {
     private val full = fighter(meter = FightTuning.METER_MAX)
@@ -24,6 +25,20 @@ class CpuBrainTest {
         )
         for (s in states) {
             assertFalse(picks(s).contains(Move.RUN))
+        }
+    }
+
+    @Test
+    fun theNewKillersNeverRunNorSpecialWithoutAFullMeter() {
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+            for (meter in listOf(0, 25, 50, 75)) {
+                val s = stateOf(player = fighter(id = id), cpu = fighter(id = id, meter = meter), history = listOf(Move.STRIKE, Move.HEAVY))
+                val moves = picks(s)
+                assertFalse("$id meter $meter", moves.contains(Move.RUN) || moves.contains(Move.SPECIAL))
+            }
+            val full = picks(stateOf(cpu = fighter(id = id, meter = FightTuning.METER_MAX)))
+            assertFalse("$id full meter", full.contains(Move.RUN))
+            assertTrue("$id full meter", full.contains(Move.SPECIAL))
         }
     }
 

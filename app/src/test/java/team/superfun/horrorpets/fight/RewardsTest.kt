@@ -116,6 +116,22 @@ class RewardsTest {
     }
 
     @Test
+    fun rewardsAreTheSameForEveryPet() {
+        // Passives only change the fight itself: Chucky and Michael are paid like everyone else.
+        val reference = pet()
+        for (id in PetId.entries) {
+            val p = reference.copy(id = id)
+            for (s in listOf(won, lost, ran)) {
+                val r = applyFightResult(p, stateOf(player = fighter(id = id), cpu = fighter(id = PetId.JASON), winner = s.winner, playerRan = s.playerRan))
+                val expected = applyFightResult(reference, s)
+                assertEquals("$id", expected.pet.copy(id = id), r.pet)
+                assertEquals("$id", expected.xpGained, r.xpGained)
+                assertEquals("$id", expected.levelsGained, r.levelsGained)
+            }
+        }
+    }
+
+    @Test
     fun anUnfinishedFightHasNoResult() {
         assertThrows(IllegalArgumentException::class.java) { applyFightResult(pet(), stateOf()) }
     }

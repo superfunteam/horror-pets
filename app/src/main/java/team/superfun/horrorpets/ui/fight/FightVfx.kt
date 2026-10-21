@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import kotlin.math.PI
@@ -22,7 +23,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
-import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -34,16 +35,20 @@ const val SPECIAL_MS = 950
 const val SHIELD_MS = 480
 
 /**
- * One special's effect: [pet]'s signature, over a target whose body is centred on ([cx], [cy]) pixels and
- * whose sprite cell is [bodyH] pixels tall. A new instance is a new showing.
+ * One special's effect: the attacker's signature [style], over a target whose body is centred on ([cx], [cy])
+ * pixels and whose sprite cell is drawn [bodyH] pixels tall (its display scale included, so a half-height
+ * Chucky gets an effect his size). A new instance is a new showing.
  */
 @Immutable
-internal class SpecialFx(val pet: PetId, val cx: Float, val cy: Float, val bodyH: Float)
+internal class SpecialFx(val style: SpecialStyle, val cx: Float, val cy: Float, val bodyH: Float)
 
 private val DreamGreen = Color(0xFF63F25A)
 private val DreamPale = Color(0xFFE6FFD9)
 private val Steel = Color(0xFFC4C7D0)
 private val SteelDark = Color(0xFF1A1A20)
+private val VoodooPurple = Color(0xFFB24DFF)
+private val VoodooGreen = Color(0xFF59FF8C)
+private val VoodooPale = Color(0xFFF1E6FF)
 
 /**
  * The special effects layer, over the fighters. [progress] runs 0..1 over [SPECIAL_MS] and is only read
@@ -53,7 +58,12 @@ private val SteelDark = Color(0xFF1A1A20)
  *   streaks tear across it.
  * - Pinhead, Chains: eight chains shoot in from the edges of the screen and hook into the target.
  * - Ghostface, Knife Flurry: a quick dark vignette pulse and a flurry of white knife streaks.
- * Everything is lines, circles and ovals placed by [hash01], so a frame allocates nothing.
+ * - Chucky, Voodoo Stab: a swirling purple-green voodoo glyph ring takes hold of the target, and three
+ *   quick white stab streaks drive into it, each one flaring the glyph.
+ * - Michael, The Shape: the dark closes in slowly around the target, then one big overhead diagonal
+ *   slash cuts down across it.
+ * Everything is lines, arcs, circles and ovals placed by [hash01], with brushes and strokes built once
+ * per showing, so a frame allocates nothing.
  */
 @Composable
 internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
@@ -81,15 +91,19 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                 val rings = Array(3) { Stroke((7f - it * 1.5f) * unit) }
                 val linkStroke = Stroke(3.5f * unit)
                 val linkShadow = Stroke(7.5f * unit)
+                val voodoo = VoodooKit(unit, fx)
+                val shape = ShapeKit(w, h, fx)
                 onDrawBehind {
                     val p = progress()
                     if (p <= 0f || p >= 1f) return@onDrawBehind
                     val f = fx ?: return@onDrawBehind
-                    when (f.pet) {
-                        PetId.JASON -> machete(f, p, unit)
-                        PetId.FREDDY -> dreamClaws(f, p, unit, dreamGlow, rings)
-                        PetId.PINHEAD -> chains(f, p, unit, linkStroke, linkShadow)
-                        PetId.GHOSTFACE -> knives(f, p, unit, vignette)
+                    when (f.style) {
+                        SpecialStyle.MACHETE_FRENZY -> machete(f, p, unit)
+                        SpecialStyle.DREAM_CLAWS -> dreamClaws(f, p, unit, dreamGlow, rings)
+                        SpecialStyle.CHAINS -> chains(f, p, unit, linkStroke, linkShadow)
+                        SpecialStyle.KNIFE_FLURRY -> knives(f, p, unit, vignette)
+                        SpecialStyle.VOODOO_STAB -> voodooStab(f, p, unit, voodoo)
+                        SpecialStyle.THE_SHAPE -> theShape(f, p, unit, shape)
                     }
                 }
             },
@@ -328,4 +342,143 @@ private fun DrawScope.knives(f: SpecialFx, p: Float, unit: Float, vignette: Brus
             drawCircle(Blood, radius = (2.5f + 2.5f * hash01(i, 35)) * unit, center = Offset(cx + dx * 0.2f, cy + dy * 0.2f + life * f.bodyH * 0.1f), alpha = fade)
         }
     }
+}
+
+// ---- Chucky: Voodoo Stab ----
+
+/** Voodoo Stab's strokes and glow, built once per showing. */
+private class VoodooKit(unit: Float, fx: SpecialFx?) {
+    val band = Stroke(6f * unit, cap = StrokeCap.Round)
+    val bandGlow = Stroke(16f * unit, cap = StrokeCap.Round)
+    val inner = Stroke(3.5f * unit)
+    val glow: Brush = Brush.radialGradient(
+        0f to VoodooPurple.copy(alpha = 0.42f),
+        0.5f to VoodooGreen.copy(alpha = 0.12f),
+        1f to Color.Transparent,
+        center = Offset(fx?.cx ?: 0f, fx?.cy ?: 0f),
+        radius = (fx?.bodyH ?: 1f) * 0.8f,
+    )
+}
+
+/** Where the three stabs come from (degrees, 0 = right, counter-clockwise) and when each lands (0..1). */
+private val StabAngles = floatArrayOf(28f, 205f, 118f)
+private val StabStarts = floatArrayOf(0.22f, 0.4f, 0.58f)
+private const val STAB_LIFE = 0.15f
+
+private fun DrawScope.voodooStab(f: SpecialFx, p: Float, unit: Float, kit: VoodooKit) {
+    val center = Offset(f.cx, f.cy)
+    // The glyph takes hold (pops in), swirls, and lets go at the end.
+    val appear = easeOut((p / 0.16f).coerceAtMost(1f))
+    val fade = if (p < 0.78f) 1f else 1f - (p - 0.78f) / 0.22f
+    val a = appear * fade
+    // Each stab flares the glyph for a moment.
+    var flare = 0f
+    for (i in StabStarts.indices) {
+        val life = window(p, StabStarts[i], STAB_LIFE)
+        if (life in 0f..1f) flare = max(flare, 1f - life)
+    }
+    val r = f.bodyH * 0.42f * lerp(0.6f, 1f, appear)
+    drawRect(VoodooPurple, alpha = 0.07f * a)
+    drawCircle(kit.glow, radius = f.bodyH * 0.8f, center = center, alpha = a * (0.7f + 0.3f * flare))
+
+    // The outer band: three arcs swirling clockwise, purple over a soft glow.
+    val spin = p * 260f
+    val arcTopLeft = Offset(center.x - r, center.y - r)
+    val arcSize = Size(r * 2f, r * 2f)
+    for (k in 0 until 3) {
+        val start = spin + k * 120f
+        drawArc(VoodooPurple, start, 84f, false, arcTopLeft, arcSize, alpha = 0.35f * a, style = kit.bandGlow)
+        drawArc(VoodooPurple, start, 84f, false, arcTopLeft, arcSize, alpha = a, style = kit.band)
+    }
+    // The inner ring, green, breathing.
+    val ri = r * (0.7f + 0.04f * sin(p * 30f))
+    drawCircle(VoodooGreen, ri, center, alpha = 0.85f * a, style = kit.inner)
+    // Runes between the rings, swirling the other way: a short bar and a stitch across it.
+    for (k in 0 until 8) {
+        val ang = (-spin * 0.6f + k * 45f) * DEG
+        val c = cos(ang)
+        val s = sin(ang)
+        val mid = (r + ri) / 2f
+        val half = (r - ri) * 0.42f
+        val x = center.x + c * mid
+        val y = center.y + s * mid
+        val color = if (k % 2 == 0) VoodooGreen else VoodooPale
+        drawLine(color, Offset(x - c * half, y - s * half), Offset(x + c * half, y + s * half), strokeWidth = 3f * unit, cap = StrokeCap.Round, alpha = a)
+        drawLine(color, Offset(x + s * half * 0.7f, y - c * half * 0.7f), Offset(x - s * half * 0.7f, y + c * half * 0.7f), strokeWidth = 2.5f * unit, cap = StrokeCap.Round, alpha = 0.8f * a)
+    }
+    // The heart of the glyph: a stitched X with a pin-head in the middle.
+    val g = ri * 0.55f
+    for (d in 0 until 2) {
+        val sx = if (d == 0) 1f else -1f
+        drawLine(VoodooPale, Offset(center.x - g * sx, center.y - g), Offset(center.x + g * sx, center.y + g), strokeWidth = 4f * unit, cap = StrokeCap.Round, alpha = a * (0.6f + 0.4f * flare))
+        for (t in 1..3) {
+            // Stitches across each arm of the X.
+            val along = t / 4f * 2f - 1f
+            val px = center.x + g * sx * along
+            val py = center.y + g * along
+            val st = 7f * unit
+            drawLine(VoodooGreen, Offset(px - st * 0.7f, py + st * 0.7f * sx), Offset(px + st * 0.7f, py - st * 0.7f * sx), strokeWidth = 2.5f * unit, cap = StrokeCap.Round, alpha = 0.8f * a)
+        }
+    }
+    drawCircle(VoodooGreen, 6f * unit, center, alpha = a)
+    drawCircle(Color.White, 3f * unit, center, alpha = a)
+
+    // Three quick stabs driving in from outside the ring to the heart.
+    for (i in StabStarts.indices) {
+        val life = window(p, StabStarts[i], STAB_LIFE)
+        if (life <= 0f || life >= 1f) continue
+        val ang = StabAngles[i] * DEG
+        val dx = cos(ang)
+        val dy = -sin(ang)
+        val from = Offset(center.x + dx * f.bodyH * 0.78f, center.y + dy * f.bodyH * 0.78f)
+        val to = Offset(center.x + dx * f.bodyH * 0.04f, center.y + dy * f.bodyH * 0.04f)
+        val cut = easeOut((life / 0.35f).coerceAtMost(1f))
+        val stabFade = if (life < 0.5f) 1f else 1f - (life - 0.5f) / 0.5f
+        streak(from, to, cut, stabFade, KnifeGlow, KnifeSteel, Color.White, 11f * unit)
+        if (cut >= 1f) drawCircle(Color.White, (10f + 14f * (1f - stabFade)) * unit, to, alpha = 0.7f * stabFade)
+    }
+}
+
+// ---- Michael: The Shape ----
+
+/** The Shape's closing dark, built once per showing: a vignette around the target. */
+private class ShapeKit(w: Float, h: Float, fx: SpecialFx?) {
+    val reach = max(w, h)
+    val dark: Brush = Brush.radialGradient(
+        0f to Color.Transparent,
+        0.32f to Color.Transparent,
+        0.7f to Color.Black.copy(alpha = 0.7f),
+        1f to Color.Black.copy(alpha = 0.95f),
+        center = Offset(fx?.cx ?: (w / 2f), fx?.cy ?: (h / 2f)),
+        radius = reach * 0.62f,
+    )
+}
+
+private val ShapeSteel = Color(0xFFF2F4F8)
+private val ShapeGlow = Color(0xFFFF3B45)
+
+private fun DrawScope.theShape(f: SpecialFx, p: Float, unit: Float, kit: ShapeKit) {
+    // The dark creeps in slowly (the vignette shrinks toward the target), holds, then lets go.
+    val creep = easeOut((p / 0.62f).coerceAtMost(1f))
+    val pull = lerp(1.7f, 0.62f, creep)
+    val darkAlpha = (p / 0.12f).coerceAtMost(1f) * (if (p < 0.82f) 1f else 1f - (p - 0.82f) / 0.18f)
+    if (darkAlpha > 0f) {
+        // Drawn scaled toward the target; the rect is made large enough to still cover the screen.
+        val half = kit.reach * 1.6f / pull
+        scale(pull, pivot = Offset(f.cx, f.cy)) {
+            drawRect(kit.dark, topLeft = Offset(f.cx - half, f.cy - half), size = Size(half * 2f, half * 2f), alpha = darkAlpha)
+        }
+    }
+    // One big overhead slash, from high above the head down across the body.
+    val life = window(p, 0.5f, 0.34f)
+    if (life <= 0f || life >= 1f) return
+    val cut = easeOut((life / 0.24f).coerceAtMost(1f))
+    val fade = if (life < 0.45f) 1f else 1f - (life - 0.45f) / 0.55f
+    val from = Offset(f.cx + f.bodyH * 0.72f, f.cy - f.bodyH * 1.3f)
+    val to = Offset(f.cx - f.bodyH * 0.62f, f.cy + f.bodyH * 0.8f)
+    if (life < 0.18f) drawRect(Color.White, alpha = 0.14f * (1f - life / 0.18f))
+    // A faint after-image trailing the blade, then the blade itself: long and keen rather than wide.
+    val lag = Offset(-f.bodyH * 0.06f, -f.bodyH * 0.03f)
+    streak(from + lag, to + lag, cut * 0.92f, fade * 0.35f, ShapeGlow, Blood, ShapeSteel, 9f * unit)
+    streak(from, to, cut, fade, ShapeGlow, ShapeSteel, Color.White, 15f * unit)
 }

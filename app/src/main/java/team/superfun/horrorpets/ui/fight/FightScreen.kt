@@ -88,6 +88,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.common.FocusPill
@@ -656,7 +657,7 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean) {
 
     fun specialOn(pet: PetId, target: Side): SpecialFx {
         val c = bodyCenter(target)
-        return SpecialFx(pet, c.x, c.y, cellH)
+        return SpecialFx(pet.spec.special, c.x, c.y, cellH)
     }
 
     /** How much a sprite of [rig] playing [anim] may take before the turn stops waiting for it. */

@@ -320,9 +320,9 @@ class GameViewModelTest {
         rig.vm.onFightPressed()
         assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
         assertFalse(rig.ui.busy)
-        // The UI derives the candidates from game.selected: everyone else, so three of four pets.
+        // The UI derives the candidates from game.selected: everyone else, so five of six pets.
         val opponents = PetId.entries.filter { it != rig.game.selected }
-        assertEquals(3, opponents.size)
+        assertEquals(5, opponents.size)
         assertFalse(PetId.JASON in opponents)
 
         rig.vm.onSwitcherPick(PetId.JASON) // never a legal opponent

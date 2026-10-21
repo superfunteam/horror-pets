@@ -2,11 +2,17 @@ package team.superfun.horrorpets.model
 
 import kotlinx.serialization.Serializable
 
+/**
+ * Every killer, in roster order (the pet switcher's order). A pet's facts (its passive, its special, how it
+ * walks) live in its [Roster] entry; its art and sounds live in folders named `name.lowercase()`.
+ */
 enum class PetId(val displayName: String) {
     JASON("Jason"),
     FREDDY("Freddy"),
     PINHEAD("Pinhead"),
     GHOSTFACE("Ghostface"),
+    CHUCKY("Chucky"),
+    MICHAEL("Michael"),
 }
 
 /**

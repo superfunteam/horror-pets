@@ -105,6 +105,44 @@ class SaveCodecTest {
         assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
     }
 
+    /** A save exactly as v0.1.0 (four pets) wrote it: every field spelled out, in declaration order. */
+    private val v010Save = """
+        {"version":1,"pets":{
+        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false},
+        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":true},
+        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false},
+        "GHOSTFACE":{"id":"GHOSTFACE","hunger":88.0,"funLevel":5.0,"strength":61.0,"level":7,"xp":640,"moodBonus":30.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false}},
+        "selected":"GHOSTFACE","lastSeenMs":1761000000000}
+    """.trimIndent()
+
+    @Test
+    fun aV010SaveGainsChuckyAndMichaelAndKeepsTheOriginalFour() {
+        val decoded = SaveCodec.decode(v010Save)
+        assertEquals(PetId.entries.toSet(), decoded.pets.keys)
+        assertEquals(6, decoded.pets.size)
+        assertEquals(PetState(PetId.CHUCKY), decoded.pets.getValue(PetId.CHUCKY))
+        assertEquals(PetState(PetId.MICHAEL), decoded.pets.getValue(PetId.MICHAEL))
+        assertEquals(
+            PetState(PetId.JASON, 12.5, 64.0, 31.0, level = 3, xp = 120, moodBonus = 4.5, wins = 5, losses = 2, sceneIndex = 1),
+            decoded.pets.getValue(PetId.JASON),
+        )
+        assertEquals(
+            PetState(PetId.FREDDY, 40.0, 22.25, 18.0, level = 2, xp = 15, wins = 1, losses = 3, sceneIndex = 2, fakeDeathPending = true),
+            decoded.pets.getValue(PetId.FREDDY),
+        )
+        assertEquals(PetState(PetId.PINHEAD, moodBonus = -10.0, losses = 1), decoded.pets.getValue(PetId.PINHEAD))
+        assertEquals(
+            PetState(PetId.GHOSTFACE, 88.0, 5.0, 61.0, level = 7, xp = 640, moodBonus = 30.0, wins = 12, losses = 9, sceneIndex = 2),
+            decoded.pets.getValue(PetId.GHOSTFACE),
+        )
+        assertEquals(PetId.GHOSTFACE, decoded.selected)
+        assertEquals(1_761_000_000_000L, decoded.lastSeenMs)
+        assertEquals(1, decoded.version)
+        // Saved again, the new pets are written out and read back the same.
+        assertEquals(decoded, SaveCodec.decode(SaveCodec.encode(decoded)))
+        assertTrue(SaveCodec.encode(decoded).contains("\"MICHAEL\""))
+    }
+
     @Test
     fun missingPetsFieldFilledWithDefaults() {
         val decoded = SaveCodec.decode("""{"version":1,"selected":"FREDDY"}""")
@@ -248,7 +286,7 @@ class SaveCodecTest {
             {"version":1,"selected":"FREDDY","lastSeenMs":1760000000000,
              "pets":{
                "JASON":{"id":"JASON","level":3,"wins":4},
-               "CHUCKY":{"id":"CHUCKY","level":12,"hunger":5.0},
+               "PENNYWISE":{"id":"PENNYWISE","level":12,"hunger":5.0},
                "FREDDY":{"id":"FREDDY","hunger":61.5}
              }}
         """.trimIndent()
@@ -284,7 +322,7 @@ class SaveCodecTest {
 
     @Test
     fun unknownSelectedPetIsDroppedAndTheRestKept() {
-        val json = """{"version":1,"selected":"CHUCKY","lastSeenMs":1760000000000,"pets":{"JASON":{"level":3}}}"""
+        val json = """{"version":1,"selected":"PENNYWISE","lastSeenMs":1760000000000,"pets":{"JASON":{"level":3}}}"""
         val decoded = SaveCodec.decode(json)
         assertEquals(null, decoded.selected)
         assertEquals(1_760_000_000_000L, decoded.lastSeenMs)
@@ -345,7 +383,7 @@ class SaveCodecTest {
         assertEquals(state, SaveCodec.decodeOrNull(SaveCodec.encode(state)))
         // One bad pet or an unknown one does not make the whole save unreadable.
         assertNotNull(SaveCodec.decodeOrNull("""{"version":1,"pets":{"JASON":42}}"""))
-        assertNotNull(SaveCodec.decodeOrNull("""{"version":1,"pets":{"CHUCKY":{"level":3}}}"""))
+        assertNotNull(SaveCodec.decodeOrNull("""{"version":1,"pets":{"PENNYWISE":{"level":3}}}"""))
     }
 
     @Test

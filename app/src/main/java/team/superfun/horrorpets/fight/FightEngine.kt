@@ -7,12 +7,12 @@ import team.superfun.horrorpets.game.clampStat
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.spec
 
-/** Hit points for a pet of [level] and [hunger] (0 = full, 100 = starving); Jason is built tougher. */
+/** Hit points for a pet of [level] and [hunger] (0 = full, 100 = starving), times its passive's (Jason is built tougher). */
 internal fun maxHpFor(id: PetId, level: Int, hunger: Double): Int {
     val hungerFactor = lerp(1.0, FightTuning.STARVING_HP_FACTOR, clampStat(hunger) / Tuning.STAT_MAX)
-    val idFactor = if (id == PetId.JASON) FightTuning.JASON_HP_MULT else 1.0
-    val hp = (FightTuning.BASE_HP + FightTuning.HP_PER_LEVEL * level) * hungerFactor * idFactor
+    val hp = (FightTuning.BASE_HP + FightTuning.HP_PER_LEVEL * level) * hungerFactor * id.spec.passive.hpMult
     return hp.roundToInt().coerceAtLeast(1)
 }
 
@@ -76,10 +76,11 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *   events, no dice, and `turn` and `playerHistory` are left as they were.
  *
  * ## Damage, crits, misses, meter
- * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0,
- * HEAVY 1.8, counter 0.5 or 1.0 for Pinhead, SPECIAL 2.5) times 1.75 on a crit, rounded once at the
- * end and never below 1. Specials and counters can crit but never miss. Attacks against GHOSTFACE
- * miss 0.07 more often (STRIKE and HEAVY only).
+ * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
+ * 1.15 for Chucky; HEAVY 1.8; counter 0.5, or 1.0 for Pinhead; SPECIAL 2.5) times 1.75 on a crit, times
+ * 0.85 when the defender is Michael, rounded once at the end and never below 1. Specials and counters
+ * can crit but never miss. Attacks against GHOSTFACE miss 0.07 more often (STRIKE and HEAVY only).
+ * Every per-pet number comes from the pet's [Passive][team.superfun.horrorpets.model.Passive] in the roster.
  * Each landed hit (counters included, specials excluded) adds 25 to the attacker's meter, capped
  * at 100; [FightEvent.SpecialReady] is emitted on the hit that takes it from below 100 to 100. A
  * SPECIAL needs a full meter and resets it to 0.
@@ -90,7 +91,7 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * 1. miss roll: the attack misses when `roll < missChance`;
  * 2. variance roll: damage variance is `1 + (2 * roll - 1) * 0.15`;
  * 3. crit roll: the attack crits when `roll < critChance`, where
- *    `critChance = 0.05 + mood / 100 * 0.15`, plus 0.08 for FREDDY.
+ *    `critChance = 0.05 + mood / 100 * 0.15`, plus the attacker's passive bonus (0.08 for FREDDY).
  *
  * PLAYER's attack (if any) is rolled before the CPU's. An attack that does not happen (an absorbed
  * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing) draws nothing, and RUN draws nothing.
@@ -179,7 +180,7 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
             events += FightEvent.Miss(side, myMove)
         } else {
             val crit = critRoll < critChance(me)
-            damage = damageOf(me, moveMultiplier(me, myMove, counter), varianceRoll, crit)
+            damage = damageOf(me, other, moveMultiplier(me, myMove, counter), varianceRoll, crit)
             events += FightEvent.Hit(side, hitMove, damage, crit, counter)
             landed = true
         }
@@ -203,25 +204,25 @@ private fun missChance(move: Move, counter: Boolean, defender: Fighter): Double 
         Move.HEAVY -> FightTuning.MISS_HEAVY
         else -> return 0.0 // SPECIAL never misses
     }
-    return if (defender.id == PetId.GHOSTFACE) base + FightTuning.GHOSTFACE_EVADE_BONUS else base
+    return base + defender.id.spec.passive.evadeBonus
 }
 
 private fun critChance(attacker: Fighter): Double {
     val moodShare = attacker.mood.coerceIn(0, 100) / 100.0
-    val freddy = if (attacker.id == PetId.FREDDY) FightTuning.FREDDY_CRIT_BONUS else 0.0
-    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + freddy
+    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + attacker.id.spec.passive.critBonus
 }
 
 private fun moveMultiplier(attacker: Fighter, move: Move, counter: Boolean): Double = when {
-    counter -> if (attacker.id == PetId.PINHEAD) FightTuning.PINHEAD_COUNTER_MULT else FightTuning.COUNTER_MULT
+    counter -> attacker.id.spec.passive.counterMult
     move == Move.HEAVY -> FightTuning.HEAVY_MULT
     move == Move.SPECIAL -> FightTuning.SPECIAL_MULT
-    else -> FightTuning.STRIKE_MULT
+    else -> FightTuning.STRIKE_MULT * attacker.id.spec.passive.strikeMult
 }
 
-private fun damageOf(attacker: Fighter, multiplier: Double, varianceRoll: Double, crit: Boolean): Int {
+private fun damageOf(attacker: Fighter, defender: Fighter, multiplier: Double, varianceRoll: Double, crit: Boolean): Int {
     val base = FightTuning.BASE_DAMAGE + attacker.strength / FightTuning.STRENGTH_DIVISOR
     val variance = 1.0 + (2.0 * varianceRoll - 1.0) * FightTuning.DAMAGE_VARIANCE
     val critMult = if (crit) FightTuning.CRIT_MULT else 1.0
-    return (base * variance * multiplier * critMult).roundToInt().coerceAtLeast(1)
+    val taken = defender.id.spec.passive.damageTakenMult
+    return (base * variance * multiplier * critMult * taken).roundToInt().coerceAtLeast(1)
 }
