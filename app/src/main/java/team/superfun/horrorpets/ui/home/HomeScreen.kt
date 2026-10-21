@@ -89,11 +89,13 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.FEED_MUNCHES
 import team.superfun.horrorpets.model.Food
+import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
+import team.superfun.horrorpets.ui.common.SpritePose
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.detectWalkSwipes
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -212,6 +214,7 @@ fun HomeScreen(
         withContext(Dispatchers.IO) {
             for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
             for (food in Food.entries) loader.food(food)
+            for (art in PLAY_HAND_ART) loader.prop(art)
         }
     }
 
@@ -235,12 +238,18 @@ fun HomeScreen(
     // whose food has landed: that request's munch waits for it.
     var feeding by remember { mutableStateOf<Feeding?>(null) }
     var landedToken by remember { mutableStateOf<Long?>(null) }
+    // The same for a play: the glove's gag, from the press until the glove has gone, and the request whose gag
+    // has got to the pet's turn to react. The glove moves the pet through [pose] (pokes, tickles, a shake).
+    var playing by remember { mutableStateOf<Playing?>(null) }
+    var reactedToken by remember { mutableStateOf<Long?>(null) }
+    val pose = remember { SpritePose() }
 
     val request = state.petAnim
     LaunchedEffect(request?.token) {
         if (request == null) return@LaunchedEffect
         variety = null
         request.food?.let { feeding = Feeding(it, request.token) }
+        request.gag?.let { playing = Playing(it, request.token) }
         if (state.refuse != null) {
             bubble = Bubble(refusalText(state.refuse, lastWasFight))
         }
@@ -328,13 +337,19 @@ fun HomeScreen(
     // run under the request's token from the press until the pet has run into the next scene, so the run
     // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
     // A stroll is local too: its run plays under its own key and never reports to the view model.
-    // A feed's first munch waits for its food to land; until then the pet idles where it stands.
-    val dropping = request?.food != null && landedToken != request.token
-    val shownAnim = if (dropping) Anim.IDLE else request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
-    val playKey: Any = if (dropping) DropKey else request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
+    // A feed's first munch waits for its food to land, and a play's happy reaction for the glove's gag to get to
+    // it; until then the pet idles where it stands (or, picked up and shaken, flails).
+    val holdingGag = request?.gag != null && reactedToken != request.token
+    val holding = holdingGag || (request?.food != null && landedToken != request.token)
+    val shownAnim = when {
+        holdingGag && request?.gag == PlayGag.SHAKE -> Anim.WAVE
+        holding -> Anim.IDLE
+        else -> request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
+    }
+    val playKey: Any = if (holding) HoldKey else request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
     val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
-        dropping -> null
+        holding -> null
         request != null -> {
             { onAnimFinished(request.token) }
         }
@@ -441,6 +456,7 @@ fun HomeScreen(
                 tint = tint,
                 tintStrength = scene.tintStrength,
                 shadowOpacity = scene.shadowOpacity,
+                pose = pose,
                 playKey = playKey,
                 onFinished = onShownFinished,
                 modifier = Modifier
@@ -464,6 +480,26 @@ fun HomeScreen(
                         filter = filter,
                         onLanded = { landedToken = f.token },
                         onDone = { if (feeding === f) feeding = null },
+                    )
+                }
+            }
+            playing?.let { p ->
+                key(p.token) {
+                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
+                    PlayHand(
+                        gag = p.gag,
+                        pet = petId,
+                        loader = loader,
+                        petX = (homeX.value + walkX.value) * screenW,
+                        floorY = floorY,
+                        petH = drawnHeightPx,
+                        fullH = petHeightPx,
+                        bodyHalf = drawnCellW * BODY_HALF_OF_CELL,
+                        screenW = screenW,
+                        pose = pose,
+                        filter = filter,
+                        onReact = { reactedToken = p.token },
+                        onDone = { if (playing === p) playing = null },
                     )
                 }
             }
@@ -577,12 +613,19 @@ private suspend fun strollOnce(
 
 private object IdleKey
 
-/** The playback key while a feed's food is still falling: the pet idles, and its munch starts fresh after. */
-private object DropKey
+/**
+ * The playback key while a feed's food is still falling or a play's gag is on: the pet idles (or flails), and its
+ * own animation starts fresh after.
+ */
+private object HoldKey
 
 /** The food [food] a feed dropped with its first request ([token]), showing until its last crumbs land. */
 @Immutable
 private class Feeding(val food: Food, val token: Long)
+
+/** The [gag] a play started with its first request ([token]), showing until the glove has gone. */
+@Immutable
+private class Playing(val gag: PlayGag, val token: Long)
 
 /** The coroutine running the current walk-out or walk-in, so the next one can cancel it. */
 private class JobSlot {

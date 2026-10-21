@@ -12,6 +12,8 @@ import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.fight.Moment
+import team.superfun.horrorpets.ui.home.PLAY_HAND_ART
+import team.superfun.horrorpets.ui.home.PLAY_VOICE_LINES
 
 /**
  * Adding a killer is an enum entry, a roster entry and its asset folders. This checks the folders: every
@@ -136,5 +138,14 @@ class RosterAssetsTest {
             assertTrue(path, file(path).isFile)
         }
         for (sfx in listOf("food_drop", "bite")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+    }
+
+    @Test
+    fun thePlayGloveHasItsArtVoiceAndSounds() {
+        for (path in PLAY_HAND_ART) assertTrue(path, file(path.replaceFirst("sprites/", "sprites-final/")).isFile)
+        for (line in PLAY_VOICE_LINES) assertTrue(line, file("audio-final/voice/$line.wav").isFile)
+        for (sfx in listOf("hand_whoosh", "boop", "tickle", "jingle", "boing")) {
+            assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+        }
     }
 }

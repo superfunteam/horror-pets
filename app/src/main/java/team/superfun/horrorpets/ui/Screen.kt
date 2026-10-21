@@ -9,6 +9,7 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.PlayGag
 
 /** Why the pet switcher is open. In [OPPONENT] mode the UI hides the selected pet (`UiState.game.selected`). */
 enum class SwitcherMode { SELECT, ONBOARD, OPPONENT }
@@ -52,9 +53,10 @@ sealed interface Screen {
  * twice), so the UI must key on the token, not the anim.
  *
  * A feed's first request carries the [food] to drop: the UI drops it in beside the pet and only then
- * plays [anim], the first of the feed's munches.
+ * plays [anim], the first of the feed's munches. A play's first request carries the [gag] the player's
+ * glove does to the pet first, and [anim] (its happy reaction) waits for that the same way.
  */
-data class PetAnimRequest(val anim: Anim, val token: Long, val food: Food? = null)
+data class PetAnimRequest(val anim: Anim, val token: Long, val food: Food? = null, val gag: PlayGag? = null)
 
 /**
  * Everything the screens render.

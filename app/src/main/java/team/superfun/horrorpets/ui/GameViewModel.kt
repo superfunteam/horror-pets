@@ -36,7 +36,9 @@ import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.nextFood
+import team.superfun.horrorpets.model.nextPlayGag
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -64,7 +66,8 @@ import team.superfun.horrorpets.model.nextFood
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
- * @param foodRng picks the food a feed drops. Kept apart from [rng], so feeding never shifts a fight's rolls.
+ * @param pickRng picks the food a feed drops and the gag a play does. Kept apart from [rng], so caring for a
+ *   pet never shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -75,7 +78,7 @@ class GameViewModel(
     private val canDance: (PetId) -> Boolean = { false },
     private val onError: (Throwable) -> Unit = {},
     private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
-    private val foodRng: Random = Random.Default,
+    private val pickRng: Random = Random.Default,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -85,6 +88,7 @@ class GameViewModel(
     private var started = false
     private var nextToken = 1L
     private var lastFood: Food? = null
+    private var lastGag: PlayGag? = null
 
     /** The action whose animations are playing, if any. [UiState.petAnim] is its current step. */
     private var running: Running? = null
@@ -180,12 +184,13 @@ class GameViewModel(
                 val sfx = listOf(
                     when (a) {
                         CareAction.FEED -> "food_drop"
-                        CareAction.PLAY -> "play"
+                        CareAction.PLAY -> "hand_whoosh"
                         CareAction.TRAIN -> "train"
                     },
                 ) + if (result.levelsGained > 0) listOf("levelup") else emptyList()
-                val food = if (a == CareAction.FEED) nextFood(lastFood, foodRng).also { lastFood = it } else null
-                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, food = food)
+                val food = if (a == CareAction.FEED) nextFood(lastFood, pickRng).also { lastFood = it } else null
+                val gag = if (a == CareAction.PLAY) nextPlayGag(lastGag, pickRng).also { lastGag = it } else null
+                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, food, gag)
                 persist(game)
             }
         }
@@ -370,9 +375,14 @@ class GameViewModel(
     }
 
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */
-    private fun UiState.beginAction(anims: List<Anim>, food: Food? = null, finish: (UiState) -> UiState = { it }): UiState {
+    private fun UiState.beginAction(
+        anims: List<Anim>,
+        food: Food? = null,
+        gag: PlayGag? = null,
+        finish: (UiState) -> UiState = { it },
+    ): UiState {
         running = Running(ArrayDeque(anims.drop(1)), finish)
-        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++, food))
+        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++, food, gag))
     }
 
     private fun refuse(s: UiState, reason: RefuseReason) {

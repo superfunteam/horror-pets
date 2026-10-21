@@ -639,6 +639,27 @@ def sfx_all() -> dict[str, np.ndarray]:
     s["food_drop"] = drop  # lands (the plop) 0.6 s in: FoodDrop's fall takes exactly that long
     mm = int(0.16 * SR)
     s["bite"] = bandpass(noise(fd, mm), 300, 2200) * env_exp(mm, 0.035) + 0.6 * punch(fd, 0.35)[:mm]
+    pl = rng_for("play")  # the Play hand's gags, on their own stream as well
+    s["hand_whoosh"] = swoosh(pl, 0.32, 500, 3500, down=False)
+    mm = int(0.18 * SR)
+    t = np.arange(mm) / SR
+    s["boop"] = sine(300 + 700 * (1 - np.exp(-t / 0.03)), mm) * env_exp(mm, 0.06) + 0.4 * punch(pl, 0.25)[:mm]
+    tk = np.zeros(int(0.55 * SR))
+    for k in range(9):  # a squeaky warble, like a giggling toy
+        mm = int(0.045 * SR)
+        hz = pl.uniform(1500, 2600) * (1 + 0.25 * np.sin(2 * np.pi * 30 * np.arange(mm) / SR))
+        place(tk, sine(hz, mm) * env_adsr(mm, 0.005, 0.01, 0.7, 0.015), k * 0.058, pl.uniform(0.5, 0.9))
+    s["tickle"] = tk
+    jg = np.zeros(int(0.9 * SR))
+    for k in range(11):  # keys knocking together on their ring
+        clink = bell(pl.uniform(2200, 4200), 0.35, ((1, 1), (2.76, 0.6), (5.4, 0.35), (8.9, 0.2)))
+        place(jg, clink + 0.3 * highpass(noise(pl, len(clink)), 5000) * env_exp(len(clink), 0.004), pl.uniform(0, 0.6),
+              pl.uniform(0.25, 0.6))
+    s["jingle"] = jg
+    mm = int(0.7 * SR)
+    t = np.arange(mm) / SR
+    s["boing"] = sine(180 * (1 + 0.35 * np.sin(2 * np.pi * 9 * t) * np.exp(-t / 0.25)) + 120 * np.exp(-t / 0.05), mm) \
+        * env_exp(mm, 0.25)
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
     s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)

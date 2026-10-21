@@ -32,6 +32,13 @@ class FoodDropTest {
     }
 
     @Test
+    fun theGloveComesFromThePetsRoomierSide() {
+        assertEquals("from the right for a pet left of centre", 1, handSide(petX = 700f, screenW = screenW))
+        assertEquals(1, handSide(petX = 960f, screenW = screenW))
+        assertEquals("from the left for a pet right of centre", -1, handSide(petX = 1300f, screenW = screenW))
+    }
+
+    @Test
     fun bitesSpreadAcrossTheMunching() {
         assertEquals(listOf(306L, 900L, 1494L), biteTimesMs(1_800L))
         assertEquals(listOf(0L, 0L, 0L), biteTimesMs(0L))

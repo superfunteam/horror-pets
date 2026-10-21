@@ -13,8 +13,8 @@ import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.PetId
 
 /**
- * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), the food a feed drops
- * (`sprites/food/...`) and scene backdrops (`scenes/...`). Bitmaps are decoded as ARGB_8888 without density
+ * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the food a
+ * feed drops and the player's glove (`sprites/food/...`, `sprites/hand/...`) and scene backdrops (`scenes/...`). Bitmaps are decoded as ARGB_8888 without density
  * scaling.
  *
  * The scene catalog must have [Tuning.SCENE_COUNT] scenes per pet (see [scenes]).
@@ -26,7 +26,7 @@ import team.superfun.horrorpets.model.PetId
  *  - sprite strips live in an LRU of at most [MAX_STRIPS] entries keyed by (pet, anim) (under [stripLock]);
  *  - scene bitmaps live in an LRU of at most [MAX_SCENES], so the one being left can fade out while the
  *    next fades in, and anything older is dropped (a scene is about 10 MB decoded) (under [sceneLock]);
- *  - food is kept once decoded: six small pictures, about 0.5 MB each (under [foodLock]).
+ *  - props are kept once decoded: about a dozen small pictures, under 1 MB each (under [propLock]).
  * Lock order: [stripLock] may take [metaLock] (a strip needs its manifest), never the other way round.
  * Evicted bitmaps are not recycled: a composable may still be drawing one. The GC reclaims them.
  *
@@ -40,12 +40,12 @@ class AssetLoader(context: Context) {
     private val metaLock = Any()
     private val stripLock = Any()
     private val sceneLock = Any()
-    private val foodLock = Any()
+    private val propLock = Any()
     private val manifests = EnumMap<PetId, SpriteManifest>(PetId::class.java)
     private var catalog: Map<PetId, List<SceneSpec>>? = null
     private val strips = lru<StripKey>(MAX_STRIPS) { ready.remove(it) }
     private val sceneBitmaps = lru<String>(MAX_SCENES)
-    private val foods = EnumMap<Food, ImageBitmap>(Food::class.java)
+    private val props = HashMap<String, ImageBitmap>()
 
     /**
      * The decoded strips, readable without a lock (see [readyStrip]). Written only under [stripLock] by
@@ -88,8 +88,11 @@ class AssetLoader(context: Context) {
     }
 
     /** The picture of [food], to drop in when a pet is fed. */
-    fun food(food: Food): ImageBitmap = synchronized(foodLock) {
-        foods.getOrPut(food) { decode("sprites/food/${food.file}") }
+    fun food(food: Food): ImageBitmap = prop("sprites/food/${food.file}")
+
+    /** A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. */
+    fun prop(path: String): ImageBitmap = synchronized(propLock) {
+        props.getOrPut(path) { decode(path) }
     }
 
     private fun readText(path: String): String = assets.open(path).bufferedReader().use { it.readText() }

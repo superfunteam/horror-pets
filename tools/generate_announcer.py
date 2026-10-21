@@ -120,13 +120,13 @@ def duration_s(path: Path) -> float:
                                 capture_output=True, text=True, check=True).stdout)
 
 
-def encode(src: Path, out: Path) -> None:
-    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(src), "-af", FILTER, "-map_metadata", "-1",
+def encode(src: Path, out: Path, audio_filter: str = FILTER) -> None:
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(src), "-af", audio_filter, "-map_metadata", "-1",
                     "-fflags", "+bitexact", "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", str(out)], check=True)
 
 
-def speak(key: str, text: str) -> bytes:
-    r = requests.post(f"{API}/text-to-speech/{VOICE_ID}", params={"output_format": OUTPUT_FORMAT},
+def speak(key: str, text: str, voice_id: str = VOICE_ID) -> bytes:
+    r = requests.post(f"{API}/text-to-speech/{voice_id}", params={"output_format": OUTPUT_FORMAT},
                       headers={"xi-api-key": key},
                       json={"text": text, "model_id": MODEL, "voice_settings": VOICE_SETTINGS}, timeout=120)
     if r.status_code != 200:

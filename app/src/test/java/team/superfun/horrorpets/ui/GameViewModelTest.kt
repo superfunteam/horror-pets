@@ -558,7 +558,7 @@ class GameViewModelTest {
         // Stats change once, at the start.
         assertEquals(65.0, rig.jason.funLevel, 1e-9)
         assertEquals(28.0, rig.jason.hunger, 1e-9)
-        assertEquals(listOf("play"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
 
         rig.vm.onAnimFinished(first.token)
         val second = rig.ui.petAnim!!
@@ -589,7 +589,7 @@ class GameViewModelTest {
         val pet = rig.game.pets.getValue(PetId.LEATHERFACE)
         assertEquals(65.0, pet.funLevel, 1e-9)
         assertEquals(28.0, pet.hunger, 1e-9)
-        assertEquals(listOf("play"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
 
         // One request, one report: the dance's finish ends the action.
         rig.vm.onAnimFinished(dance.token)
@@ -1325,6 +1325,43 @@ class GameViewModelTest {
         val second = rig.ui.petAnim!!.food
         assertNotNull(second)
         assertNotEquals(first, second)
+    }
+
+    @Test
+    fun playStartsWithAGagOnItsFirstRequestOnly() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val first = rig.ui.petAnim!!
+        assertEquals(Anim.JUMP, first.anim)
+        assertNotNull(first.gag)
+        assertNull(first.food)
+        rig.finishAnim()
+        assertEquals(Anim.WAVE, rig.ui.petAnim!!.anim)
+        assertNull(rig.ui.petAnim!!.gag)
+        rig.finishAnim()
+        assertFalse(rig.ui.busy)
+    }
+
+    @Test
+    fun twoPlaysInARowDoDifferentGags() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0, funLevel = 10.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val first = rig.ui.petAnim!!.gag
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.PLAY)
+        val second = rig.ui.petAnim!!.gag
+        assertNotNull(second)
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun feedAndTrainDoNoGag() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        assertNull(rig.ui.petAnim!!.gag)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertNull(rig.ui.petAnim!!.gag)
     }
 
     @Test
