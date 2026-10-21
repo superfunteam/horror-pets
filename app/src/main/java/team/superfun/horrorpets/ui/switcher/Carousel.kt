@@ -90,6 +90,12 @@ fun carouselFirstInView(row: Float, count: Int): Int =
 fun carouselLastInView(row: Float, count: Int): Int =
     (ceil(row + CAROUSEL_REACH).toInt() - 1).coerceIn(0, (count - 1).coerceAtLeast(0))
 
+/**
+ * The pets just outside the window [first]..[last] of [count]: the next one beyond each end, whose strips are
+ * decoded ahead so they draw at once when the row brings them on stage.
+ */
+fun carouselPrefetch(first: Int, last: Int, count: Int): List<Int> = listOf(first - 1, last + 1).filter { it in 0 until count }
+
 /** [v] (0..1) snapped to [steps] steps, so a look that follows a slide changes a handful of times, not every frame. */
 fun quantize(v: Float, steps: Int): Float = (v * steps).roundToInt() / steps.toFloat()
 

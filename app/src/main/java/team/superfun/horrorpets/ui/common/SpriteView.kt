@@ -60,7 +60,8 @@ private const val SHADOW_ASPECT = 0.2f
  * animation itself. [onFinished] is called once: when a
  * one-shot ends (its last frame then stays up), or after one full cycle of a looping animation (which
  * keeps looping). The previous animation stays on screen until the new strip has been decoded off the
- * main thread, so switching never flashes an empty frame.
+ * main thread, so switching never flashes an empty frame; a sprite whose strip is already decoded shows
+ * its first frame as soon as it is composed.
  *
  * **Look:** [tint] is the scene's ambient color, blended in by [tintStrength] (0..1) to seat the
  * studio-lit sprite in a night scene; [dim] darkens (0..1), [saturation] drains the color (1 is full color,
@@ -96,8 +97,9 @@ fun SpriteView(
     val drawScale = scale * manifest.bodyScale
 
     // What is on screen: the strip being drawn and its current frame. Both change together on the main
-    // thread, so a frame index never meets the wrong strip.
-    var shown by remember(pet) { mutableStateOf<Shown?>(null) }
+    // thread, so a frame index never meets the wrong strip. A strip already decoded is up from the very
+    // first frame (a pet sliding into the switcher whose strip was prefetched draws at once).
+    var shown by remember(pet) { mutableStateOf(loader.readyStrip(pet, anim)?.let { Shown(it, manifest.spec(anim)) }) }
     var frame by remember(pet) { mutableIntStateOf(0) }
     val started by rememberUpdatedState(onStarted)
     val finished by rememberUpdatedState(onFinished)

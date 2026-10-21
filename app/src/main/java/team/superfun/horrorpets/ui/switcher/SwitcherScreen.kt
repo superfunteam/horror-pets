@@ -64,7 +64,9 @@ import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
@@ -269,6 +271,13 @@ fun SwitcherScreen(
         // the row but change only when it crosses a pet, so a slide recomposes this a couple of times at most.
         val first by remember(row, pets.size) { derivedStateOf { carouselFirstInView(row(), pets.size) } }
         val last by remember(row, pets.size) { derivedStateOf { carouselLastInView(row(), pets.size) } }
+        // The next pet beyond each end is decoded ahead (not composed), so it draws from its first frame on
+        // stage instead of popping in a frame or two late at the screen's edge.
+        LaunchedEffect(loader, pets, first, last) {
+            withContext(Dispatchers.IO) {
+                for (i in carouselPrefetch(first, last, pets.size)) loader.strip(pets[i], Anim.IDLE)
+            }
+        }
         pets.forEachIndexed { i, pet ->
             if (i in first..last) key(pet) {
                 LineupPet(

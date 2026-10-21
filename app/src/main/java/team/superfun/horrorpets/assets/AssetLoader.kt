@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.util.EnumMap
+import java.util.concurrent.ConcurrentHashMap
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 
@@ -38,8 +39,14 @@ class AssetLoader(context: Context) {
     private val sceneLock = Any()
     private val manifests = EnumMap<PetId, SpriteManifest>(PetId::class.java)
     private var catalog: Map<PetId, List<SceneSpec>>? = null
-    private val strips = lru<StripKey>(MAX_STRIPS)
+    private val strips = lru<StripKey>(MAX_STRIPS) { ready.remove(it) }
     private val sceneBitmaps = lru<String>(MAX_SCENES)
+
+    /**
+     * The decoded strips, readable without a lock (see [readyStrip]). Written only under [stripLock] by
+     * [strip] and by the strip LRU's eviction, so it always holds exactly the cached strips.
+     */
+    private val ready = ConcurrentHashMap<StripKey, ImageBitmap>()
 
     fun manifest(pet: PetId): SpriteManifest = synchronized(metaLock) {
         manifests.getOrPut(pet) { parseManifest(readText("sprites/${pet.dir}/manifest.json")) }
@@ -48,8 +55,15 @@ class AssetLoader(context: Context) {
     /** The strip for [anim]: [AnimSpec.frames] cells of `manifest.cell` side by side. */
     fun strip(pet: PetId, anim: Anim): ImageBitmap = synchronized(stripLock) {
         val key = StripKey(pet, anim)
-        strips.getOrPut(key) { decode("sprites/${pet.dir}/${manifest(pet).spec(anim).file}") }
+        strips.getOrPut(key) { decode("sprites/${pet.dir}/${manifest(pet).spec(anim).file}") }.also { ready[key] = it }
     }
+
+    /**
+     * The strip for [anim] if it is already decoded, or null; never decodes and never waits for a decode in
+     * progress, so it is safe on the main thread. A sprite uses it to show its first frame at once (a pet
+     * sliding into the pet switcher whose strip was prefetched). It does not count as a use for the LRU.
+     */
+    fun readyStrip(pet: PetId, anim: Anim): ImageBitmap? = ready[StripKey(pet, anim)]
 
     /**
      * The scene catalog. Throws [IllegalStateException] unless every pet has exactly
@@ -92,16 +106,18 @@ class AssetLoader(context: Context) {
          * 12 slots are about 61 MB decoded. Sized for 2 GB TV sticks, where bitmaps on API 22-25 live
          * on the Java heap. Home keeps 8 strips warm (see HomeScreen) and idle variety needs 3 more. The
          * pet switcher decodes only the IDLE strips of the pets on stage (the centred one and two either
-         * side, at most 5; see SwitcherScreen), so a scroll through the whole lineup churns a few slots and
-         * never the whole cache. A fight warms all 12 (see warmFightStrips).
+         * side, at most 5) and the next one beyond each end (prefetched, so an entering pet draws at once;
+         * at most 7; see SwitcherScreen), so a scroll through the whole lineup churns a few slots and never
+         * the whole cache. A fight warms all 12 (see warmFightStrips).
          */
         const val MAX_STRIPS = 12
         const val MAX_SCENES = 2
 
-        /** Access-ordered map that drops its least recently used entry beyond [max]. */
-        fun <K> lru(max: Int): LinkedHashMap<K, ImageBitmap> =
+        /** Access-ordered map that drops its least recently used entry beyond [max], telling [onEvict]. */
+        fun <K> lru(max: Int, onEvict: (K) -> Unit = {}): LinkedHashMap<K, ImageBitmap> =
             object : LinkedHashMap<K, ImageBitmap>(max + 2, 0.75f, true) {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, ImageBitmap>): Boolean = size > max
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, ImageBitmap>): Boolean =
+                    (size > max).also { if (it) onEvict(eldest.key) }
             }
     }
 }

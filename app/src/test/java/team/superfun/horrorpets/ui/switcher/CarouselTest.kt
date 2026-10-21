@@ -108,6 +108,22 @@ class CarouselTest {
     }
 
     @Test
+    fun theNextPetBeyondEachEndIsReadiedAhead() {
+        assertEquals(listOf(5), carouselPrefetch(first = 0, last = 4, count = 6)) // at the start
+        assertEquals(listOf(0, 5), carouselPrefetch(first = 1, last = 4, count = 6))
+        assertEquals(listOf(0), carouselPrefetch(first = 1, last = 5, count = 6)) // at the end
+        assertEquals(emptyList<Int>(), carouselPrefetch(first = 0, last = 4, count = 5)) // all on stage
+        // Never more than 2, so with at most 5 on stage the switcher holds at most 7 strips.
+        for (row in 0..50) {
+            val r = row / 10f
+            val f = carouselFirstInView(r, 6)
+            val l = carouselLastInView(r, 6)
+            assertTrue(carouselPrefetch(f, l, 6).size <= 2)
+            assertTrue(l - f + 1 + carouselPrefetch(f, l, 6).size <= 7)
+        }
+    }
+
+    @Test
     fun quantizeSnapsToSteps() {
         assertEquals(0.5f, quantize(0.49f, 8), 1e-6f)
         assertEquals(1f, quantize(0.97f, 8), 1e-6f)
