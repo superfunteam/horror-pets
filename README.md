@@ -67,11 +67,11 @@ The generators live in `tools/` and need Python 3, `ffmpeg` (with libopus) and `
 python3 -m venv tools/.venv && tools/.venv/bin/pip install -r tools/requirements.txt
 tools/.venv/bin/python -I -m pytest tools/tests -q
 tools/.venv/bin/python -I tools/synth_audio.py                          # original music and sfx, no key needed
-OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
+ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
 ```
 
-The OpenAI key is read from the `OPENAI_API_KEY` environment variable only. Never write it to a file or commit it.
+The keys are read from the `OPENAI_API_KEY` (scenes, cover) and `ELEVENLABS_API_KEY` (announcer) environment variables only. Never write them to a file or commit them.
 
 ## Releasing
 
