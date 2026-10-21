@@ -5,32 +5,18 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,19 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -99,35 +80,37 @@ import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
-import team.superfun.horrorpets.ui.common.FocusPill
-import team.superfun.horrorpets.ui.common.FocusPillSurface
 import team.superfun.horrorpets.ui.common.GameBackHandler
-import team.superfun.horrorpets.ui.common.GlassPanel
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
-import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.safeInset
-import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
-import team.superfun.horrorpets.ui.theme.TextHi
-import team.superfun.horrorpets.ui.theme.TextLo
 
 // ---- staging, as fractions of the screen ----
 
 /** Each fighter's whole sprite cell is this tall (the same on 4:3 and 16:9). */
 private const val FIGHTER_HEIGHT = 0.38f
 
-/** Where the fighters stand. Neither is mirrored: the attack sprites face the camera. */
+/**
+ * Where the fighters stand. Neither is mirrored: the attack sprites face the camera. On a narrow screen the
+ * player stands a little further in, clear of the command window (see [playerHomeFraction]).
+ */
 private const val PLAYER_X = 0.30f
 private const val CPU_X = 0.70f
+
+/** How far the widest idle pose reaches out from a fighter's centre, in dp: Leatherface's saw (Jason's machete is 56). */
+private const val FIGHTER_REACH_DP = 60f
+
+/** The gap kept between the command window and the player's widest pose, in dp. */
+private const val MENU_CLEARANCE_DP = 10f
 
 /** How far an attacker steps toward the other fighter, as a fraction of the screen width. */
 private const val STEP = 0.12f
@@ -198,9 +181,11 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
 }
 
 /**
- * The turn-based fight in the opponent's [arena][arenaScene]: the player's pet at 30% of the width, the
- * CPU's at 70%, both cells 38% of the height and neither mirrored; Street-Fighter HP bars, names and
- * special meters along the top; the move pills `STRIKE HEAVY BLOCK [SPECIAL] | RUN` along the bottom.
+ * The turn-based fight in the opponent's [arena][arenaScene]: the player's pet at 30% of the width (a little
+ * more on a narrow screen, see [playerHomeFraction]), the CPU's at 70%, both cells 38% of the height and
+ * neither mirrored; Street-Fighter HP bars, names and special meters along the top; the moves in an RPG
+ * command window down the left (`STRIKE HEAVY BLOCK [SPECIAL] | RUN`, see [CommandWindow]) with the
+ * move's explanation in a help window under it.
  *
  * **A turn.** When the view model resolves a move it hands over the turn's [Screen.Fight.lastEvents] and
  * a marker [PetAnimRequest]. This screen plays the turn out and then reports the marker finished, exactly
@@ -217,10 +202,11 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    [specialLandsAtMs]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
  *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
- *    Otherwise the bars settle on the real values and the move pills come back, focus on the last move.
+ *    Otherwise the bars settle on the real values and the command window comes back, the cursor on the last move.
  *
- * Back (or the RUN pill, or a phone's back gesture) asks "Run away?"; Yes runs ([Move.RUN]). On a phone the
- * pills take taps, and the hint above them follows the pill last pressed, as it follows focus on a TV. [focusEntry] is the router's entry key
+ * Back (or the RUN command, or a phone's back gesture) asks "Run away?"; Yes runs ([Move.RUN]). On a phone the
+ * commands take taps, and the help window follows the command last pressed, as it follows the cursor on a TV.
+ * [focusEntry] is the router's entry key
  * (see `RequestFocusOnEntry`); null (the screen is fading out) turns off Back. [isBusy] reads the view
  * model's `busy` live, so a key that arrives before the screen has recomposed is still turned down.
  */
@@ -256,9 +242,9 @@ fun FightScreen(
     var lastMove by remember { mutableStateOf(Move.STRIKE) }
     var focusedMove by remember { mutableStateOf(Move.STRIKE) }
     var askRun by remember { mutableStateOf(false) }
-    // The pill that had focus when "Run away?" opened, to give it back on No.
+    // The command that had focus when "Run away?" opened, to give it back on No.
     var returnTo by remember { mutableStateOf(Move.STRIKE) }
-    // A request to put focus back on the menu, served after the recomposition that makes its pills
+    // A request to put focus back on the menu, served after the recomposition that makes its commands
     // focusable again (they are not while the dialog is up). A new instance is a new request.
     var refocus by remember { mutableStateOf<Refocus?>(null) }
     // A turn is on from the moment the view model hands it over (its marker) until it has played out. The
@@ -267,9 +253,9 @@ fun FightScreen(
     // Keys are handled between frames, so a Back right behind OK can arrive before the recomposition that
     // shows the new turn: ask the view model itself whether a move is still being played.
     val canAct = { !isBusy() && !stage.playing && fight.winner == null }
-    // Read from the meter as shown, which only moves while a turn plays: the pill comes and goes while
+    // Read from the meter as shown, which only moves while a turn plays: SPECIAL comes and goes while
     // the menu is hidden, never under the player's eyes. Not cleared when the fight ends either: the menu
-    // is fading out then, and a pill vanishing mid-fade flickers.
+    // is fading out then, and a row vanishing mid-fade flickers.
     val specialReady by remember { derivedStateOf { stage.player.meter.value >= FightTuning.METER_MAX - 0.5f } }
 
     fun focusMenu(move: Move) {
@@ -321,6 +307,9 @@ fun FightScreen(
         val halfWidth = with(density) { (w * 0.4f).toDp() }
         val safe = safeInset()
         val insetPx = with(density) { safe.horizontal.toPx() }
+        // Read below as the fighters, their effects and their callouts are placed; it only follows the screen's
+        // size, so writing it here gives every reader this layout's value.
+        stage.playerHome = playerHomeFraction(maxWidth.value, safe.horizontal.value + CommandWindowWidth.value)
         SideEffect {
             stage.width = w
             stage.height = h
@@ -363,7 +352,7 @@ fun FightScreen(
                     val rig = stage.rig(side)
                     key(side) {
                         ShieldRing(
-                            center = { Offset(w * homeFraction(side) + rig.dir * rig.step.value * w, floorY - cellH * rig.body * BODY_AT) },
+                            center = { Offset(w * stage.homeFraction(side) + rig.dir * rig.step.value * w, floorY - cellH * rig.body * BODY_AT) },
                             radius = cellH * rig.body * 0.44f,
                             progress = { rig.shield.value },
                         )
@@ -396,7 +385,7 @@ fun FightScreen(
                         text = calloutText(move, rig.pet),
                         move = move,
                         progress = { rig.callout.value },
-                        x = { w * homeFraction(side) },
+                        x = { w * stage.homeFraction(side) },
                         y = { stage.floor - cellH * rig.body * CALLOUT_AT },
                         top = belowHud,
                         inset = insetPx,
@@ -418,12 +407,17 @@ fun FightScreen(
                     .align(Alignment.TopCenter)
                     .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop },
             )
-            MoveMenu(
-                pet = playerId,
+            // The command window down the left, its help window along the floor under it. Both slide in
+            // from the left as the menu comes back after a turn.
+            val menuIn = Modifier.graphicsLayer {
+                val m = stage.menu.value
+                alpha = m
+                translationX = -(1f - m) * 40.dp.toPx()
+            }
+            CommandWindow(
                 specialReady = specialReady,
                 requesters = requesters,
                 canFocus = !askRun,
-                focused = focusedMove,
                 onFocused = { focusedMove = it },
                 onPick = { move ->
                     if (!turnActive && canAct()) {
@@ -437,13 +431,11 @@ fun FightScreen(
                     }
                 },
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .graphicsLayer {
-                        val m = stage.menu.value
-                        alpha = m
-                        translationY = (1f - m) * 36.dp.toPx()
-                    },
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = HelpHeight + HelpGap)
+                    .then(menuIn),
             )
+            HelpWindow(moveHint(focusedMove, playerId), Modifier.align(Alignment.BottomStart).then(menuIn))
         }
 
         KoSlam(visible = stage.koShown, progress = { stage.ko.value }, lift = { stage.koLift.value }, liftPx = h * KO_LIFT)
@@ -454,7 +446,7 @@ fun FightScreen(
             exit = fadeOut(tween(160)),
         ) {
             RunDialog(
-                // The card grows in as the scrim fades in, and settles back as it fades out.
+                // The window grows in as the scrim fades in, and settles back as it fades out.
                 modifier = Modifier.animateEnterExit(
                     enter = scaleIn(tween(200), initialScale = 0.9f),
                     exit = scaleOut(tween(160), targetScale = 0.95f),
@@ -473,7 +465,13 @@ fun FightScreen(
     }
 }
 
-private fun homeFraction(side: Side): Float = if (side == Side.PLAYER) PLAYER_X else CPU_X
+/**
+ * Where the player stands, as a fraction of a screen [widthDp] wide: [PLAYER_X], or as far in as it takes for
+ * its widest pose to clear the command window, whose right edge is [menuRightDp] from the left (on a 4:3
+ * screen, about 0.32).
+ */
+internal fun playerHomeFraction(widthDp: Float, menuRightDp: Float): Float =
+    max(PLAYER_X, (menuRightDp + MENU_CLEARANCE_DP + FIGHTER_REACH_DP) / widthDp)
 
 /**
  * The turn the badge shows: the one being played while a turn is on, or the last one played once the
@@ -506,7 +504,7 @@ private fun FightersLayer(
             FighterView(
                 loader = loader,
                 rig = stage.rig(side),
-                homeX = w * homeFraction(side),
+                homeX = w * stage.homeFraction(side),
                 width = w,
                 floorY = floorY,
                 cellH = cellH,
@@ -690,6 +688,11 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
 
     private val cellH: Float get() = height * FIGHTER_HEIGHT
     val floor: Float get() = if (floorY > 0f) floorY else height * 0.75f
+
+    /** Where the player stands, as a fraction of the width: see [playerHomeFraction]. */
+    var playerHome = PLAYER_X
+
+    fun homeFraction(side: Side): Float = if (side == Side.PLAYER) playerHome else CPU_X
 
     private fun homeX(side: Side): Float = width * homeFraction(side)
 
@@ -1139,158 +1142,6 @@ private fun KoSlam(visible: Boolean, progress: () -> Float, lift: () -> Float, l
                 style = displayStyle(190.sp, tracking = 0.04f, lineHeight = 190.sp).copy(brush = KoFill),
                 outline = 9.dp,
             )
-        }
-    }
-}
-
-// ---- the move menu ----
-
-/** Small print under-explaining each move: the rock-paper-scissors at a glance. */
-private fun moveHint(move: Move, pet: PetId): String = when (move) {
-    Move.STRIKE -> "Quick hit  ·  interrupts a Heavy"
-    Move.HEAVY -> "Big hit  ·  breaks a Block, but a Strike cuts it off"
-    Move.BLOCK -> "Stops a Strike and counters  ·  a Heavy breaks it"
-    Move.SPECIAL -> "${specialName(pet)}  ·  never misses"
-    Move.RUN -> "Forfeit the fight  ·  costs a little mood"
-}
-
-private val MovePillWidth = 96.dp
-private val MovePillPadding = 18.dp
-
-/**
- * The move pills, bottom centre: `STRIKE HEAVY BLOCK [SPECIAL] | RUN`, with the focused (or, under a
- * finger, the last pressed) move explained above them. SPECIAL is there only with a full meter, and glows
- * Amber until picked.
- */
-@Composable
-private fun MoveMenu(
-    pet: PetId,
-    specialReady: Boolean,
-    requesters: Map<Move, FocusRequester>,
-    canFocus: Boolean,
-    focused: Move,
-    onFocused: (Move) -> Unit,
-    onPick: (Move) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        BasicText(
-            text = moveHint(focused, pet),
-            style = bodyStyle(15.sp, color = TextLo, halo = true).copy(textAlign = TextAlign.Center),
-            maxLines = 1,
-        )
-        Spacer(Modifier.height(14.dp))
-        // No focus restorer here: focus only ever comes back to the menu by request (on entry, after a
-        // turn, after the dialog), and a restorer would redirect those requests to its own choice.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val moves = buildList {
-                add(Move.STRIKE)
-                add(Move.HEAVY)
-                add(Move.BLOCK)
-                if (specialReady) add(Move.SPECIAL)
-            }
-            for (move in moves) {
-                key(move) {
-                    MovePill(move, requesters.getValue(move), canFocus, onFocused, onPick)
-                }
-            }
-            Box(
-                Modifier
-                    .padding(horizontal = 4.dp)
-                    .size(width = 3.dp, height = 30.dp)
-                    .background(Color.White.copy(alpha = 0.28f)),
-            )
-            MovePill(Move.RUN, requesters.getValue(Move.RUN), canFocus, onFocused, onPick)
-        }
-    }
-}
-
-@Composable
-private fun MovePill(
-    move: Move,
-    requester: FocusRequester,
-    canFocus: Boolean,
-    onFocused: (Move) -> Unit,
-    onPick: (Move) -> Unit,
-) {
-    val base = Modifier
-        .onFocusChanged { if (it.isFocused) onFocused(move) }
-        .focusRequester(requester)
-        .focusProperties { this.canFocus = canFocus }
-    // A finger pressing a pill shows its hint, as focus does (a remote's OK only presses the focused pill).
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    LaunchedEffect(pressed) { if (pressed) onFocused(move) }
-    if (move != Move.SPECIAL) {
-        FocusPill(
-            label = move.name,
-            onClick = { onPick(move) },
-            modifier = base,
-            minWidth = MovePillWidth,
-            horizontalPadding = MovePillPadding,
-            interactionSource = interaction,
-        )
-        return
-    }
-    // SPECIAL: an Amber label and a breathing Amber halo while it waits to be used.
-    val pulse = rememberInfiniteTransition(label = "specialPill").animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(620), RepeatMode.Reverse),
-        label = "specialPillPulse",
-    )
-    FocusPillSurface(
-        onClick = { onPick(move) },
-        modifier = base.drawBehind {
-            softGlow(Amber, alpha = 0.55f * pulse.value, cornerRadius = size.height / 2f, spread = 16.dp)
-        },
-        minWidth = MovePillWidth,
-        horizontalPadding = MovePillPadding,
-        interactionSource = interaction,
-    ) { lit ->
-        BasicText(
-            text = "SPECIAL",
-            style = displayStyle(24.sp, tracking = 0.06f, color = if (lit) TextHi else Amber),
-            maxLines = 1,
-        )
-    }
-}
-
-// ---- "Run away?" ----
-
-/**
- * "Run away?" over a scrim; [modifier] goes on the card (the caller animates it in). The scrim takes every
- * touch that misses the two pills, so a tap can never reach the move pills under it.
- */
-@Composable
-private fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier = Modifier) {
-    val noFocus = remember { FocusRequester() }
-    GameBackHandler(onBack = onNo)
-    LaunchedEffect(Unit) { runCatching { noFocus.requestFocus() } }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false).consume() } }
-            .background(Color.Black.copy(alpha = 0.55f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        GlassPanel(modifier, contentPadding = PaddingValues(horizontal = 56.dp, vertical = 30.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                BasicText("RUN AWAY?", style = displayStyle(60.sp, tracking = 0.08f, lineHeight = 60.sp), maxLines = 1)
-                Spacer(Modifier.height(10.dp))
-                BasicText(
-                    "You forfeit the fight and lose a little mood.",
-                    style = bodyStyle(16.sp, color = TextLo).copy(textAlign = TextAlign.Center),
-                )
-                Spacer(Modifier.height(26.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    FocusPill("No", onNo, Modifier.focusRequester(noFocus), minWidth = 120.dp)
-                    FocusPill("Yes", onYes, minWidth = 120.dp)
-                }
-            }
         }
     }
 }
