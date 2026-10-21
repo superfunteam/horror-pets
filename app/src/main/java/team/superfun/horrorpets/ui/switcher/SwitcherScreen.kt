@@ -2,8 +2,8 @@ package team.superfun.horrorpets.ui.switcher
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,11 +21,13 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -59,13 +61,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.tv.material3.Text
 import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
@@ -87,7 +89,7 @@ import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextLo
 
-// ---- stage geometry, as fractions of the screen height (or width for the slot x positions) ----
+// ---- stage geometry, as fractions of the screen height ----
 
 /** The line every pet's feet stand on: the stage floor the spotlights hit. */
 private const val FLOOR = 0.66f
@@ -95,8 +97,8 @@ private const val FLOOR = 0.66f
 /** Where the back wall meets the stage floor, just behind the feet. */
 private const val WALL_SEAM = 0.62f
 
-/** Each pet's whole sprite cell is this tall (the same on 4:3 and 16:9, and it is never cropped). */
-private const val PET_HEIGHT = 0.36f
+/** The centred pet's whole sprite cell is this tall (the same on 4:3 and 16:9, and it is never cropped). */
+private const val PET_HEIGHT = 0.40f
 
 /** Top of the name / level / status block under each pet. */
 private const val LABEL_TOP = 0.725f
@@ -105,43 +107,62 @@ private const val LABEL_TOP = 0.725f
 private const val BEAM_TOP = -0.04f
 private const val BEAM_BOTTOM = 0.71f
 
-/** Slot centres: four pets to pick from, or the three opponents left once the player's own pet is out. */
-private val FOUR_SLOTS = listOf(0.14f, 0.38f, 0.62f, 0.86f)
-private val THREE_SLOTS = listOf(0.20f, 0.50f, 0.80f)
+/**
+ * The most room a pet gets in the lineup, on the 540-dp canvas: on 16:9 that is the centre pet, a whole
+ * neighbour each side and the next two peeking in at the edges (see [carouselPitch]).
+ */
+private val MAX_PITCH = 240.dp
+
+// ---- motion ----
+
+/** The row slides this long (ease-out) to centre the next pet. */
+private const val SLIDE_MS = 300
+
+/** At either end the row nudges this far (in pets) toward the pet that isn't there, and settles back. */
+private const val BUMP = 0.08f
+private const val BUMP_MS = 220
 
 // ---- the look of a pet waiting in the dark ----
 
-private const val SPOT_MOVE_MS = 250
 private const val OFF_DIM = 0.62f
 private const val OFF_SATURATION = 0.4f
-private const val OFF_LABEL_ALPHA = 0.5f
 private const val OFF_LABEL_SCALE = 0.86f
 
+/** A pet's dim and color follow a slide in this many steps: its color filter is rebuilt per step, not per frame. */
+private const val LIT_STEPS = 8
+
 /**
- * Pet names under the spotlights; a long one steps down to fit its slot. The floor is low enough that the
- * nine letters of GHOSTFACE fit the narrowest label (an edge slot on 4:3, see [labelWidthPx]) at any font
- * scale the game honors (up to 1.15x, see `cappedFontScale`).
+ * Pet names under the spotlights; a long one steps down to fit the label's width. GHOSTFACE, the longest
+ * name, fits a neighbour's label on 4:3 (the narrowest, see [carouselPitch]) at any font scale the game
+ * honors (up to 1.15x, see `cappedFontScale`).
  */
 private val NAME_SIZE = 40.sp
 private val NAME_MIN_SIZE = 18.sp
 
-/** Idle loops start this far apart, so the four pets breathe out of step. */
+/** Idle loops start this far apart, so the pets breathe out of step. */
 private const val IDLE_STAGGER_MS = 230L
 
 /**
- * "Choose your killer": every pet stands idle and uncropped in its own spotlight on a dark stage. The
- * pet under the moving red spotlight is in full color; the others wait dimmed and desaturated in pale,
- * faint beams. Left / right move the spotlight (250ms), OK picks, Back cancels.
+ * "Choose your killer": the lineup on a dark stage, one row of pets standing idle and uncropped. The red
+ * spotlight is fixed at the centre of the stage; left / right slide the whole row (300ms, ease-out) so the
+ * next pet lands in it, and pets beyond the screen's edges slide in as the row moves. The row stops at the
+ * first and last pet (a short nudge, no wrap). The centred pet is in full color with the bright label; the
+ * others wait dimmed and desaturated in pale beams, a little smaller the further out they stand, their
+ * labels fading out toward the edges. OK picks, Back cancels. A held left / right keeps scrolling (key
+ * repeats move the row; OK and Back repeats are dropped by `MainActivity`), and `ui_move` plays only on
+ * an actual move.
  *
- * The same stage picks a fight opponent ([SwitcherMode.OPPONENT]): the player's own pet is left out and
- * the remaining three stand wider apart.
+ * The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left out.
  *
- * Where the spotlight starts: on the current pet when switching ([SwitcherMode.SELECT]), and on the first
- * slot when onboarding or choosing an opponent. While onboarding there is nothing to go back to, so Back
+ * Where the row starts: on the current pet when switching ([SwitcherMode.SELECT]), and on the first pet
+ * when onboarding or choosing an opponent. While onboarding there is nothing to go back to, so Back
  * leaves the app ([onExit]).
  *
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value takes focus and
- * puts the spotlight back on its starting pet; null (the screen is fading out) turns off Back and the keys.
+ * puts the row back on its starting pet; null (the screen is fading out) turns off Back and the keys.
+ *
+ * Every per-frame value (the row's position, the dust) is read in layout or draw, so a slide never
+ * recomposes the stage; a pet's dim / color steps [LIT_STEPS] times per slide.
  *
  * Music: this screen's track is `switcher`, chosen by the router from the screen type.
  */
@@ -156,16 +177,21 @@ fun SwitcherScreen(
     focusEntry: Any? = Unit,
 ) {
     val sounds = LocalSoundSink.current
+    val scope = rememberCoroutineScope()
     val pets = remember(mode, game.selected) {
         PetId.entries.filter { mode != SwitcherMode.OPPONENT || it != game.selected }
     }
-    val slots = slotsFor(pets.size)
+    val bodies = remember(loader, pets) { pets.map { loader.manifest(it).bodyScale } }
     val initial = when (mode) {
         SwitcherMode.SELECT -> pets.indexOf(game.selected).coerceAtLeast(0)
         SwitcherMode.ONBOARD, SwitcherMode.OPPONENT -> 0
     }
     var index by remember(mode) { mutableIntStateOf(initial) }
-    val spot = remember(mode) { Animatable(initial.toFloat()) }
+    // Where the row is: the pet index under the spotlight, fractional while it slides.
+    val scroll = remember(mode) { Animatable(initial.toFloat()) }
+    val bump = remember { Animatable(0f) }
+    // Read only in layout and draw. Remembered, so the cached stage and each pet's lit state keep one reader.
+    val row = remember(scroll, bump) { { scroll.value + bump.value } }
     val focus = remember { FocusRequester() }
     val interaction = remember { MutableInteractionSource() }
     val entered = focusEntry != null
@@ -178,11 +204,11 @@ fun SwitcherScreen(
     LaunchedEffect(focusEntry) {
         if (focusEntry != null && index != initial) {
             index = initial
-            spot.snapTo(initial.toFloat())
+            scroll.snapTo(initial.toFloat())
         }
     }
     LaunchedEffect(index) {
-        spot.animateTo(index.toFloat(), tween(SPOT_MOVE_MS, easing = FastOutSlowInEasing))
+        scroll.animateTo(index.toFloat(), tween(SLIDE_MS, easing = EaseOutCubic))
     }
 
     // Time for the dust drifting in the spotlight; only the dust layer's draw reads it.
@@ -193,8 +219,15 @@ fun SwitcherScreen(
     }
 
     fun move(delta: Int) {
-        val next = (index + delta).coerceIn(0, pets.lastIndex)
-        if (next == index) return
+        val next = carouselStep(index, delta, pets.size)
+        if (next == index) {
+            // The end of the row: nudge toward the pet that isn't there, and settle back.
+            scope.launch {
+                bump.animateTo(delta * BUMP, tween(BUMP_MS / 3, easing = FastOutSlowInEasing))
+                bump.animateTo(0f, tween(BUMP_MS * 2 / 3, easing = FastOutSlowInEasing))
+            }
+            return
+        }
         index = next
         sounds.sfx("ui_move")
     }
@@ -206,6 +239,7 @@ fun SwitcherScreen(
             .onKeyEvent { event ->
                 if (!entered) return@onKeyEvent false
                 when (event.key) {
+                    // Every key down, repeats included: a held D-pad scrolls along the row.
                     Key.DirectionLeft, Key.DirectionRight -> {
                         if (event.type == KeyEventType.KeyDown) move(if (event.key == Key.DirectionLeft) -1 else 1)
                         true
@@ -222,24 +256,28 @@ fun SwitcherScreen(
     ) {
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
-        val pitch = if (slots.size > 1) (slots[1] - slots[0]) * w else w * 0.3f
-        val insetPx = w * SAFE_INSET_FRACTION
         val density = LocalDensity.current
+        val pitchDp = carouselPitch(maxWidth.value, (maxWidth * SAFE_INSET_FRACTION).value, MAX_PITCH.value).dp
+        val pitch = with(density) { pitchDp.toPx() }
+        val cellH = h * PET_HEIGHT
+        val labelWidth = pitchDp * CAROUSEL_LABEL_SHARE
 
-        Stage(slots = slots, cellH = h * PET_HEIGHT, spot = { spot.value })
-        Dust(slots = slots, spot = { spot.value }, time = { clock.longValue })
+        Stage(count = pets.size, bodies = bodies, pitch = pitch, cellH = cellH, row = row)
+        Dust(pitch = pitch, time = { clock.longValue })
 
         pets.forEachIndexed { i, pet ->
             key(pet) {
-                PetSlot(
+                LineupPet(
                     loader = loader,
                     pet = game.pets[pet] ?: PetState(pet),
-                    focused = i == index,
-                    x = slots[i] * w,
+                    i = i,
+                    row = row,
+                    centerX = w / 2f,
+                    pitch = pitch,
                     floorY = h * FLOOR,
                     labelY = h * LABEL_TOP,
-                    cellH = h * PET_HEIGHT,
-                    labelWidth = with(density) { labelWidthPx(slots[i] * w, w, pitch, insetPx).toDp() },
+                    cellH = cellH,
+                    labelWidth = labelWidth,
                     idleOffsetMs = i * IDLE_STAGGER_MS,
                 )
             }
@@ -262,21 +300,6 @@ fun SwitcherScreen(
             TitleRule()
         }
     }
-}
-
-/**
- * How wide the label under a pet centred at [x] may be: most of a slot's [pitch], but never wider than
- * twice its distance to the nearer safe-inset edge, so an edge slot's name (GHOSTFACE on 4:3 or a CRT)
- * steps down to fit instead of running into the overscan. Labels are only ever scaled down (unfocused),
- * so the cap holds for the focused label too.
- */
-private fun labelWidthPx(x: Float, w: Float, pitch: Float, insetPx: Float): Float =
-    min(pitch * 0.94f, 2f * (min(x, w - x) - insetPx)).coerceAtLeast(0f)
-
-private fun slotsFor(count: Int): List<Float> = when (count) {
-    4 -> FOUR_SLOTS
-    3 -> THREE_SLOTS
-    else -> List(count) { (it + 0.5f) / count }
 }
 
 /** A red glow behind the title, as if the stage lights caught it. */
@@ -305,26 +328,26 @@ private val RuleBrush = Brush.horizontalGradient(
 )
 
 /**
- * One pet on its mark: the idle sprite with its feet at ([x], [floorY]), and its name, level and status
- * underneath. Under the spotlight it is in full color; otherwise dimmed, desaturated, its label faded.
+ * Pet [i] of the lineup with the row at [row]: the idle sprite, feet on the floor at its place in the row,
+ * and its name, level and status underneath. Under the spotlight it is full size and in full color; further
+ * out it is smaller (feet still on the floor), dimmed and desaturated, and its label fades away. Its place,
+ * size and label are read in layout and draw; its dim and color change in [LIT_STEPS] steps.
  */
 @Composable
-private fun PetSlot(
+private fun LineupPet(
     loader: AssetLoader,
     pet: PetState,
-    focused: Boolean,
-    x: Float,
+    i: Int,
+    row: () -> Float,
+    centerX: Float,
+    pitch: Float,
     floorY: Float,
     labelY: Float,
     cellH: Float,
     labelWidth: Dp,
     idleOffsetMs: Long,
 ) {
-    val lit by animateFloatAsState(
-        targetValue = if (focused) 1f else 0f,
-        animationSpec = tween(SPOT_MOVE_MS, easing = FastOutSlowInEasing),
-        label = "slotLit",
-    )
+    val lit by remember(i, row) { derivedStateOf { quantize(carouselLit(i - row()), LIT_STEPS) } }
     SpriteView(
         loader = loader,
         pet = pet.id,
@@ -336,15 +359,24 @@ private fun PetSlot(
         saturation = lerp(OFF_SATURATION, 1f, lit),
         shadowOpacity = 0.8f,
         loopOffsetMs = idleOffsetMs,
-        modifier = Modifier.placeAt(x = { x }, y = { floorY }),
+        modifier = Modifier
+            .placeAt(x = { carouselX(i, row(), centerX, pitch) }, y = { floorY })
+            .graphicsLayer {
+                val s = carouselScale(i - row())
+                scaleX = s
+                scaleY = s
+                // Shrink toward the feet, so every pet keeps standing on the floor.
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            },
     )
     Column(
         Modifier
-            .placeAt(x = { x }, y = { labelY }, pivotY = 0f)
+            .placeAt(x = { carouselX(i, row(), centerX, pitch) }, y = { labelY }, pivotY = 0f)
             .width(labelWidth)
             .graphicsLayer {
-                alpha = lerp(OFF_LABEL_ALPHA, 1f, lit)
-                val s = lerp(OFF_LABEL_SCALE, 1f, lit)
+                val d = i - row()
+                alpha = carouselLabelAlpha(d)
+                val s = lerp(OFF_LABEL_SCALE, 1f, carouselLit(d))
                 scaleX = s
                 scaleY = s
                 transformOrigin = TransformOrigin(0.5f, 0f)
@@ -386,16 +418,16 @@ private const val OFF_POOL = 0.5f
 private const val MOTES = 22
 
 /**
- * The stage: a back wall and floor, a faint red haze where they meet, a pale beam and pool over every
- * dark slot, and the red spotlight (beam, pool and a halo behind the pet) at [spot], a slot index that
- * slides between slots.
+ * The stage: a back wall and floor, a faint red haze where they meet, a pale beam and pool over every pet
+ * in the lineup (moving with the row, [pitch] apart, and fading as a pet slides into the spotlight), and the
+ * red spotlight fixed at the centre (beam, pool, and a halo behind the pet, sized to its body).
  *
  * It is a lot of soft, overlapping fill, so it renders into its own offscreen layer, which the renderer
- * reuses until [spot] changes: while the spotlight rests (nearly always) a frame costs one full-screen
- * blit, not a dozen gradient fills. [spot] is only read while drawing, so a move never recomposes.
+ * reuses until the row moves: while the row rests (nearly always) a frame costs one full-screen blit, not
+ * a dozen gradient fills. [row] is only read while drawing, so a slide never recomposes.
  */
 @Composable
-private fun Stage(slots: List<Float>, cellH: Float, spot: () -> Float) {
+private fun Stage(count: Int, bodies: List<Float>, pitch: Float, cellH: Float, row: () -> Float) {
     Spacer(
         Modifier
             .fillMaxSize()
@@ -403,11 +435,11 @@ private fun Stage(slots: List<Float>, cellH: Float, spot: () -> Float) {
             .drawWithCache {
                 val w = size.width
                 val h = size.height
+                val cx = w / 2f
                 val seam = h * WALL_SEAM
                 val floorY = h * FLOOR
                 val beamTop = h * BEAM_TOP
                 val beamBottom = h * BEAM_BOTTOM
-                val pitch = if (slots.size > 1) (slots[1] - slots[0]) * w else w * 0.3f
                 val bottomHalf = min(pitch * 0.47f, h * 0.25f)
                 val topHalf = bottomHalf * 0.2f
                 val poolRadius = min(pitch * 0.46f, h * 0.22f)
@@ -436,17 +468,18 @@ private fun Stage(slots: List<Float>, cellH: Float, spot: () -> Float) {
                 val redBeam = beamBrush(RedLight, 0.34f, 0.11f, beamTop, beamBottom)
                 val palePool = poolBrush(WarmPool, 0.30f, poolRadius)
                 val redPool = poolBrush(RedPool, 0.50f, poolRadius)
+                val haloRadius = cellH * 0.6f
                 val halo = Brush.radialGradient(
                     0f to BloodGlow.copy(alpha = 0.26f),
                     0.5f to BloodGlow.copy(alpha = 0.09f),
                     1f to Color.Transparent,
                     center = Offset.Zero,
-                    radius = cellH * 0.6f,
+                    radius = haloRadius,
                 )
                 val lens = Brush.radialGradient(
                     0.5f to Color.Transparent,
                     1f to Color.Black.copy(alpha = 0.6f),
-                    center = Offset(w / 2f, h * 0.5f),
+                    center = Offset(cx, h * 0.5f),
                     radius = max(w, h) * 0.72f,
                 )
                 val seamLine = Size(w, 2.dp.toPx())
@@ -459,18 +492,23 @@ private fun Stage(slots: List<Float>, cellH: Float, spot: () -> Float) {
                     drawRect(haze)
                     drawRect(Color.White.copy(alpha = 0.04f), topLeft = Offset(0f, seam), size = seamLine)
 
-                    val s = spot()
-                    // A slot's own pale light gives way as the red spotlight slides over it.
-                    for ((i, fx) in slots.withIndex()) {
-                        val covered = (1f - abs(s - i)).coerceIn(0f, 1f)
-                        drawBeam(beam, fx * w, paleBeam, OFF_BEAM * (1f - covered))
-                        drawPool(palePool, poolRadius, fx * w, floorY, OFF_POOL * (1f - covered))
+                    val r = row()
+                    // Each pet's own pale light, moving with the row, gives way as it slides into the red one.
+                    for (i in 0 until count) {
+                        val x = carouselX(i, r, cx, pitch)
+                        if (x < -bottomHalf || x > w + bottomHalf) continue
+                        val covered = carouselLit(i - r)
+                        drawBeam(beam, x, paleBeam, OFF_BEAM * (1f - covered))
+                        drawPool(palePool, poolRadius, x, floorY, OFF_POOL * (1f - covered))
                     }
 
-                    val spotX = slotX(slots, s) * w
-                    drawBeam(beam, spotX, redBeam, 1f)
-                    drawPool(redPool, poolRadius, spotX, floorY, 1f)
-                    translate(spotX, floorY - cellH * 0.45f) { drawCircle(halo, radius = cellH * 0.6f, center = Offset.Zero) }
+                    drawBeam(beam, cx, redBeam, 1f)
+                    drawPool(redPool, poolRadius, cx, floorY, 1f)
+                    // The halo sits behind the body under the spotlight: lower and smaller for a half-height pet.
+                    val body = bodyUnderSpot(bodies, r)
+                    translate(cx, floorY - cellH * body * 0.45f) {
+                        scale(body, pivot = Offset.Zero) { drawCircle(halo, radius = haloRadius, center = Offset.Zero) }
+                    }
 
                     drawRect(lens)
                 }
@@ -479,34 +517,24 @@ private fun Stage(slots: List<Float>, cellH: Float, spot: () -> Float) {
 }
 
 /**
- * Dust drifting up through the spotlight. It changes every frame, so it lives in its own light layer
- * (a couple of dozen small dots) instead of invalidating the cached [Stage].
+ * Dust drifting up through the spotlight at the centre. It changes every frame, so it lives in its own light
+ * layer (a couple of dozen small dots) instead of invalidating the cached [Stage].
  */
 @Composable
-private fun Dust(slots: List<Float>, spot: () -> Float, time: () -> Long) {
+private fun Dust(pitch: Float, time: () -> Long) {
     Spacer(
         Modifier
             .fillMaxSize()
             .drawWithCache {
                 val h = size.height
-                val w = size.width
-                val pitch = if (slots.size > 1) (slots[1] - slots[0]) * w else w * 0.3f
                 val bottomHalf = min(pitch * 0.47f, h * 0.25f)
                 val topHalf = bottomHalf * 0.2f
                 val unit = 1.dp.toPx()
                 onDrawBehind {
-                    val spotX = slotX(slots, spot()) * w
-                    drawMotes(time(), spotX, h * FLOOR, h * BEAM_TOP, h * BEAM_BOTTOM, topHalf, bottomHalf, unit)
+                    drawMotes(time(), size.width / 2f, h * FLOOR, h * BEAM_TOP, h * BEAM_BOTTOM, topHalf, bottomHalf, unit)
                 }
             },
     )
-}
-
-/** The x (fraction of the width) of a spotlight at [spot], a slot index that may sit between two slots. */
-private fun slotX(slots: List<Float>, spot: Float): Float {
-    if (slots.size == 1) return slots[0]
-    val i = floor(spot).toInt().coerceIn(0, slots.size - 2)
-    return lerp(slots[i], slots[i + 1], (spot - i).coerceIn(0f, 1f))
 }
 
 /** A beam's light: strongest at the lamp, thinning toward the floor, gone just past it. */
