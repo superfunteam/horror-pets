@@ -46,14 +46,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
-import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -73,6 +70,9 @@ import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hexColor
+import team.superfun.horrorpets.ui.common.ignoreOkUnless
+import team.superfun.horrorpets.ui.common.placeAt
+import team.superfun.horrorpets.ui.common.rememberOkReady
 import team.superfun.horrorpets.ui.common.safeInsetPadding
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Ink
@@ -108,7 +108,8 @@ private const val BUBBLE_ABOVE_FEET = 0.91f
  * and the action bar over it (the spec's layout A).
  *
  * [focusEntry] is the router's screen-entry key (see `RequestFocusOnEntry`): a new value gives PLAY
- * focus, and null (the screen is fading out) also turns off Back.
+ * focus, and null (the screen is fading out) also turns off Back. OK is ignored for a moment after each
+ * entry (see `rememberOkReady`), so an OK mashed through the end of a fight cannot fire PLAY.
  *
  * The view model drives the pet through [UiState.petAnim]; this screen plays each request and reports
  * it with [onAnimFinished]. Everything else the pet does is local: idle glances, running out of one
@@ -142,6 +143,7 @@ fun HomeScreen(
     // Only the screen being entered handles Back: a Home that is fading out must never exit the app.
     BackHandler(enabled = focusEntry != null, onBack = onExit)
     RequestFocusOnEntry(playFocus, focusEntry)
+    val okReady = rememberOkReady(focusEntry)
 
     // Warm the strips Home's actions play, so a first press starts at once. The run strips matter most:
     // the walk-out fade is timed from the press, the view model's scene change from the sprite's first
@@ -268,7 +270,7 @@ fun HomeScreen(
     }
 
     // No background: the scene covers the screen, and the app root's Ink shows while it loads.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().ignoreOkUnless(okReady)) {
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
         val petHeightPx = screenH * HOME_PET_HEIGHT
@@ -287,7 +289,7 @@ fun HomeScreen(
                 playKey = playKey,
                 onFinished = onShownFinished,
                 modifier = Modifier
-                    .anchorBottomCenter(x = { screenW / 2f + walkX.value * screenW }, y = { floorY })
+                    .placeAt(x = { screenW / 2f + walkX.value * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
             val tailPx = with(LocalDensity.current) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
@@ -295,9 +297,10 @@ fun HomeScreen(
                 text = bubble?.text,
                 // Pinned by its tail, not its middle: the body hangs to the right of the head, away from
                 // the stat card, which on 4:3 sits close to the pet.
-                modifier = Modifier.anchorAt(
+                modifier = Modifier.placeAt(
                     x = { screenW / 2f + walkX.value * screenW - tailPx },
                     y = { floorY - petHeightPx * BUBBLE_ABOVE_FEET },
+                    pivotX = 0f,
                 ),
             )
         }
@@ -368,22 +371,6 @@ private class JobSlot {
     fun cancel() {
         job?.cancel()
         job = null
-    }
-}
-
-/** Places the child so its bottom-centre sits at ([x], [y]) in this box; read in layout, so moving it never recomposes. */
-private fun Modifier.anchorBottomCenter(x: () -> Float, y: () -> Float): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(Constraints())
-    layout(constraints.maxWidth, constraints.maxHeight) {
-        placeable.place((x() - placeable.width / 2f).roundToInt(), (y() - placeable.height).roundToInt())
-    }
-}
-
-/** Places the child so its bottom-left corner sits at ([x], [y]) in this box, read in layout like [anchorBottomCenter]. */
-private fun Modifier.anchorAt(x: () -> Float, y: () -> Float): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(Constraints())
-    layout(constraints.maxWidth, constraints.maxHeight) {
-        placeable.place(x().roundToInt(), (y() - placeable.height).roundToInt())
     }
 }
 

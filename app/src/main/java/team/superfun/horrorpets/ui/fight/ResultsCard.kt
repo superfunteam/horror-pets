@@ -67,6 +67,8 @@ import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.ignoreOkUnless
+import team.superfun.horrorpets.ui.common.rememberOkReady
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Ink
@@ -87,8 +89,9 @@ private val CardMaxWidth = 700.dp
  * pet (jumping and waving after a win, facepalming after a loss), the XP gained filling the level bar
  * (`LEVEL UP!` when it wraps), and each stat as before → after with its change. [before] is the pet as it
  * went into the fight; without it (the Activity was recreated) the stats show their values alone.
- * One focused CONTINUE pill, or Back, calls [onDone]. The view model has already queued `you_win` /
- * `you_lose` (and `levelup`).
+ * One focused CONTINUE pill, or Back, calls [onDone]. OK is ignored for a moment after the card comes up
+ * (see `rememberOkReady`), so an OK mashed through the fight's last turn cannot skip the results. The
+ * view model has already queued `you_win` / `you_lose` (and `levelup`).
  */
 @Composable
 fun ResultsCard(
@@ -102,12 +105,13 @@ fun ResultsCard(
     val focus = remember { FocusRequester() }
     BackHandler(enabled = focusEntry != null, onBack = onDone)
     RequestFocusOnEntry(focus, focusEntry)
+    val okReady = rememberOkReady(focusEntry)
 
     val after = screen.reward.pet
     val enter = remember { Animatable(0f) }
     LaunchedEffect(Unit) { enter.animateTo(1f, tween(CARD_IN_MS, easing = LinearOutSlowInEasing)) }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().ignoreOkUnless(okReady)) {
         val h = constraints.maxHeight.toFloat()
         if (arena != null) {
             SceneBackdrop(loader = loader, scene = arena) { }

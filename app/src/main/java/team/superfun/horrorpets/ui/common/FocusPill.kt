@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +39,9 @@ val PillHeight: Dp = 54.dp
 
 /** How much a focused pill grows. */
 const val PILL_FOCUS_SCALE = 1.1f
+
+/** A pill's label style; callers that lay pills out by their label widths measure with this. */
+fun pillLabelStyle(color: Color = TextHi): TextStyle = displayStyle(24.sp, tracking = 0.06f, color = color)
 
 private val FocusedFill = Brush.verticalGradient(
     0f to Color(0xFFE01B2B),
@@ -68,7 +72,7 @@ fun FocusPill(
     ) { focused ->
         Text(
             text = label.uppercase(),
-            style = displayStyle(24.sp, tracking = 0.06f, color = if (focused) TextHi else TextHi.copy(alpha = 0.88f)),
+            style = pillLabelStyle(color = if (focused) TextHi else TextHi.copy(alpha = 0.88f)),
             maxLines = 1,
         )
     }
