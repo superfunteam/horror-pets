@@ -22,4 +22,23 @@ class ScreenDensityTest {
         assertNull(designDensityFor(0))
         assertNull(designDensityFor(-1))
     }
+
+    @Test
+    fun fontScaleUpToTheCapIsKept() {
+        assertEquals(1.0f, cappedFontScale(1.0f), 0f)
+        assertEquals(1.15f, cappedFontScale(1.15f), 0f)
+    }
+
+    @Test
+    fun fontScaleAboveTheCapIsCappedAt1Point15() {
+        assertEquals(1.15f, cappedFontScale(1.3f), 0f) // the Onn stick's "large text" setting
+        assertEquals(1.15f, cappedFontScale(2.0f), 0f)
+        assertEquals(MAX_FONT_SCALE, cappedFontScale(Float.MAX_VALUE), 0f)
+    }
+
+    @Test
+    fun fontScaleBelowOneIsKept() {
+        assertEquals(0.85f, cappedFontScale(0.85f), 0f)
+        assertEquals(0.5f, cappedFontScale(0.5f), 0f)
+    }
 }
