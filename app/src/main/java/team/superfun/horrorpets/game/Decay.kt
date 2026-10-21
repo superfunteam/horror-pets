@@ -14,7 +14,9 @@ import team.superfun.horrorpets.model.PetState
  *
  * - A [nowMs] below [Tuning.MIN_VALID_EPOCH_MS] is a not-yet-synced boot clock: nothing decays and
  *   `lastSeenMs` is left as it was.
- * - With no `lastSeenMs` (first run) nothing decays; `lastSeenMs` becomes [nowMs].
+ * - With no `lastSeenMs` (first run) nothing decays; `lastSeenMs` becomes [nowMs]. A persisted
+ *   `lastSeenMs` below [Tuning.MIN_VALID_EPOCH_MS] (a corrupt or unsynced-clock save) counts as no
+ *   `lastSeenMs`, so it cannot turn the next valid launch into a 30-day jump and a fake death.
  * - A clock that went backwards counts as zero elapsed time and never moves `lastSeenMs` back.
  * - Elapsed time is capped at [Tuning.MAX_ELAPSED_MS]; `lastSeenMs` still advances to the real now.
  * - Decay is linear and clamped, so applying two intervals back to back equals applying their sum.
@@ -24,7 +26,7 @@ import team.superfun.horrorpets.model.PetState
 fun applyElapsed(state: GameState, nowMs: Long): Pair<GameState, AwaySummary> {
     if (nowMs < Tuning.MIN_VALID_EPOCH_MS) return state to AwaySummary(0L, null, 0, emptySet())
 
-    val lastSeen = state.lastSeenMs
+    val lastSeen = state.lastSeenMs?.takeIf { it >= Tuning.MIN_VALID_EPOCH_MS }
     val newLastSeen = max(lastSeen ?: nowMs, nowMs)
     val elapsedMs = if (lastSeen == null) 0L else min(gapMs(nowMs, lastSeen), Tuning.MAX_ELAPSED_MS)
     if (elapsedMs == 0L) {

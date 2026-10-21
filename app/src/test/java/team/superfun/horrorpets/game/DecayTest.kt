@@ -137,6 +137,18 @@ class DecayTest {
     }
 
     @Test
+    fun persistedLastSeenBeforeFloorTreatedAsFirstRun() {
+        // A corrupt/old save holding a 1970-ish timestamp must not become a 30-day jump (and a fake
+        // death for every pet) on the next valid launch: it counts as "never seen".
+        val state = seen(at = 5_000)
+        val (next, summary) = applyElapsed(state, t0)
+        assertEquals(state.pets, next.pets)
+        assertEquals(t0, next.lastSeenMs)
+        assertEquals(0L, summary.elapsedMs)
+        assertTrue(summary.fakeDeath.isEmpty())
+    }
+
+    @Test
     fun clockFloorIsJanuaryFirst2024() {
         assertEquals(1_704_067_200_000L, Tuning.MIN_VALID_EPOCH_MS)
         // Exactly at the floor is valid (first run records it); one ms below is not.
