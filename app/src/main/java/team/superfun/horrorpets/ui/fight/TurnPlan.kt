@@ -9,6 +9,7 @@ import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
+import team.superfun.horrorpets.model.SpecialStyle
 
 /** One step of a fight turn's playback, in the order the fight screen plays them. */
 internal sealed interface Beat {
@@ -97,6 +98,12 @@ internal fun impactMs(attack: AnimSpec): Long {
 
 /** The attacker hops back this long after the impact, cutting the end of its swing's recovery short. */
 internal const val AFTER_IMPACT_MS = 420L
+
+/**
+ * Whether a pet performs its special with its DANCE: its special [style] is danced (Saw Dance) and its sprites
+ * ship a dance ([hasDance]). A danced special on sprites without one swings an ATTACK like any other.
+ */
+internal fun dancesSpecial(style: SpecialStyle, hasDance: Boolean): Boolean = style.danced && hasDance
 
 /**
  * What an attacker plays for the swing that delivers [event]: its DANCE for a special it dances

@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.ui.fight
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
@@ -82,6 +83,20 @@ class TurnPlanTest {
             FightEvent.Blocked(Side.PLAYER),
         )) {
             assertEquals("$event", Anim.ATTACK, swingAnim(event, dancesSpecial = true))
+        }
+    }
+
+    @Test
+    fun aDancedSpecialIsDancedOnlyWhenTheSpritesShipADance() {
+        assertTrue(dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = true))
+        // Saw Dance on sprites without a dance strip: a plain ATTACK swing, never a missing strip.
+        assertFalse(dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = false))
+        val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+        assertEquals(Anim.ATTACK, swingAnim(special, dancesSpecial(SpecialStyle.SAW_DANCE, hasDance = false)))
+        // A special that is not danced swings its ATTACK even when the pet could dance.
+        for (style in SpecialStyle.entries - SpecialStyle.SAW_DANCE) {
+            assertFalse("$style", dancesSpecial(style, hasDance = true))
+            assertEquals("$style", Anim.ATTACK, swingAnim(special, dancesSpecial(style, hasDance = true)))
         }
     }
 

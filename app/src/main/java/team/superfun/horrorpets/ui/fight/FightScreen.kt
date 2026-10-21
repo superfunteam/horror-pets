@@ -169,7 +169,7 @@ private val CPU_FIGHT_ANIMS = listOf(Anim.IDLE, Anim.RUN_LEFT, Anim.ATTACK, Anim
 /** The longest a turn waits, after its callouts, for its strips to finish decoding. */
 private const val STRIPS_WAIT_MS = 1_500L
 
-/** The longest a swing waits for its ATTACK to come on screen before timing its impact anyway. */
+/** The longest a swing waits for its ATTACK (or DANCE) to come on screen before timing its impact anyway. */
 private const val SWING_START_WAIT_MS = 600L
 
 /** The arena: one of the [opponent]'s scenes, picked by the fight's [roll] (see `HorrorPetsApp`). */
@@ -178,9 +178,9 @@ internal fun arenaScene(loader: AssetLoader, opponent: PetId, roll: Int): SceneS
     return scenes[roll.mod(scenes.size)]
 }
 
-/** Whether [pet] performs its special with its DANCE: a danced special (Saw Dance) and sprites that ship one. */
-private fun dancesSpecial(loader: AssetLoader, pet: PetId): Boolean =
-    pet.spec.special.danced && loader.manifest(pet).has(Anim.DANCE)
+/** Whether [pet] performs its special with its DANCE: [dancesSpecial] for its special and its sprites. */
+private fun petDancesSpecial(loader: AssetLoader, pet: PetId): Boolean =
+    dancesSpecial(pet.spec.special, loader.manifest(pet).has(Anim.DANCE))
 
 /**
  * Decodes the strips a fight between [player] and [cpu] starts with. Blocking: call it off the main thread.
@@ -237,8 +237,8 @@ fun FightScreen(
         FightStage(
             screen,
             turnPending = petAnim != null,
-            playerLook = FighterLook(loader.manifest(playerId).bodyScale, dancesSpecial(loader, playerId)),
-            cpuLook = FighterLook(loader.manifest(cpuId).bodyScale, dancesSpecial(loader, cpuId)),
+            playerLook = FighterLook(loader.manifest(playerId).bodyScale, petDancesSpecial(loader, playerId)),
+            cpuLook = FighterLook(loader.manifest(cpuId).bodyScale, petDancesSpecial(loader, cpuId)),
         )
     }
     val finished by rememberUpdatedState(onAnimFinished)
