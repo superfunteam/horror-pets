@@ -1,0 +1,33 @@
+name: Release check
+
+# Pushing a v* tag runs the release build as an unsigned verification: unit tests, lint and
+# assembleRelease with the version taken from the tag. It uploads nothing and uses no secrets.
+#
+# The signing key stays on the maintainer's machine. Signed APKs and GitHub Releases come from
+# `tools/release.sh <version>`, which tags, pushes and publishes after its own local build and checks.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # versionName is the tag without its leading "v". A tag that is not MAJOR.MINOR.PATCH
+      # (v1.2, v1.2.3-rc1, ...) fails here with a clear message from versionCodeOf().
+      - name: Release unit tests, lint and unsigned release build
+        run: ./gradlew :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease "-PversionName=${GITHUB_REF_NAME#v}"
