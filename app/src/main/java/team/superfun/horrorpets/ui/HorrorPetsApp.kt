@@ -85,7 +85,13 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     focusEntry = focusEntry,
                 )
 
-                is Screen.FakeDeath -> FakeDeathScreen(pet = screen.pet, onDone = vm::onFakeDeathDone, focusEntry = focusEntry)
+                is Screen.FakeDeath -> FakeDeathScreen(
+                    pet = screen.pet,
+                    game = state.game,
+                    loader = loader,
+                    onDone = vm::onFakeDeathDone,
+                    focusEntry = focusEntry,
+                )
 
                 Screen.Home -> HomeScreen(
                     state = state,
