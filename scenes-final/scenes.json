@@ -126,5 +126,69 @@
       "shadowOpacity": 0.6,
       "accent": "#4F8CFF"
     }
+  ],
+  "michael": [
+    {
+      "id": "myershouse",
+      "title": "The Myers House",
+      "file": "michael/myershouse.webp",
+      "floorY": 0.7531,
+      "tint": "#59484F",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF9A3D"
+    },
+    {
+      "id": "haddonfield",
+      "title": "Haddonfield",
+      "file": "michael/haddonfield.webp",
+      "floorY": 0.7531,
+      "tint": "#59230F",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF7A1A"
+    },
+    {
+      "id": "closet",
+      "title": "The Upstairs Room",
+      "file": "michael/closet.webp",
+      "floorY": 0.7531,
+      "tint": "#593D3E",
+      "tintStrength": 0.15,
+      "shadowOpacity": 0.55,
+      "accent": "#7FA8FF"
+    }
+  ],
+  "chucky": [
+    {
+      "id": "livingroom",
+      "title": "The Living Room",
+      "file": "chucky/livingroom.webp",
+      "floorY": 0.7531,
+      "tint": "#59270F",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF9A3D"
+    },
+    {
+      "id": "toystore",
+      "title": "The Toy Store",
+      "file": "chucky/toystore.webp",
+      "floorY": 0.7531,
+      "tint": "#593F40",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#4F8CFF"
+    },
+    {
+      "id": "department",
+      "title": "Department Store",
+      "file": "chucky/department.webp",
+      "floorY": 0.7531,
+      "tint": "#593830",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FF5FA2"
+    }
   ]
 }

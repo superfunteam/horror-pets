@@ -6,6 +6,7 @@
   ],
   "baselineY": 404,
   "anchorX": 192,
+  "displayScale": 1.0,
   "feed": "work",
   "animations": {
     "idle": {

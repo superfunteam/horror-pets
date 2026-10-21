@@ -159,11 +159,12 @@ def align_baselines(pet: str, anims: dict, log: list) -> int:
     return baseline
 
 
-def write_outputs(pet: str, anims: dict, baseline: int, feed: str, cell, out: Path, qa: Path) -> None:
+def write_outputs(pet: str, anims: dict, baseline: int, feed: str, cell, out: Path, qa: Path,
+                  display_scale: float = 1.0) -> None:
     pdir = out / pet
     pdir.mkdir(parents=True, exist_ok=True)
     manifest = {"pet": pet, "cell": list(cell), "baselineY": baseline, "anchorX": cell[0] // 2,
-                "feed": feed, "animations": {}}
+                "displayScale": display_scale, "feed": feed, "animations": {}}
     for name, a in anims.items():
         strip = np.concatenate(a["cells"], axis=1)
         Image.fromarray(strip, "RGBA").save(pdir / f"{name}.png", optimize=True)
@@ -214,7 +215,8 @@ def main() -> int:
                 anims[name] = process_anim(pet, name, spec, sheet, cell, ref_cell, anims, log)
             baseline = align_baselines(pet, anims, log)
             all_anims.extend(anims.values())
-            write_outputs(pet, anims, baseline, pcfg["feed"], cell, ROOT / args.out, ROOT / args.qa)
+            write_outputs(pet, anims, baseline, pcfg["feed"], cell, ROOT / args.out, ROOT / args.qa,
+                          pcfg.get("displayScale", 1.0))
         except IntakeError as e:
             log.append(f"  ERROR {pet}: {e}")
             failed = True

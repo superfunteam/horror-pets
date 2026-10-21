@@ -304,6 +304,107 @@ def music_ghostface() -> np.ndarray:
     return widen(loopify(mix, L, F), 9)
 
 
+def piano_note(rng: np.random.Generator, freq: float, dur: float = 2.5, bright: float = 1.0) -> np.ndarray:
+    """Struck-string tone: slightly stretched partials, faster decay for higher partials, a soft hammer thump."""
+    n = int(dur * SR)
+    out = np.zeros(n)
+    for k, amp in enumerate((1.0, 0.5, 0.3, 0.15, 0.08, 0.05), start=1):
+        fk = k * freq * np.sqrt(1 + 0.0004 * k * k)
+        if fk > SR / 2 - 1000:
+            break
+        out += amp * bright ** (k - 1) * sine(fk, n) * env_exp(n, dur / (2.2 + 0.6 * k), 0.003)
+    hammer = lowpass(noise(rng, n), 1800) * env_exp(n, 0.012, 0.001) * 0.08
+    return (out + hammer) * 0.4
+
+
+def toy_piano_note(rng: np.random.Generator, freq: float, dur: float = 1.0) -> np.ndarray:
+    """Bright, clangy toy-piano tine: strong inharmonic partials and a quick decay."""
+    n = int(dur * SR)
+    tone = sine(freq, n) + 0.5 * sine(freq * 3.01, n) + 0.25 * sine(freq * 5.4, n)
+    click = highpass(noise(rng, n), 4000) * env_exp(n, 0.003)
+    return (tone * env_exp(n, 0.32, 0.001) + 0.2 * click) * 0.45
+
+
+CHUCKY_MELODY = [  # original minor-key toy waltz, (note or None for rest, beats); 3 beats per bar
+    ("E5", 1), ("D#5", 1), ("E5", 1), ("C5", 2), ("A4", 1), ("B4", 1), ("A4", 1), ("G#4", 1), ("A4", 3),
+    ("E5", 1), ("F5", 1), ("E5", 1), ("D5", 2), ("B4", 1), ("C5", 1), ("B4", 1), ("G#4", 1), ("A4", 2), (None, 1),
+    ("A5", 1), ("G5", 1), ("F5", 1), ("E5", 2), ("C5", 1), ("D5", 1), ("C5", 1), ("B4", 1), ("C5", 3),
+    ("F5", 1), ("E5", 1), ("D#5", 1), ("E5", 2), ("B4", 1), ("C5", 1), ("B4", 1), ("G#4", 1), ("A4", 3),
+]
+CHUCKY_BARS = [["A2", "C4", "E4"], ["A2", "C4", "E4"], ["E2", "B3", "G#4"], ["A2", "C4", "E4"],
+               ["A2", "C4", "E4"], ["D2", "F3", "A3"], ["E2", "B3", "G#3"], ["A2", "C4", "E4"],
+               ["F2", "A3", "C4"], ["C2", "E3", "G3"], ["G2", "B3", "D4"], ["C2", "E3", "G3"],
+               ["D2", "F3", "A3"], ["A2", "C4", "E4"], ["E2", "B3", "G#3"], ["A2", "C4", "E4"]]
+
+
+def music_chucky() -> np.ndarray:
+    rng = rng_for("chucky")
+    bpm = 112
+    beat = 60 / bpm
+    bars = 40  # the 16-bar tune two and a half times: A B A B A
+    L = bars * 3 * beat
+    F = 2.0
+    n = int((L + F) * SR)
+    mix = np.zeros(n)
+    tune_beats = sum(b for _, b in CHUCKY_MELODY)  # 48 = 16 bars
+    t, i = 0.0, 0
+    while t < L + F:
+        name, b = CHUCKY_MELODY[i % len(CHUCKY_MELODY)]
+        if name:
+            place(mix, toy_piano_note(rng, note_hz(name)), t, 0.6)
+        t += b * beat
+        i += 1
+        if i % len(CHUCKY_MELODY) == 0:
+            t = round(t / (tune_beats * beat)) * tune_beats * beat
+    for bar in range(int((L + F) / (3 * beat)) + 1):
+        root, *upper = CHUCKY_BARS[bar % len(CHUCKY_BARS)]
+        t0 = bar * 3 * beat
+        place(mix, pluck(rng, note_hz(root), 0.6, 0.15), t0, 0.5)
+        for k in (1, 2):
+            for u in upper:
+                place(mix, pluck(rng, note_hz(u), 0.3, 0.3), t0 + k * beat, 0.12)
+        if bar % 8 == 7:  # a wind-up ratchet before each new phrase
+            for c in range(12):
+                m = int(0.012 * SR)
+                place(mix, bandpass(noise(rng, m), 1500, 5000) * env_exp(m, 0.004), t0 + 1.4 + 0.05 * c * (1 - c / 30), 0.12)
+    drone = lowpass(saw(note_hz("A1"), n) + saw(note_hz("A1") * 1.006, n), 220) * 0.05
+    mix += drone
+    mix = reverb(rng, mix, 1.6, 0.25)
+    return widen(loopify(mix, L, F), 9)
+
+
+MICHAEL_CHORDS = [["B2", "F#3", "B3", "C#4", "D4"], ["G2", "D3", "B3", "D4", "F#4"],
+                  ["E2", "B2", "G3", "B3", "E4"], ["F#2", "C#3", "A#3", "C#4", "F#4"]]
+
+
+def music_michael() -> np.ndarray:
+    rng = rng_for("michael")
+    eighth = 1 / 3  # 6/8 at 60 dotted-quarter beats per minute
+    bar = 6 * eighth
+    bars = 36
+    L = bars * bar
+    F = 3.0
+    n = int((L + F) * SR)
+    mix = np.zeros(n)
+    shape = [0, 2, 3, 4, 3, 2]  # rising and falling arpeggio over each chord
+    for b in range(int((L + F) / bar) + 1):
+        chord = MICHAEL_CHORDS[(b // 2) % len(MICHAEL_CHORDS)]
+        for k, idx in enumerate(shape):
+            place(mix, piano_note(rng, note_hz(chord[idx]) * 2, 1.8, 0.8), b * bar + k * eighth, 0.32)
+        place(mix, piano_note(rng, note_hz(chord[0]) / 2, 4.0, 0.6), b * bar, 0.35)
+        for beat_at, gain in ((0.0, 0.5), (0.28, 0.35)):  # a slow heartbeat under every bar
+            m = int(0.3 * SR)
+            thump = sine(45 + 30 * np.exp(-np.arange(m) / SR / 0.03), m) * env_exp(m, 0.09, 0.002)
+            place(mix, thump, b * bar + bar / 2 + beat_at, gain * 0.5)
+    tt = t_axis(L + F)
+    drone = lowpass(saw(note_hz("B1"), n) + saw(note_hz("B1") * 1.004, n), 300) * (0.04 + 0.02 * np.sin(2 * np.pi * tt / 18))
+    mix += drone
+    for at in np.arange(9.0, L + F - 4, 12.0):  # a high, distant note now and then
+        place(mix, piano_note(rng, note_hz("F#6"), 3.0, 0.5), at, 0.12)
+    mix = reverb(rng, mix, 3.2, 0.38, 5000)
+    return widen(loopify(mix, L, F), 15)
+
+
 def drum_kick() -> np.ndarray:
     m = int(0.35 * SR)
     f = 50 + 110 * np.exp(-np.arange(m) / SR / 0.04)
@@ -462,6 +563,19 @@ def sfx_all() -> dict[str, np.ndarray]:
     rn = int(0.3 * SR)
     place(sg, lowpass((sine(440, rn) + sine(480, rn)) * (signal.square(2 * np.pi * 20 * np.arange(rn) / SR) > 0), 3000) * 0.25, 0.65)
     s["special_ghostface"] = sg
+    sc = np.zeros(int(1.2 * SR))
+    chant = pad(rng, [note_hz("D2"), note_hz("A2"), note_hz("D3")], 0.9, 700)
+    chant = bandpass(chant * (1 + 0.3 * np.sin(2 * np.pi * 6 * np.arange(len(chant)) / SR)), 200, 1200) * 3
+    place(sc, chant, 0.0, 0.6)
+    for k in range(3):
+        place(sc, swoosh(rng, 0.1, 2500, 8000) + 0.5 * punch(rng, 0.6)[: int(0.1 * SR)], 0.55 + k * 0.13)
+    s["special_chucky"] = reverb(rng, sc, 1.2, 0.3)
+    sm = np.zeros(int(1.6 * SR))
+    place(sm, swoosh(rng, 0.45, 300, 3500), 0.0, 0.9)
+    place(sm, punch(rng, 2.6), 0.42, 1.0)
+    m = int(0.7 * SR)
+    place(sm, bandpass(noise(rng, m), 350, 1100) * env_adsr(m, 0.15, 0.1, 0.6, 0.35), 0.8, 0.35)
+    s["special_michael"] = reverb(rng, sm, 1.8, 0.3)
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
     s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)
@@ -518,7 +632,7 @@ def write_wav(x: np.ndarray, dest: Path) -> None:
 
 
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
-         "ghostface": music_ghostface, "fight": music_fight, "switcher": music_switcher}
+         "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "fight": music_fight, "switcher": music_switcher}
 
 
 def main() -> int:

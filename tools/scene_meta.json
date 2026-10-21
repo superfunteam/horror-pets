@@ -82,5 +82,47 @@
     "tintStrength": 0.12,
     "shadowOpacity": 0.6,
     "accent": "#4F8CFF"
+  },
+  "chucky/toystore": {
+    "floorY16x9": 0.8,
+    "tint": "#593F40",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#4F8CFF"
+  },
+  "michael/myershouse": {
+    "floorY16x9": 0.8,
+    "tint": "#59484F",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF9A3D"
+  },
+  "michael/haddonfield": {
+    "floorY16x9": 0.8,
+    "tint": "#59230F",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF7A1A"
+  },
+  "michael/closet": {
+    "floorY16x9": 0.8,
+    "tint": "#593D3E",
+    "tintStrength": 0.15,
+    "shadowOpacity": 0.55,
+    "accent": "#7FA8FF"
+  },
+  "chucky/livingroom": {
+    "floorY16x9": 0.8,
+    "tint": "#59270F",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF9A3D"
+  },
+  "chucky/department": {
+    "floorY16x9": 0.8,
+    "tint": "#593830",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF5FA2"
   }
 }
