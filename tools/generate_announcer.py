@@ -1,4 +1,7 @@
-"""Generate the fight announcer lines with OpenAI TTS into audio-final/voice/ (Opus in .ogg).
+"""Generate the fight announcer lines with OpenAI TTS into audio-final/voice/ (16-bit PCM mono .wav, 44.1 kHz).
+
+WAV rather than Opus-in-Ogg because the app plays the lines through SoundPool, which cannot decode
+Opus below Android 10.
 
 The API key is read from the OPENAI_API_KEY environment variable only.
 Usage: OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py [--only NAME ...]
@@ -91,15 +94,16 @@ def main() -> int:
             # trim leading/trailing silence, add a short arena slap-back, normalize, encode
             filt = ("silenceremove=start_periods=1:start_threshold=-45dB:stop_periods=-1:stop_threshold=-45dB:"
                     "stop_duration=0.15,aecho=0.8:0.6:70:0.22,loudnorm=I=-14:TP=-1.0:LRA=7")
-            enc = raw_dir / f"{name}-{take}.ogg"
-            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(raw), "-af", filt, "-ar", "48000",
-                            "-c:a", "libopus", "-b:a", "64k", str(enc)], check=True)
+            enc = raw_dir / f"{name}-{take}-final.wav"
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(raw), "-af", filt, "-map_metadata", "-1",
+                            "-fflags", "+bitexact", "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", str(enc)],
+                           check=True)
             dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                         str(enc)], capture_output=True, text=True, check=True).stdout)
             if best is None or dur < best[0]:
                 best = (dur, enc)
-        best[1].replace(out_dir / f"{name}.ogg")
-        print(f"voice/{name}.ogg")
+        best[1].replace(out_dir / f"{name}.wav")
+        print(f"voice/{name}.wav")
     return 0
 
 

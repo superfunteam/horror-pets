@@ -5,4 +5,6 @@
 - **Announcer** (`voice/`): generated with OpenAI text-to-speech (`gpt-4o-mini-tts-2025-12-15`,
   voice "onyx") by `tools/generate_announcer.py`, then trimmed and given a short slap-back echo.
 
-All files are Opus audio in an Ogg container (`.ogg`).
+Formats: music is Opus audio in an Ogg container (`.ogg`), played by ExoPlayer. Sound effects and
+announcer lines are 16-bit PCM mono WAV at 44.1 kHz (`.wav`), played by SoundPool, which cannot decode
+Opus-in-Ogg below Android 10 (the app supports Android 5.1 and up).
