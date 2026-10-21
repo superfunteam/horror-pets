@@ -77,12 +77,13 @@ $out"
   fi
 }
 
-# Prints the keytool to use: the one on PATH, else the one in $JAVA_HOME.
+# Prints the keytool to use: the one in $JAVA_HOME when it is set, else the one on PATH. JAVA_HOME
+# comes first because on macOS /usr/bin/keytool is only a stub that picks some installed JDK.
 find_keytool() {
-  if command -v keytool >/dev/null 2>&1; then
-    command -v keytool
-  elif [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/keytool" ]; then
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/keytool" ]; then
     printf '%s' "$JAVA_HOME/bin/keytool"
+  elif command -v keytool >/dev/null 2>&1; then
+    command -v keytool
   else
     return 1
   fi

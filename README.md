@@ -50,6 +50,14 @@ adb shell am force-stop team.superfun.horrorpets && \
 adb shell am start -n team.superfun.horrorpets/.MainActivity --ef advance_hours 200
 ```
 
+When you are done time travelling, wipe the app's data. The offset clock saved a "last seen" time in the
+future, and with the real clock behind it no time passes, so the pets stop decaying until the real clock
+catches up:
+
+```sh
+adb shell pm clear team.superfun.horrorpets
+```
+
 ### Regenerating assets
 
 The finished art and audio are committed (`sprites-final/`, `scenes-final/`, `audio-final/`) and Gradle bundles them into the APK.
