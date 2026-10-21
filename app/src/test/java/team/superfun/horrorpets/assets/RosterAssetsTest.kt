@@ -10,6 +10,7 @@ import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
+import team.superfun.horrorpets.ui.fight.Moment
 
 /**
  * Adding a killer is an enum entry, a roster entry and its asset folders. This checks the folders: every
@@ -116,6 +117,14 @@ class RosterAssetsTest {
             )) {
                 assertTrue(path, file(path).isFile)
             }
+        }
+    }
+
+    @Test
+    fun everyFightCalloutHasItsLine() {
+        for (line in Moment.entries.flatMap { it.lines }.distinct()) {
+            val path = "audio-final/voice/$line.wav"
+            assertTrue(path, file(path).isFile)
         }
     }
 }

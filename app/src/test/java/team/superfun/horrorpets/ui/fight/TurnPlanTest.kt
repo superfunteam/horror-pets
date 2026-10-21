@@ -14,6 +14,7 @@ import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.model.spec
+import kotlin.random.Random
 
 class TurnPlanTest {
     @Test
@@ -176,27 +177,33 @@ class TurnSoundsTest {
     }
 
     @Test
-    fun critsPlayCritAndTheAnnouncerOncePerTurn() {
+    fun critsPlayCritWithoutCallouts() {
         val s = sounds(
             FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true),
             FightEvent.Hit(Side.CPU, Move.HEAVY, 30, crit = true),
         )
         assertEquals(listOf("crit", "crit"), s.sfx)
-        assertEquals(listOf("critical"), s.voice)
+        assertTrue(s.voice.isEmpty())
     }
 
     @Test
-    fun theAnnouncerSaysCriticalWithTheFirstCritNotLater() {
-        val turn = TurnSounds(fight)
-        assertTrue(turn.of(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)).voice.isEmpty())
-        assertEquals(listOf("critical"), turn.of(FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)).voice)
+    fun theCalloutIsSaidOnceWithTheEventItReactsTo() {
+        val crit = FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), crit, crit)
+        val turn = TurnSounds(fight, events, Callouts(Random(7)))
+        assertTrue(turn.of(events[0]).voice.isEmpty())
+        val said = turn.of(crit).voice
+        assertEquals(1, said.size)
+        assertTrue(said.single() in Moment.CRIT.lines)
+        assertTrue(turn.of(crit).voice.isEmpty())
     }
 
     @Test
-    fun eachTurnAnnouncesItsOwnCrit() {
-        val crit = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true)
-        assertEquals(listOf("critical"), TurnSounds(fight).of(crit).voice)
-        assertEquals(listOf("critical"), TurnSounds(fight).of(crit).voice)
+    fun theTurnThatEndsTheFightLeavesTheCallToKnockout() {
+        val over = fight.copy(winner = Side.PLAYER)
+        val events = listOf(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 60, crit = true), FightEvent.Ko(Side.CPU))
+        val turn = TurnSounds(over, events, Callouts(Random(7)))
+        assertEquals(listOf("ko"), events.flatMap { turn.of(it).voice })
     }
 
     @Test
@@ -227,6 +234,70 @@ class TurnSoundsTest {
             FightEvent.Interrupted(Side.PLAYER),
         )
         assertEquals(listOf("miss", "hit"), s.sfx)
+    }
+}
+
+/** The announcer's reactions: which moment of a turn gets the call, how often, and never twice in a row. */
+class CalloutsTest {
+    /** A random source that always rolls [roll] and always picks the first line. */
+    private fun fixed(roll: Float) = object : Random() {
+        override fun nextBits(bitCount: Int) = 0
+        override fun nextFloat() = roll
+    }
+
+    private val block = FightEvent.Blocked(Side.CPU)
+    private val counter = FightEvent.Hit(Side.CPU, Move.STRIKE, 6, crit = false, counter = true)
+    private val heavy = FightEvent.Hit(Side.PLAYER, Move.HEAVY, 18, crit = false)
+    private val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+    private val crit = FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)
+    private val miss = FightEvent.Miss(Side.PLAYER, Move.HEAVY)
+
+    @Test
+    fun momentsAreSpecialsCritsHeaviesBlocksAndWhiffs() {
+        assertEquals(Moment.SPECIAL, momentOf(FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = true)))
+        assertEquals(Moment.CRIT, momentOf(FightEvent.Hit(Side.PLAYER, Move.HEAVY, 30, crit = true)))
+        assertEquals(Moment.HEAVY, momentOf(heavy))
+        assertEquals(Moment.BLOCK, momentOf(block))
+        assertEquals(Moment.MISS, momentOf(miss))
+        assertEquals(null, momentOf(counter))
+        assertEquals(null, momentOf(FightEvent.Hit(Side.CPU, Move.STRIKE, 9, crit = false)))
+        assertEquals(null, momentOf(FightEvent.Interrupted(Side.PLAYER)))
+    }
+
+    @Test
+    fun theBiggestMomentOfTheTurnGetsTheCall() {
+        val call = Callouts(fixed(0f)).pick(listOf(miss, block, counter, crit, special), finishing = false)
+        assertEquals(special, call?.event)
+        assertTrue(call!!.line in Moment.SPECIAL.lines)
+    }
+
+    @Test
+    fun specialsAndCritsAlwaysGetACall() {
+        assertEquals(special, Callouts(fixed(0.999f)).pick(listOf(special), finishing = false)?.event)
+        assertEquals(crit, Callouts(fixed(0.999f)).pick(listOf(crit), finishing = false)?.event)
+    }
+
+    @Test
+    fun smallerMomentsOnlySometimes() {
+        for (e in listOf(heavy, block, miss)) {
+            assertEquals(null, Callouts(fixed(0.999f)).pick(listOf(e), finishing = false))
+            assertEquals(e, Callouts(fixed(0f)).pick(listOf(e), finishing = false)?.event)
+        }
+    }
+
+    @Test
+    fun quietTurnsAndTheFinishingTurnGetNone() {
+        assertEquals(null, Callouts(fixed(0f)).pick(listOf(counter, FightEvent.SpecialReady(Side.CPU)), finishing = false))
+        assertEquals(null, Callouts(fixed(0f)).pick(emptyList(), finishing = false))
+        assertEquals(null, Callouts(fixed(0f)).pick(listOf(special), finishing = true))
+    }
+
+    @Test
+    fun neverTheSameLineTwiceInARow() {
+        val callouts = Callouts(Random(42))
+        val said = List(300) { callouts.pick(listOf(if (it % 3 == 0) special else crit), finishing = false)!!.line }
+        said.zipWithNext().forEach { (a, b) -> assertFalse("$a twice", a == b) }
+        assertEquals(Moment.SPECIAL.lines.toSet() + Moment.CRIT.lines, said.toSet())
     }
 }
 

@@ -67,6 +67,7 @@ import androidx.compose.ui.zIndex
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -205,7 +206,8 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
  *    with CRITICAL! and a screen shake, a HEAVY flashes the screen, a SPECIAL darkens the arena and plays its
  *    pet's effect ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
- *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]); a special
+ *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]), and now and
+ *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); a special
  *    whose blow comes later in its effect (The Shape's slash) lands its sound, number and drain then (see
  *    [specialLandsAtMs]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
@@ -658,6 +660,9 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     val menu = Animatable(if (turnPending) 0f else 1f)
     var playing by mutableStateOf(turnPending)
     var front by mutableStateOf(Side.PLAYER)
+
+    /** The announcer's reactions, for the whole fight so they never repeat back to back. */
+    val callouts = Callouts(Random.Default)
     val floats = mutableStateListOf<FloatText>()
     private var nextFloat = 0L
 
@@ -733,7 +738,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     val strips = launch(Dispatchers.IO) {
         for ((pet, anim) in turnStrips(turn)) loader.strip(pet, anim)
     }
-    val sounds = TurnSounds(fight)
+    val sounds = TurnSounds(fight, turn.lastEvents, callouts)
     val play: (FightSounds) -> Unit = { s ->
         s.sfx.forEach(sink::sfx)
         if (s.voice.isNotEmpty()) sink.voice(s.voice)

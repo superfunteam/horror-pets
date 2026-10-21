@@ -53,34 +53,39 @@ private val Silent = FightSounds(emptyList(), emptyList())
 /**
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
  * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
- * instead, and the announcer says `critical` with the turn's first crit only; a miss is `miss`, a block
- * `block`, and a KO is the `ko` boom with the announcer saying `ko`. Interrupts and a filled meter are silent.
+ * instead; a miss is `miss`, a block `block`, and a KO is the `ko` boom with the announcer saying `ko`.
+ * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
+ * one from [events], is said with the event it reacts to.
  *
- * Make one per turn: it remembers whether the announcer has already called a crit. [fight] is the state
- * after the turn, used to tell which pet a side is.
+ * Make one per turn, from the turn's [events]. [fight] is the state after the turn, used to tell which pet
+ * a side is and whether the turn ended the fight.
  */
-internal class TurnSounds(private val fight: FightState) {
-    private var criticalCalled = false
+internal class TurnSounds(
+    private val fight: FightState,
+    events: List<FightEvent> = emptyList(),
+    callouts: Callouts? = null,
+) {
+    private var callout = callouts?.pick(events, finishing = fight.winner != null)
 
-    fun of(event: FightEvent): FightSounds = when (event) {
-        is FightEvent.Hit -> when {
-            event.crit -> {
-                val voice = if (criticalCalled) emptyList() else listOf("critical")
-                criticalCalled = true
-                FightSounds(listOf("crit"), voice)
+    fun of(event: FightEvent): FightSounds {
+        val sfx = when (event) {
+            is FightEvent.Hit -> when {
+                event.crit -> "crit"
+                event.move == Move.HEAVY -> "heavy_hit"
+                event.move == Move.SPECIAL -> {
+                    val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
+                    "special_${attacker.id.name.lowercase()}"
+                }
+                else -> "hit"
             }
-            event.move == Move.HEAVY -> FightSounds(listOf("heavy_hit"), emptyList())
-            event.move == Move.SPECIAL -> {
-                val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
-                FightSounds(listOf("special_${attacker.id.name.lowercase()}"), emptyList())
-            }
-            else -> FightSounds(listOf("hit"), emptyList())
+            is FightEvent.Miss -> "miss"
+            is FightEvent.Blocked -> "block"
+            is FightEvent.Ko -> return FightSounds(listOf("ko"), listOf("ko"))
+            is FightEvent.Interrupted, is FightEvent.SpecialReady -> return Silent
         }
-
-        is FightEvent.Miss -> FightSounds(listOf("miss"), emptyList())
-        is FightEvent.Blocked -> FightSounds(listOf("block"), emptyList())
-        is FightEvent.Ko -> FightSounds(listOf("ko"), listOf("ko"))
-        is FightEvent.Interrupted, is FightEvent.SpecialReady -> Silent
+        val call = callout?.takeIf { it.event == event }
+        if (call != null) callout = null
+        return FightSounds(listOf(sfx), listOfNotNull(call?.line))
     }
 }
 

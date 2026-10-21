@@ -18,7 +18,7 @@ them fight. Everything runs offline, with a D-pad remote and nothing else.
 - **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. Pick yours from a spotlight carousel. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
-- **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks, specials and an announcer. Win XP, level up.
+- **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
 
 ## Install

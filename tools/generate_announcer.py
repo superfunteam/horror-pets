@@ -60,6 +60,28 @@ LINES = {
     "you_lose": "[shouting] YOU LOSE!!!",
     "perfect": "[shouting] PERFECT!!!",
     "choose_your_killer": "[shouting] CHOOSE YOUR KILLER!!!",
+    # fight reactions, one pool per moment (ui/fight/Callouts.kt)
+    "critical_hit": "[shouting] CRITICAL HIT!!!",
+    "right_on_the_money": "[shouting] RIGHT ON THE MONEY!!!",
+    "brutal": "[shouting] BRUTAL!!!",
+    "holy_shit": "[shouting] HOLY SHIT!!!",
+    "unbelievable": "[shouting] UNBELIEVABLE!!!",
+    "oh_my_god": "[shouting] OH MY GOD!!!",
+    "did_you_see_that": "[shouting] DID YOU SEE THAT?!",
+    "special_move": "[shouting] SPECIAL MOVE!!!",
+    "big_one": "[shouting] OHHH, THAT'S A BIG ONE!!!",
+    "gotta_hurt": "[shouting] OHHH, THAT'S GOTTA HURT!!!",
+    "what_a_hit": "[shouting] WHAT A HIT!!!",
+    "devastating": "[shouting] DEVASTATING!!!",
+    "blocked": "[shouting] BLOCKED!!!",
+    "denied": "[shouting] DENIED!!!",
+    "not_today": "[shouting] NOT TODAY!!!",
+    "what_a_block": "[shouting] WHAT A BLOCK!!!",
+    "rejected": "[shouting] REJECTED!!!",
+    "too_slow": "[shouting] TOO SLOW!!!",
+    "swing_and_a_miss": "[shouting] SWING AND A MISS!!!",
+    "whiffed": "[shouting] WHIFFED IT!!!",
+    "nowhere_close": "[shouting] NOWHERE CLOSE!!!",
 }
 NUMBERS = {"2": "two"}
 
