@@ -73,6 +73,7 @@ import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.SwitcherMode
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
+import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.beamLayers
@@ -217,7 +218,8 @@ fun SwitcherScreen(
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val pitch = if (slots.size > 1) (slots[1] - slots[0]) * w else w * 0.3f
-        val labelWidth = with(LocalDensity.current) { (pitch * 0.94f).toDp() }
+        val insetPx = w * SAFE_INSET_FRACTION
+        val density = LocalDensity.current
 
         Stage(slots = slots, cellH = h * PET_HEIGHT, spot = { spot.value })
         Dust(slots = slots, spot = { spot.value }, time = { clock.longValue })
@@ -232,7 +234,7 @@ fun SwitcherScreen(
                     floorY = h * FLOOR,
                     labelY = h * LABEL_TOP,
                     cellH = h * PET_HEIGHT,
-                    labelWidth = labelWidth,
+                    labelWidth = with(density) { labelWidthPx(slots[i] * w, w, pitch, insetPx).toDp() },
                     idleOffsetMs = i * IDLE_STAGGER_MS,
                 )
             }
@@ -256,6 +258,15 @@ fun SwitcherScreen(
         }
     }
 }
+
+/**
+ * How wide the label under a pet centred at [x] may be: most of a slot's [pitch], but never wider than
+ * twice its distance to the nearer safe-inset edge, so an edge slot's name (GHOSTFACE on 4:3 or a CRT)
+ * steps down to fit instead of running into the overscan. Labels are only ever scaled down (unfocused),
+ * so the cap holds for the focused label too.
+ */
+private fun labelWidthPx(x: Float, w: Float, pitch: Float, insetPx: Float): Float =
+    min(pitch * 0.94f, 2f * (min(x, w - x) - insetPx)).coerceAtLeast(0f)
 
 private fun slotsFor(count: Int): List<Float> = when (count) {
     4 -> FOUR_SLOTS

@@ -815,7 +815,13 @@ private fun Tombstone(name: String, width: Dp, height: Dp, cracked: Boolean, tin
                 .padding(top = height * 0.2f, start = width * 0.13f, end = width * 0.13f),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("R.I.P.", style = engravedStyle(54.sp, tracking = 0.08f))
+            // One line whatever the stone's width: on a narrow stone it steps down rather than wrap.
+            BasicText(
+                text = "R.I.P.",
+                style = engravedStyle(54.sp, tracking = 0.08f),
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 54.sp, stepSize = 1.sp),
+            )
             Spacer(Modifier.height(10.dp))
             Spacer(
                 Modifier
