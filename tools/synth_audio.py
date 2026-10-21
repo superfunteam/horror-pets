@@ -405,6 +405,46 @@ def music_michael() -> np.ndarray:
     return widen(loopify(mix, L, F), 15)
 
 
+def chainsaw(rng: np.random.Generator, rpm_hz: np.ndarray) -> np.ndarray:
+    """Two-stroke engine buzz: a clipped sawtooth at the firing rate plus throaty noise, given a per-sample rate curve."""
+    n = len(rpm_hz)
+    engine = np.tanh(3.0 * (saw(rpm_hz, n) + 0.5 * saw(rpm_hz * 2.01, n)))
+    chain = bandpass(noise(rng, n), 1800, 6000) * (0.5 + 0.5 * np.sin(2 * np.pi * np.cumsum(rpm_hz * 4) / SR))
+    return lowpass(engine, 3500) * 0.7 + chain * 0.25
+
+
+def music_leatherface() -> np.ndarray:
+    rng = rng_for("leatherface")
+    bpm = 96
+    beat = 60 / bpm
+    L = 104 * beat  # 26 bars of 4
+    F = 2.0
+    n = int((L + F) * SR)
+    mix = np.zeros(n)
+    tt = t_axis(L + F)
+    drone = np.tanh(2.5 * (saw(note_hz("E1"), n) + saw(note_hz("E1") * 1.007, n) + 0.5 * saw(note_hz("B1"), n)))
+    mix += lowpass(drone, 420) * (0.07 + 0.03 * np.sin(2 * np.pi * tt / 13))
+    pattern = [0, 0.75, 1.5, 2.5, 3.0, 3.5]  # lopsided junk-percussion figure, one bar
+    for bar in range(int((L + F) / (4 * beat)) + 1):
+        for k, b in enumerate(pattern):
+            t = bar * 4 * beat + b * beat
+            hz = rng.uniform(300, 900) if k % 2 else rng.uniform(140, 260)
+            place(mix, bell(hz, 0.35, ((1, 1), (2.27, 0.6), (3.91, 0.4), (6.3, 0.2))), t, 0.18)
+            place(mix, highpass(noise(rng, int(0.05 * SR)), 2500) * env_exp(int(0.05 * SR), 0.01), t, 0.12)
+        place(mix, drum_kick(), bar * 4 * beat, 0.6)
+        if bar % 2:
+            m = int(0.6 * SR)
+            scrape = bandpass(noise(rng, m), 600, 2400) * env_adsr(m, 0.05, 0.2, 0.5, 0.25)
+            place(mix, scrape, bar * 4 * beat + 2 * beat, 0.08)
+    for at in np.arange(6.0, L + F - 4, 16.0):  # a chainsaw idling somewhere out in the yard
+        m = int(2.8 * SR)
+        rpm = 48 + 6 * np.sin(2 * np.pi * np.arange(m) / SR * 3.1)
+        idle = lowpass(chainsaw(rng, rpm), 900) * env_adsr(m, 0.6, 0.2, 1.0, 0.9)
+        place(mix, idle, at, 0.10)
+    mix = reverb(rng, mix, 1.4, 0.22)
+    return widen(loopify(mix, L, F), 11)
+
+
 def drum_kick() -> np.ndarray:
     m = int(0.35 * SR)
     f = 50 + 110 * np.exp(-np.arange(m) / SR / 0.04)
@@ -576,6 +616,15 @@ def sfx_all() -> dict[str, np.ndarray]:
     m = int(0.7 * SR)
     place(sm, bandpass(noise(rng, m), 350, 1100) * env_adsr(m, 0.15, 0.1, 0.6, 0.35), 0.8, 0.35)
     s["special_michael"] = reverb(rng, sm, 1.8, 0.3)
+    m = int(1.5 * SR)
+    t = np.arange(m) / SR
+    rpm = np.where(t < 0.25, 30 + 40 * t / 0.25, np.minimum(165, 70 + 380 * (t - 0.25)))  # pull, catch, rev
+    rpm = rpm * (1 + 0.04 * np.sin(2 * np.pi * 7 * t))
+    lf = rng_for("special_leatherface")  # its own stream, so adding it leaves the rest of the bank unchanged
+    saw_fx = chainsaw(lf, rpm) * env_adsr(m, 0.02, 0.1, 1.0, 0.25)
+    pull = bandpass(noise(lf, int(0.2 * SR)), 300, 1500) * env_exp(int(0.2 * SR), 0.06)
+    place(saw_fx, pull, 0.0, 0.6)
+    s["special_leatherface"] = saw_fx
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
     s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)
@@ -632,7 +681,7 @@ def write_wav(x: np.ndarray, dest: Path) -> None:
 
 
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
-         "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "fight": music_fight, "switcher": music_switcher}
+         "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "leatherface": music_leatherface, "fight": music_fight, "switcher": music_switcher}
 
 
 def main() -> int:

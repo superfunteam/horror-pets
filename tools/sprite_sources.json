@@ -1259,6 +1259,232 @@
           "loop": false
         }
       }
+    },
+    "leatherface": {
+      "reference": "sprites-source/leatherface/outputs/little-leatherface/spritesheet.png",
+      "feed": "review",
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 6,
+          "durationsMs": [
+            150,
+            150,
+            150,
+            150,
+            150,
+            150
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/idle.png"
+          ]
+        },
+        "run-right": {
+          "row": 1,
+          "frames": 8,
+          "durationsMs": [
+            90,
+            90,
+            90,
+            90,
+            90,
+            90,
+            90,
+            90
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/running-right.png",
+            "sprites-source/leatherface/work/little-leatherface/decoded/running-right-attempt3.png",
+            "sprites-source/leatherface/work/little-leatherface/decoded/running-right-attempt2.png",
+            "sprites-source/leatherface/work/little-leatherface/decoded/running-right-attempt1.png"
+          ]
+        },
+        "run-left": {
+          "row": 2,
+          "frames": 8,
+          "durationsMs": [
+            90,
+            90,
+            90,
+            90,
+            90,
+            90,
+            90,
+            90
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/running-left.png"
+          ]
+        },
+        "wave": {
+          "row": 3,
+          "frames": 4,
+          "durationsMs": [
+            160,
+            160,
+            160,
+            160
+          ],
+          "loop": false,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/waving.png"
+          ]
+        },
+        "jump": {
+          "row": 4,
+          "frames": 5,
+          "durationsMs": [
+            120,
+            120,
+            120,
+            120,
+            120
+          ],
+          "loop": false,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/jumping.png"
+          ]
+        },
+        "fail": {
+          "row": 5,
+          "frames": 8,
+          "durationsMs": [
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140
+          ],
+          "loop": false,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/failed.png"
+          ]
+        },
+        "wait": {
+          "row": 6,
+          "frames": 6,
+          "durationsMs": [
+            160,
+            160,
+            160,
+            160,
+            160,
+            160
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/waiting.png"
+          ]
+        },
+        "work": {
+          "row": 7,
+          "frames": 6,
+          "durationsMs": [
+            150,
+            150,
+            150,
+            150,
+            150,
+            150
+          ],
+          "loop": false,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/running.png"
+          ]
+        },
+        "review": {
+          "row": 8,
+          "frames": 6,
+          "durationsMs": [
+            150,
+            150,
+            150,
+            150,
+            150,
+            150
+          ],
+          "loop": false,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/review.png"
+          ]
+        },
+        "look-a": {
+          "row": 9,
+          "frames": 8,
+          "durationsMs": [
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/look-row-9.png"
+          ]
+        },
+        "look-b": {
+          "row": 10,
+          "frames": 8,
+          "durationsMs": [
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140,
+            140
+          ],
+          "loop": true,
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface/decoded/look-row-10.png"
+          ]
+        },
+        "attack": {
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface-extras/run/decoded/attack.png"
+          ],
+          "reference": "sprites-source/leatherface/outputs/little-leatherface-extras/attack-sprites.png",
+          "row": null,
+          "frames": 6,
+          "durationsMs": [
+            140,
+            70,
+            110,
+            70,
+            100,
+            160
+          ],
+          "loop": false
+        },
+        "dance": {
+          "hires": [
+            "sprites-source/leatherface/work/little-leatherface-extras/run/decoded/dance.png"
+          ],
+          "reference": "sprites-source/leatherface/outputs/little-leatherface-extras/dance-sprites.png",
+          "row": null,
+          "frames": 6,
+          "durationsMs": [
+            90,
+            90,
+            90,
+            90,
+            90,
+            110
+          ],
+          "loop": false
+        }
+      }
     }
   }
 }

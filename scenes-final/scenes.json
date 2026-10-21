@@ -190,5 +190,37 @@
       "shadowOpacity": 0.55,
       "accent": "#FF5FA2"
     }
+  ],
+  "leatherface": [
+    {
+      "id": "house",
+      "title": "The House",
+      "file": "leatherface/house.webp",
+      "floorY": 0.7531,
+      "tint": "#645B50",
+      "tintStrength": 0.08,
+      "shadowOpacity": 0.65,
+      "accent": "#E0A326"
+    },
+    {
+      "id": "dining",
+      "title": "The Dining Room",
+      "file": "leatherface/dining.webp",
+      "floorY": 0.7531,
+      "tint": "#59250D",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#FFB15C"
+    },
+    {
+      "id": "butcher",
+      "title": "The Butcher Room",
+      "file": "leatherface/butcher.webp",
+      "floorY": 0.7531,
+      "tint": "#593C2D",
+      "tintStrength": 0.12,
+      "shadowOpacity": 0.55,
+      "accent": "#C1121F"
+    }
   ]
 }
