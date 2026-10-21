@@ -4,8 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -32,12 +34,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -52,12 +56,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
@@ -66,6 +75,7 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SAFE_INSET_FRACTION
@@ -90,6 +100,22 @@ private const val WALK_DISTANCE = 0.30f
 /** Idle variety: a glance or a hungry wait every 12–20 s. */
 private const val VARIETY_MIN_MS = 12_000L
 private const val VARIETY_MAX_MS = 20_000L
+
+/** Idle strolls: one every 8–15 s. After one, a glance waits at least this long (and the other way round). */
+private const val STROLL_MIN_MS = 8_000L
+private const val STROLL_MAX_MS = 15_000L
+private const val SETTLE_MS = 1_500L
+
+/** How often a stroll heads back toward the middle: more often the further out the pet has drifted. */
+private const val HOMEWARD_CHANCE = 0.25f
+private const val HOMEWARD_CHANCE_FAR = 0.6f
+private const val FAR_FROM_HOME = 0.15f
+
+/** A glance that never reports finished (it always should) is given up on this long after its strip's length. */
+private const val VARIETY_SLACK_MS = 2_000L
+
+/** The pet's body reaches about this share of its drawn cell width either side of its centre. */
+private const val BODY_HALF_OF_CELL = 0.3f
 
 private const val BUBBLE_MS = 2_000L
 
@@ -160,12 +186,16 @@ fun HomeScreen(
 
     // ---- what the pet is doing -------------------------------------------------------------------
     val scope = rememberCoroutineScope()
+    // Where the pet stands (its centre, a fraction of the width): the middle, until it strolls off.
+    val homeX = remember { Animatable(0.5f) }
     val walkX = remember { Animatable(0f) }
     val walkAlpha = remember { Animatable(1f) }
     val walkJob = remember { JobSlot() }
     var walk by remember { mutableStateOf<Walk?>(null) }
     var variety by remember { mutableStateOf<Local?>(null) }
+    var stroll by remember { mutableStateOf<Local?>(null) }
     var bubble by remember { mutableStateOf<Bubble?>(null) }
+    val geometry = remember { HomeGeometry() }
     var showSceneTitle by remember { mutableStateOf(false) }
 
     val request = state.petAnim
@@ -173,7 +203,10 @@ fun HomeScreen(
         if (request == null) return@LaunchedEffect
         variety = null
         if (state.refuse != null) {
-            bubble = Bubble(refusalText(state.refuse, lastWasFight))
+            // The bubble hangs right of the head, away from the stat card, unless that would run past the
+            // right safe inset (the pet has strolled right): then it hangs left.
+            val petX = (homeX.value + walkX.value) * geometry.screenW
+            bubble = Bubble(refusalText(state.refuse, lastWasFight), hangLeft = petX + geometry.bubbleReachPx > geometry.rightLimitPx)
         }
         val dir = when (request.anim) {
             Anim.RUN_RIGHT -> 1
@@ -203,7 +236,7 @@ fun HomeScreen(
         }
     }
 
-    // The view model moved the pet to the next scene: run in from the other side.
+    // The view model moved the pet to the next scene: run in from the other side, to the middle.
     LaunchedEffect(sceneIndex) {
         val out = walk ?: return@LaunchedEffect
         if (out.arriving) return@LaunchedEffect
@@ -212,6 +245,7 @@ fun HomeScreen(
         walk = Walk(out.dir, out.anim, out.key, arriving = true)
         showSceneTitle = true
         walkJob.job = scope.launch {
+            homeX.snapTo(0.5f)
             walkX.snapTo(-out.dir * WALK_DISTANCE)
             walkAlpha.snapTo(0f)
             launch { walkAlpha.animateTo(1f, tween(cycle * 45 / 100)) }
@@ -239,16 +273,6 @@ fun HomeScreen(
 
     val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
-    LaunchedEffect(idle, variety, petId) {
-        if (!idle || variety != null) return@LaunchedEffect
-        delay(Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1))
-        val anim = when {
-            hungry -> Anim.WAIT
-            Random.nextBoolean() -> Anim.LOOK_A
-            else -> Anim.LOOK_B
-        }
-        variety = Local(anim)
-    }
     LaunchedEffect(bubble) {
         if (bubble != null) {
             delay(BUBBLE_MS)
@@ -259,14 +283,15 @@ fun HomeScreen(
     // Exactly one animation is on screen; the view model's request always wins. A walk keeps playing its
     // run under the request's token from the press until the pet has run into the next scene, so the run
     // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
-    val shownAnim = request?.anim ?: walk?.anim ?: variety?.anim ?: Anim.IDLE
-    val playKey: Any = request?.token ?: walk?.key ?: variety ?: IdleKey
+    // A stroll is local too: its run plays under its own key and never reports to the view model.
+    val shownAnim = request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
+    val playKey: Any = request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
     val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
         request != null -> {
             { onAnimFinished(request.token) }
         }
-        walk == null && currentVariety != null -> {
+        walk == null && stroll == null && currentVariety != null -> {
             { variety = null }
         }
         else -> null
@@ -280,6 +305,63 @@ fun HomeScreen(
         val cardWidth = (maxWidth * 0.27f).coerceIn(216.dp, 252.dp)
         val inset = safeInsetPadding()
         val toastMax = toastMaxWidth(maxWidth, scenes.size)
+        val density = LocalDensity.current
+        val insetPx = screenW * SAFE_INSET_FRACTION
+        val bodyScale = manifest.bodyScale
+        val drawnHeightPx = petHeightPx * bodyScale
+        val drawnCellW = drawnHeightPx * manifest.cell[0] / manifest.cell[1]
+        val range = wanderRange(
+            screenW = screenW,
+            insetPx = insetPx,
+            cardRightPx = insetPx + with(density) { cardWidth.toPx() },
+            bodyHalfPx = drawnCellW * BODY_HALF_OF_CELL,
+        )
+        val tailPx = with(density) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
+        SideEffect {
+            geometry.screenW = screenW
+            geometry.rightLimitPx = screenW - insetPx
+            geometry.bubbleReachPx = with(density) { BubbleMaxWidth.toPx() } - tailPx
+        }
+
+        // The pet's life while nothing else is going on: it idles, glances about (or waits, when hungry)
+        // every 12–20 s, and every 8–15 s strolls a little way along the floor and stops. Anything the view
+        // model asks for cancels this at once, leaving the pet wherever it got to.
+        val latestRange by rememberUpdatedState(range)
+        val latestScreenW by rememberUpdatedState(screenW)
+        val latestDrawnHeight by rememberUpdatedState(drawnHeightPx)
+        val walkSpeed = petId.spec.walkSpeed
+        LaunchedEffect(idle, petId) {
+            if (!idle) return@LaunchedEffect
+            try {
+                var untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
+                var untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
+                while (true) {
+                    val wait = min(untilLook, untilStroll)
+                    delay(wait)
+                    untilLook -= wait
+                    untilStroll -= wait
+                    if (untilStroll <= 0L) {
+                        strollOnce(homeX, latestRange, latestScreenW, latestDrawnHeight, walkSpeed) { stroll = it }
+                        untilStroll = Random.nextLong(STROLL_MIN_MS, STROLL_MAX_MS + 1)
+                        untilLook = max(untilLook, SETTLE_MS)
+                    } else {
+                        val anim = when {
+                            hungry -> Anim.WAIT
+                            Random.nextBoolean() -> Anim.LOOK_A
+                            else -> Anim.LOOK_B
+                        }
+                        variety = Local(anim)
+                        val length = manifest.spec(anim).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
+                        withTimeoutOrNull(length + VARIETY_SLACK_MS) { snapshotFlow { variety }.first { it == null } }
+                        variety = null
+                        untilLook = Random.nextLong(VARIETY_MIN_MS, VARIETY_MAX_MS + 1)
+                        untilStroll = max(untilStroll, SETTLE_MS)
+                    }
+                }
+            } finally {
+                stroll = null
+            }
+        }
 
         SceneBackdrop(loader = loader, scene = scene) { floorY ->
             SpriteView(
@@ -293,18 +375,19 @@ fun HomeScreen(
                 playKey = playKey,
                 onFinished = onShownFinished,
                 modifier = Modifier
-                    .placeAt(x = { screenW / 2f + walkX.value * screenW }, y = { floorY })
+                    .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
-            val tailPx = with(LocalDensity.current) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
+            val hangLeft = bubble?.hangLeft ?: false
             RefusalBubble(
                 text = bubble?.text,
-                // Pinned by its tail, not its middle: the body hangs to the right of the head, away from
-                // the stat card, which on 4:3 sits close to the pet.
+                hangLeft = hangLeft,
+                // Pinned by its tail, not its middle: the body hangs to the right of the head, away from the
+                // stat card, which on 4:3 sits close to the pet (or to the left, near the right edge).
                 modifier = Modifier.placeAt(
-                    x = { screenW / 2f + walkX.value * screenW - tailPx },
-                    y = { floorY - petHeightPx * manifest.bodyScale * BUBBLE_ABOVE_FEET },
-                    pivotX = 0f,
+                    x = { (homeX.value + walkX.value) * screenW + if (hangLeft) tailPx else -tailPx },
+                    y = { floorY - drawnHeightPx * BUBBLE_ABOVE_FEET },
+                    pivotX = if (hangLeft) 1f else 0f,
                 ),
             )
         }
@@ -368,7 +451,42 @@ private class Walk(val dir: Int, val anim: Anim, val key: Any, val arriving: Boo
 
 /** One showing of the refusal bubble; a new instance restarts its timer even with the same text. */
 @Immutable
-private class Bubble(val text: String)
+private class Bubble(val text: String, val hangLeft: Boolean)
+
+/** The last layout's sizes, for decisions made outside composition (main thread only). */
+private class HomeGeometry {
+    var screenW = 0f
+    var rightLimitPx = Float.MAX_VALUE
+    var bubbleReachPx = 0f
+}
+
+/**
+ * One stroll: picks a spot along the floor (see [wanderTarget]), runs there at [walkSpeed] (see
+ * [wanderDurationMs]) showing the run toward it through [show], and stops. Cancelling it stops the pet where
+ * it is. Purely local: nothing here reports to the view model.
+ */
+private suspend fun strollOnce(
+    homeX: Animatable<Float, AnimationVector1D>,
+    range: WanderRange,
+    screenW: Float,
+    drawnHeightPx: Float,
+    walkSpeed: Float,
+    show: (Local?) -> Unit,
+) {
+    val from = homeX.value
+    val homeward = Random.nextFloat() < if (abs(from - 0.5f) > FAR_FROM_HOME) HOMEWARD_CHANCE_FAR else HOMEWARD_CHANCE
+    val step = WANDER_STEP_MIN + Random.nextFloat() * (WANDER_STEP_MAX - WANDER_STEP_MIN)
+    val target = wanderTarget(from, range, step, toCenter = homeward, preferRight = Random.nextBoolean())
+    val ms = wanderDurationMs(abs(target - from) * screenW, drawnHeightPx, walkSpeed)
+    if (ms <= 0L) return
+    try {
+        show(Local(if (target > from) Anim.RUN_RIGHT else Anim.RUN_LEFT))
+        // A steady pace (no easing), so the run cycle's feet match the ground the whole way.
+        homeX.animateTo(target, tween(ms.toInt(), easing = LinearEasing))
+    } finally {
+        show(null)
+    }
+}
 
 private object IdleKey
 
@@ -439,18 +557,25 @@ private val BubbleTailWidth = 26.dp
 /** Longer refusals wrap onto two lines rather than reach across the screen. */
 private val BubbleMaxWidth = 330.dp
 
-/** Bone-white speech bubble whose tail points down at the pet's head, popping in when it refuses. */
+/**
+ * Bone-white speech bubble whose tail points down at the pet's head, popping in when it refuses. The tail is
+ * near its left end, or its right end when it [hangLeft]s of the head.
+ */
 @Composable
-private fun RefusalBubble(text: String?, modifier: Modifier = Modifier) {
+private fun RefusalBubble(text: String?, hangLeft: Boolean, modifier: Modifier = Modifier) {
     var lastText by remember { mutableStateOf("") }
     if (text != null) lastText = text
     AnimatedVisibility(
         visible = text != null,
         modifier = modifier,
-        enter = fadeIn(tween(120)) + scaleIn(spring(dampingRatio = 0.55f, stiffness = 500f), initialScale = 0.6f, transformOrigin = BubblePivot),
-        exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.85f, transformOrigin = BubblePivot),
+        enter = fadeIn(tween(120)) + scaleIn(
+            spring(dampingRatio = 0.55f, stiffness = 500f),
+            initialScale = 0.6f,
+            transformOrigin = if (hangLeft) BubblePivotRight else BubblePivot,
+        ),
+        exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.85f, transformOrigin = if (hangLeft) BubblePivotRight else BubblePivot),
     ) {
-        Column(horizontalAlignment = Alignment.Start) {
+        Column(horizontalAlignment = if (hangLeft) Alignment.End else Alignment.Start) {
             Box(
                 Modifier
                     .widthIn(max = BubbleMaxWidth)
@@ -467,7 +592,8 @@ private fun RefusalBubble(text: String?, modifier: Modifier = Modifier) {
                     maxLines = 2,
                 )
             }
-            Canvas(Modifier.padding(start = BubbleTailInset).size(width = BubbleTailWidth, height = 14.dp)) {
+            val tailPad = if (hangLeft) Modifier.padding(end = BubbleTailInset) else Modifier.padding(start = BubbleTailInset)
+            Canvas(tailPad.size(width = BubbleTailWidth, height = 14.dp)) {
                 val path = Path().apply {
                     moveTo(0f, 0f)
                     lineTo(size.width, 0f)
@@ -486,3 +612,4 @@ private val BubbleWhite = Color(0xFFF4F0EA)
 
 /** Pop from near the tail, so the bubble grows out of the pet's head. */
 private val BubblePivot = TransformOrigin(0.2f, 1f)
+private val BubblePivotRight = TransformOrigin(0.8f, 1f)
