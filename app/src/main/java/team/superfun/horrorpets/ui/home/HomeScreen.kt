@@ -80,6 +80,7 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.feedAnim
+import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
@@ -136,8 +137,11 @@ private const val BUBBLE_MS = 2_000L
 /** A run-out still waiting for its scene change after this long is abandoned (it never should be). */
 private const val WALK_STUCK_MS = 1_500L
 
-/** Strips decoded ahead of time on Home (with the pet's feed animation; 8 of the loader's 12 slots with IDLE). */
-private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.JUMP, Anim.WAVE, Anim.ATTACK, Anim.FAIL)
+/**
+ * Strips decoded ahead of time on Home, with the pet's feed animation and its PLAY: its DANCE when it has one,
+ * else JUMP and WAVE (so at most 8 of the loader's 12 slots, with IDLE).
+ */
+private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.ATTACK, Anim.FAIL)
 
 private const val SCENE_TITLE_MS = 3_200L
 
@@ -191,8 +195,9 @@ fun HomeScreen(
     // frame, and a cold decode between the two would leave an empty scene on screen.
     LaunchedEffect(loader, petId) {
         delay(800)
+        val play = if (manifest.has(Anim.DANCE)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
         withContext(Dispatchers.IO) {
-            for (anim in HOME_WARM_ANIMS + manifest.feedAnim()) loader.strip(petId, anim)
+            for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
         }
     }
 

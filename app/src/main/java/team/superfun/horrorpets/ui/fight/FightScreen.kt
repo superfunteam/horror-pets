@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
@@ -79,6 +80,7 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.SceneSpec
 import team.superfun.horrorpets.assets.bodyScale
+import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.fight.FightEvent
@@ -144,8 +146,6 @@ private const val CALLOUT_MS = 600
 private const val CALLOUT_LEAD_MS = 470L
 private const val STEP_IN_MS = 240
 
-/** The attacker hops back this long after the impact, cutting the end of its swing's recovery short. */
-private const val AFTER_IMPACT_MS = 420L
 private const val STEP_BACK_MS = 260
 private const val FLASH_MS = 250
 private const val SHAKE_MS = 250
@@ -178,7 +178,14 @@ internal fun arenaScene(loader: AssetLoader, opponent: PetId, roll: Int): SceneS
     return scenes[roll.mod(scenes.size)]
 }
 
-/** Decodes the strips a fight between [player] and [cpu] starts with. Blocking: call it off the main thread. */
+/** Whether [pet] performs its special with its DANCE: a danced special (Saw Dance) and sprites that ship one. */
+private fun dancesSpecial(loader: AssetLoader, pet: PetId): Boolean =
+    pet.spec.special.danced && loader.manifest(pet).has(Anim.DANCE)
+
+/**
+ * Decodes the strips a fight between [player] and [cpu] starts with. Blocking: call it off the main thread.
+ * A dancer's DANCE is not among them: it decodes during the callouts of the turn it first dances in.
+ */
 internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
     for (anim in PLAYER_FIGHT_ANIMS) loader.strip(player, anim)
     for (anim in CPU_FIGHT_ANIMS) loader.strip(cpu, anim)
@@ -193,13 +200,14 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  * a marker [PetAnimRequest]. This screen plays the turn out and then reports the marker finished, exactly
  * once, with [onAnimFinished] (the view model ignores moves until then):
  * 1. Both chosen moves pop up over the fighters (600ms).
- * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK) and hops
- *    back. At the impact the defender flashes white and shakes, the damage number floats up and the HP bar
- *    drains with it; a crit is a big Amber number with CRITICAL! and a screen shake, a HEAVY flashes the
- *    screen, a SPECIAL darkens the arena and plays its pet's effect ([SpecialVfx]); a miss shows a grey MISS
- *    as the defender sways away, a block a shield ring and BLOCK before the blocker's counter. Each event's
- *    sound plays at its impact ([TurnSounds]); a special whose blow comes later in its effect (The Shape's
- *    slash) lands its sound, number and drain then (see [specialLandsAtMs]).
+ * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK, or its
+ *    DANCE for a danced special, see [swingAnim]) and hops back. At the impact the defender flashes white
+ *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
+ *    with CRITICAL! and a screen shake, a HEAVY flashes the screen, a SPECIAL darkens the arena and plays its
+ *    pet's effect ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
+ *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]); a special
+ *    whose blow comes later in its effect (The Shape's slash) lands its sound, number and drain then (see
+ *    [specialLandsAtMs]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
  *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
  *    Otherwise the bars settle on the real values and the move pills come back, focus on the last move.
@@ -229,8 +237,8 @@ fun FightScreen(
         FightStage(
             screen,
             turnPending = petAnim != null,
-            playerBody = loader.manifest(playerId).bodyScale,
-            cpuBody = loader.manifest(cpuId).bodyScale,
+            playerLook = FighterLook(loader.manifest(playerId).bodyScale, dancesSpecial(loader, playerId)),
+            cpuLook = FighterLook(loader.manifest(cpuId).bodyScale, dancesSpecial(loader, cpuId)),
         )
     }
     val finished by rememberUpdatedState(onAnimFinished)
@@ -520,7 +528,13 @@ private class Pose(val anim: Anim) {
  * recomposes the screen frame by frame.
  */
 @Stable
-private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, val body: Float) {
+private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook) {
+    /** Its display scale (see `bodyScale`). */
+    val body = look.body
+
+    /** Whether it performs its special with its DANCE (see [swingAnim]). */
+    val dancesSpecial = look.dancesSpecial
+
     /** +1 when stepping toward the other fighter moves right (the player), -1 for the CPU. */
     val dir = if (side == Side.PLAYER) 1f else -1f
 
@@ -610,9 +624,13 @@ private fun FighterView(
 
 // ---- the stage and the turn playback ----
 
+/** What a fighter's sprites say about how it is staged: its display [body] scale and whether it [dancesSpecial]. */
+@Immutable
+private class FighterLook(val body: Float, val dancesSpecial: Boolean)
+
 /** Everything the turn playback animates, remembered for the life of one fight screen. */
 @Stable
-private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerBody: Float, cpuBody: Float) {
+private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook: FighterLook, cpuLook: FighterLook) {
     val player: FighterRig
     val cpu: FighterRig
 
@@ -622,8 +640,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerBody:
         // recreated while a turn played) replays that turn, so it starts from the values before it.
         val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
         val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
-        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerBody)
-        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuBody)
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook)
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook)
     }
 
     val shake = Animatable(0f)
@@ -688,7 +706,7 @@ private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> =
         if (beat !is Beat.Lunge) continue
         val r = rig(beat.attacker)
         add(r.pet to (if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT))
-        add(r.pet to Anim.ATTACK)
+        add(r.pet to swingAnim(beat.event, r.dancesSpecial))
     }
     val winner = fight.winner
     when {
@@ -797,9 +815,9 @@ private fun callout(scope: CoroutineScope, rig: FighterRig, move: Move?) {
 }
 
 /**
- * One attacker's swing: run in, ATTACK, the impact at its snap frame, then a hop back to the mark.
- * Returns once the swing has played; the returned job is the hop back (and any special effect still
- * running), which the next beat may overlap.
+ * One attacker's swing: run in, ATTACK (or its DANCE, see [swingAnim]), the impact (see [swingImpactMs]),
+ * then a hop back to the mark. Returns once the swing has played; the returned job is the hop back (and any
+ * special effect still running), which the next beat may overlap.
  */
 private suspend fun FightStage.lunge(
     scope: CoroutineScope,
@@ -825,10 +843,11 @@ private suspend fun FightStage.lunge(
     a.show(if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT)
     a.step.animateTo(STEP, tween(STEP_IN_MS, easing = FastOutSlowInEasing))
 
-    val attack = loader.manifest(a.pet).spec(Anim.ATTACK)
-    val impact = impactMs(attack)
-    val swingPose = a.show(Anim.ATTACK)
-    val swing = scope.launch { withTimeoutOrNull(timeoutFor(loader, a, Anim.ATTACK)) { swingPose.ended.await() } }
+    val swingAnim = swingAnim(event, a.dancesSpecial)
+    val swingSpec = loader.manifest(a.pet).spec(swingAnim)
+    val impact = swingImpactMs(swingAnim, swingSpec)
+    val swingPose = a.show(swingAnim)
+    val swing = scope.launch { withTimeoutOrNull(timeoutFor(loader, a, swingAnim)) { swingPose.ended.await() } }
     // The impact is timed from the swing's first frame on screen, not from asking for it.
     withTimeoutOrNull(SWING_START_WAIT_MS) { swingPose.started.await() }
     if (special) scope.launch {
@@ -837,8 +856,9 @@ private suspend fun FightStage.lunge(
     }
     delay(impact)
     val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play)
-    // The swing's last frames only ease back to standing: hop back on the way out of them instead.
-    delay(AFTER_IMPACT_MS)
+    // An ATTACK's last frames only ease back to standing: hop back on the way out of them instead. A dance
+    // is danced to its end.
+    delay(swingHoldMs(swingAnim, swingSpec, impact))
     a.show(Anim.IDLE)
     swing.join()
 

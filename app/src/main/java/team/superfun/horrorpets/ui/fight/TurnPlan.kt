@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.ui.fight
 
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
@@ -92,6 +93,45 @@ internal fun impactMs(attack: AnimSpec): Long {
     var snap = 0
     for (i in d.indices) if (d[i] < d[snap]) snap = i
     return d.take(snap).sumOf { it.coerceAtLeast(0).toLong() }
+}
+
+/** The attacker hops back this long after the impact, cutting the end of its swing's recovery short. */
+internal const val AFTER_IMPACT_MS = 420L
+
+/**
+ * What an attacker plays for the swing that delivers [event]: its DANCE for a special it dances
+ * ([dancesSpecial]: its special is `danced` and its sprites ship a dance, as Leatherface's Saw Dance does),
+ * otherwise ATTACK.
+ */
+internal fun swingAnim(event: FightEvent, dancesSpecial: Boolean): Anim =
+    if (dancesSpecial && event is FightEvent.Hit && event.move == Move.SPECIAL) Anim.DANCE else Anim.ATTACK
+
+/**
+ * When a [swing] played from [spec] lands, in ms from its first frame. An ATTACK lands on its snap frame
+ * (see [impactMs]). A DANCE has no snap: it lands at the start of the frame on screen a third of the way
+ * through, once the wind-up is done (Leatherface's saw is overhead).
+ */
+internal fun swingImpactMs(swing: Anim, spec: AnimSpec): Long {
+    if (swing != Anim.DANCE) return impactMs(spec)
+    val third = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() } / 3
+    var start = 0L
+    for (d in spec.durationsMs) {
+        val end = start + d.coerceAtLeast(0)
+        if (end > third) return start
+        start = end
+    }
+    return start
+}
+
+/**
+ * How long the attacker keeps swinging after the [impact] before it hops back: [AFTER_IMPACT_MS] for an
+ * ATTACK, whose last frames only ease back to standing, and the rest of a DANCE (never less), which is
+ * danced to its end.
+ */
+internal fun swingHoldMs(swing: Anim, spec: AnimSpec, impact: Long): Long {
+    if (swing != Anim.DANCE) return AFTER_IMPACT_MS
+    val rest = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() } - impact
+    return maxOf(AFTER_IMPACT_MS, rest)
 }
 
 /** Where a side's HP bar and special meter stand, in hit points and meter points. */

@@ -55,6 +55,8 @@ import team.superfun.horrorpets.model.PetState
  *
  * @param scope where loading and saving run; null uses `viewModelScope`.
  * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry).
+ * @param canDance whether a pet's sprites ship the optional DANCE (its manifest has `dance`): such a pet
+ *   plays it for PLAY instead of JUMP then WAVE.
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
@@ -65,6 +67,7 @@ class GameViewModel(
     private val rng: Random,
     scope: CoroutineScope?,
     private val feedAnim: (PetId) -> Anim,
+    private val canDance: (PetId) -> Boolean = { false },
     private val onError: (Throwable) -> Unit = {},
     private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
 ) : ViewModel() {
@@ -164,7 +167,7 @@ class GameViewModel(
                 val game = s.game.withPet(result.pet)
                 val anims = when (a) {
                     CareAction.FEED -> listOf(feedAnim(pet.id))
-                    CareAction.PLAY -> listOf(Anim.JUMP, Anim.WAVE)
+                    CareAction.PLAY -> if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
                     CareAction.TRAIN -> listOf(Anim.ATTACK, Anim.ATTACK)
                 }
                 val sfx = listOf(

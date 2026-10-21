@@ -125,6 +125,8 @@ private class Rig(
         rng = rng,
         scope = scope,
         feedAnim = { if (it == PetId.FREDDY || it == PetId.GHOSTFACE) Anim.WORK else Anim.REVIEW },
+        // As the real manifests have it: only Leatherface ships a dance.
+        canDance = { it == PetId.LEATHERFACE },
         onError = { errors += it },
         clockFloorMs = clockFloorMs,
     )
@@ -573,6 +575,56 @@ class GameViewModelTest {
         assertNull(rig.ui.petAnim)
         assertFalse(rig.ui.busy)
         assertEquals(65.0, rig.jason.funLevel, 1e-9)
+    }
+
+    @Test
+    fun playOnAPetWithADanceIsOneDance() {
+        val leatherface = PetState(PetId.LEATHERFACE, hunger = 20.0, funLevel = 40.0)
+        val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(leatherface))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val dance = rig.ui.petAnim!!
+        assertEquals(Anim.DANCE, dance.anim)
+        assertTrue(rig.ui.busy)
+        // The same care as anyone's PLAY, applied once at the start, with the same sound.
+        val pet = rig.game.pets.getValue(PetId.LEATHERFACE)
+        assertEquals(65.0, pet.funLevel, 1e-9)
+        assertEquals(28.0, pet.hunger, 1e-9)
+        assertEquals(listOf("play"), rig.ui.sfx)
+
+        // One request, one report: the dance's finish ends the action.
+        rig.vm.onAnimFinished(dance.token)
+        assertNull(rig.ui.petAnim)
+        assertFalse(rig.ui.busy)
+        // A late repeat of its token is ignored.
+        rig.vm.onAnimFinished(dance.token)
+        assertNull(rig.ui.petAnim)
+        assertFalse(rig.ui.busy)
+        assertEquals(65.0, rig.game.pets.getValue(PetId.LEATHERFACE).funLevel, 1e-9)
+    }
+
+    @Test
+    fun playOnEveryPetWithoutADanceStillJumpsThenWaves() {
+        for (id in PetId.entries - PetId.LEATHERFACE) {
+            val rig = Rig(gameOf(selected = id, pets = arrayOf(PetState(id, funLevel = 40.0)))).started()
+            rig.vm.onCare(CareAction.PLAY)
+            assertEquals("$id", Anim.JUMP, rig.ui.petAnim!!.anim)
+            rig.finishAnim()
+            assertEquals("$id", Anim.WAVE, rig.ui.petAnim!!.anim)
+            rig.finishAnim()
+            assertFalse("$id", rig.ui.busy)
+        }
+    }
+
+    @Test
+    fun trainAndFeedAreTheSameForADancer() {
+        val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(PetState(PetId.LEATHERFACE, hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        assertEquals(Anim.REVIEW, rig.ui.petAnim!!.anim)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
+        rig.finishAnim()
+        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
     }
 
     @Test

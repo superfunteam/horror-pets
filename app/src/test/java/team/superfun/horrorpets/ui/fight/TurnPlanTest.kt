@@ -3,6 +3,7 @@ package team.superfun.horrorpets.ui.fight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
@@ -10,6 +11,8 @@ import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialStyle
+import team.superfun.horrorpets.model.spec
 
 class TurnPlanTest {
     @Test
@@ -64,6 +67,50 @@ class TurnPlanTest {
         assertEquals(620L, impactMs(AnimSpec("attack.png", 6, listOf(300, 140, 180, 75, 140, 360), loop = false)))
         assertEquals(620L, impactMs(AnimSpec("attack.png", 8, listOf(320, 130, 170, 65, 80, 130, 150, 420), loop = false)))
         assertEquals(0L, impactMs(AnimSpec("attack.png", 0, emptyList(), loop = false)))
+    }
+
+    @Test
+    fun aDancersSpecialIsItsDanceAndEveryOtherSwingIsAnAttack() {
+        val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false)
+        assertEquals(Anim.DANCE, swingAnim(special, dancesSpecial = true))
+        assertEquals(Anim.ATTACK, swingAnim(special, dancesSpecial = false))
+        for (event in listOf(
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false),
+            FightEvent.Hit(Side.CPU, Move.HEAVY, 35, crit = true),
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 8, crit = false, counter = true),
+            FightEvent.Miss(Side.CPU, Move.HEAVY),
+            FightEvent.Blocked(Side.PLAYER),
+        )) {
+            assertEquals("$event", Anim.ATTACK, swingAnim(event, dancesSpecial = true))
+        }
+    }
+
+    @Test
+    fun onlyTheSawDanceIsDanced() {
+        assertEquals(listOf(SpecialStyle.SAW_DANCE), SpecialStyle.entries.filter { it.danced })
+        assertEquals(SpecialStyle.SAW_DANCE, PetId.LEATHERFACE.spec.special)
+    }
+
+    @Test
+    fun aDanceLandsAThirdOfTheWayInAndIsDancedToTheEnd() {
+        // Leatherface's dance: 90 x5 then 110, 550 ms. A third in (183 ms) is the third frame, the saw overhead.
+        val dance = AnimSpec("dance.png", 6, listOf(90, 90, 90, 90, 90, 110), loop = false)
+        assertEquals(180L, swingImpactMs(Anim.DANCE, dance))
+        // The rest of his spin (370 ms) fits in the usual hold, so he finishes it before hopping back.
+        assertEquals(AFTER_IMPACT_MS, swingHoldMs(Anim.DANCE, dance, impact = 180L))
+        // A longer dance is danced to its end: 1200 ms, landing 400 ms in, holds the 800 ms left.
+        val long = AnimSpec("dance.png", 6, List(6) { 200 }, loop = false)
+        assertEquals(400L, swingImpactMs(Anim.DANCE, long))
+        assertEquals(800L, swingHoldMs(Anim.DANCE, long, impact = 400L))
+        assertEquals(0L, swingImpactMs(Anim.DANCE, AnimSpec("dance.png", 0, emptyList(), loop = false)))
+    }
+
+    @Test
+    fun anAttackStillLandsOnItsSnapFrameAndCutsItsRecoveryShort() {
+        val attack = AnimSpec("attack.png", 6, listOf(300, 140, 180, 75, 140, 360), loop = false)
+        assertEquals(impactMs(attack), swingImpactMs(Anim.ATTACK, attack))
+        assertEquals(AFTER_IMPACT_MS, swingHoldMs(Anim.ATTACK, attack, impact = 620L))
+        assertEquals(420L, AFTER_IMPACT_MS)
     }
 
     @Test
