@@ -13,6 +13,12 @@ import team.superfun.horrorpets.model.PetState
 class SaveCodecTest {
     private val defaults = GameState()
 
+    /** The pets marked as joining fresh (the save had no entry for them). */
+    private val GameState.fresh: Set<PetId> get() = pets.filterValues { it.freshJoin }.keys
+
+    /** This state with every fresh-join mark cleared. */
+    private fun GameState.settled(): GameState = copy(pets = pets.mapValues { (_, p) -> p.copy(freshJoin = false) })
+
     @Test
     fun roundTrip() {
         val state = GameState(
@@ -73,7 +79,9 @@ class SaveCodecTest {
         assertEquals(defaults, SaveCodec.decode("""{"version":"one"}"""))
         assertEquals(defaults, SaveCodec.decode("""{"pets":[1,2,3]}"""))
         // An unknown selection reads as none; with no pets object at all, every pet is a newcomer.
-        assertEquals(defaults.copy(newcomers = PetId.entries.toSet()), SaveCodec.decode("""{"selected":"ZOMBIE"}"""))
+        val zombie = SaveCodec.decode("""{"selected":"ZOMBIE"}""")
+        assertEquals(defaults, zombie.settled())
+        assertEquals(PetId.entries.toSet(), zombie.fresh)
         assertEquals(defaults, SaveCodec.decode("[]"))
         assertEquals(defaults, SaveCodec.decode("42"))
     }
@@ -102,10 +110,11 @@ class SaveCodecTest {
         assertEquals(PetId.entries.toSet(), decoded.pets.keys)
         assertEquals(55.0, decoded.pets.getValue(PetId.JASON).hunger, 0.0)
         assertEquals(2, decoded.pets.getValue(PetId.JASON).level)
-        assertEquals(PetState(PetId.FREDDY), decoded.pets.getValue(PetId.FREDDY))
-        assertEquals(PetState(PetId.PINHEAD), decoded.pets.getValue(PetId.PINHEAD))
-        assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
-        assertEquals(PetId.entries.toSet() - PetId.JASON, decoded.newcomers)
+        // The missing ones join at their defaults, marked fresh.
+        assertEquals(PetState(PetId.FREDDY, freshJoin = true), decoded.pets.getValue(PetId.FREDDY))
+        assertEquals(PetState(PetId.PINHEAD, freshJoin = true), decoded.pets.getValue(PetId.PINHEAD))
+        assertEquals(PetState(PetId.GHOSTFACE, freshJoin = true), decoded.pets.getValue(PetId.GHOSTFACE))
+        assertEquals(PetId.entries.toSet() - PetId.JASON, decoded.fresh)
     }
 
     /** A save exactly as v0.1.0 (four pets) wrote it: every field spelled out, in declaration order. */
@@ -123,8 +132,8 @@ class SaveCodecTest {
         val decoded = SaveCodec.decode(v010Save)
         assertEquals(PetId.entries.toSet(), decoded.pets.keys)
         assertEquals(6, decoded.pets.size)
-        assertEquals(PetState(PetId.CHUCKY), decoded.pets.getValue(PetId.CHUCKY))
-        assertEquals(PetState(PetId.MICHAEL), decoded.pets.getValue(PetId.MICHAEL))
+        assertEquals(PetState(PetId.CHUCKY, freshJoin = true), decoded.pets.getValue(PetId.CHUCKY))
+        assertEquals(PetState(PetId.MICHAEL, freshJoin = true), decoded.pets.getValue(PetId.MICHAEL))
         assertEquals(
             PetState(PetId.JASON, 12.5, 64.0, 31.0, level = 3, xp = 120, moodBonus = 4.5, wins = 5, losses = 2, sceneIndex = 1),
             decoded.pets.getValue(PetId.JASON),
@@ -141,22 +150,22 @@ class SaveCodecTest {
         assertEquals(PetId.GHOSTFACE, decoded.selected)
         assertEquals(1_761_000_000_000L, decoded.lastSeenMs)
         assertEquals(1, decoded.version)
-        // The pets the save did not have are marked as newcomers, so the time away does not touch them.
-        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.newcomers)
-        // Saved again, the new pets are written out and read back the same; the mark is never saved.
+        // The pets the save did not have join fresh, so the time away does not touch them.
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.fresh)
+        // Saved again before the time away was applied (a stale clock), the mark is written out and kept.
         val again = SaveCodec.decode(SaveCodec.encode(decoded))
-        assertEquals(decoded.copy(newcomers = emptySet()), again)
-        assertTrue(again.newcomers.isEmpty())
+        assertEquals(decoded, again)
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), again.fresh)
         assertTrue(SaveCodec.encode(decoded).contains("\"MICHAEL\""))
-        assertFalse(SaveCodec.encode(decoded).contains("newcomers"))
+        assertTrue(SaveCodec.encode(decoded).contains("\"freshJoin\":true"))
     }
 
     @Test
     fun missingPetsFieldFilledWithDefaults() {
         val decoded = SaveCodec.decode("""{"version":1,"selected":"FREDDY"}""")
         assertEquals(PetId.FREDDY, decoded.selected)
-        assertEquals(defaults.pets, decoded.pets)
-        assertEquals(PetId.entries.toSet(), decoded.newcomers)
+        assertEquals(defaults.pets, decoded.settled().pets)
+        assertEquals(PetId.entries.toSet(), decoded.fresh)
     }
 
     @Test
@@ -272,7 +281,7 @@ class SaveCodecTest {
         assertEquals(PetId.FREDDY, freddy.id)
         assertEquals(61.5, freddy.hunger, 0.0)
         assertEquals(4, freddy.level)
-        assertEquals(PetState(PetId.JASON), decoded.pets.getValue(PetId.JASON))
+        assertEquals(PetState(PetId.JASON, freshJoin = true), decoded.pets.getValue(PetId.JASON))
     }
 
     @Test
@@ -305,7 +314,7 @@ class SaveCodecTest {
         assertEquals(3, decoded.pets.getValue(PetId.JASON).level)
         assertEquals(4, decoded.pets.getValue(PetId.JASON).wins)
         assertEquals(61.5, decoded.pets.getValue(PetId.FREDDY).hunger, 0.0)
-        assertEquals(PetState(PetId.PINHEAD), decoded.pets.getValue(PetId.PINHEAD))
+        assertEquals(PetState(PetId.PINHEAD, freshJoin = true), decoded.pets.getValue(PetId.PINHEAD))
         assertEquals(PetId.entries.toSet(), decoded.pets.keys)
     }
 
@@ -327,8 +336,8 @@ class SaveCodecTest {
         assertEquals(PetState(PetId.GHOSTFACE), decoded.pets.getValue(PetId.GHOSTFACE))
         assertEquals(4, decoded.pets.getValue(PetId.FREDDY).level)
         assertEquals(9, decoded.pets.getValue(PetId.PINHEAD).wins)
-        // A damaged entry is still a pet the player had: only the pets with no entry are newcomers.
-        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.newcomers)
+        // A damaged entry is still a pet the player had: only the pets with no entry join fresh.
+        assertEquals(setOf(PetId.CHUCKY, PetId.MICHAEL), decoded.fresh)
     }
 
     @Test
@@ -347,16 +356,16 @@ class SaveCodecTest {
         val jason = decoded.pets.getValue(PetId.JASON)
         assertEquals(PetId.JASON, jason.id)
         assertEquals(5, jason.level)
-        assertEquals(PetState(PetId.FREDDY), decoded.pets.getValue(PetId.FREDDY))
+        assertEquals(PetState(PetId.FREDDY, freshJoin = true), decoded.pets.getValue(PetId.FREDDY))
         for ((key, p) in decoded.pets) assertEquals(key, p.id)
     }
 
     @Test
     fun nullPetValueGivesDefaults() {
-        // JASON's entry is there (null), so only the pets with no entry at all are newcomers.
+        // JASON's entry is there (null), so only the pets with no entry at all join fresh.
         val nullJason = SaveCodec.decode("""{"pets":{"JASON":null}}""")
-        assertEquals(defaults, nullJason.copy(newcomers = emptySet()))
-        assertEquals(PetId.entries.toSet() - PetId.JASON, nullJason.newcomers)
+        assertEquals(defaults, nullJason.settled())
+        assertEquals(PetId.entries.toSet() - PetId.JASON, nullJason.fresh)
         assertEquals(defaults, SaveCodec.decode("""{"pets":null}"""))
     }
 

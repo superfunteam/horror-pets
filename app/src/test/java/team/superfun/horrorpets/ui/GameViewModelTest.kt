@@ -234,6 +234,27 @@ class GameViewModelTest {
     }
 
     @Test
+    fun anUpgradeUnderAStaleClockKeepsTheNewcomersFreshUntilTheClockIsGood() {
+        // First launch after the update, before the TV's clock has synced: nothing is applied, and the save
+        // written now must still say that Chucky and Michael have only just joined.
+        val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
+        val stale = Rig(loaded, clock = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)).started()
+        val saved = stale.store.last
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) assertTrue("$id", saved.pets.getValue(id).freshJoin)
+        assertEquals(T0 - 8 * DAY, saved.lastSeenMs)
+
+        // Next launch with a good clock: the original four decay and fake-die, the new two arrive fresh.
+        val reloaded = SaveCodec.decode(SaveCodec.encode(saved))
+        val good = Rig(reloaded).started()
+        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
+        for (id in originalFour) assertEquals("$id", asBefore.pets.getValue(id), good.game.pets.getValue(id))
+        for (id in listOf(PetId.CHUCKY, PetId.MICHAEL)) {
+            assertEquals("$id", PetState(id), good.game.pets.getValue(id))
+            assertEquals("$id saved", PetState(id), good.store.last.pets.getValue(id))
+        }
+    }
+
+    @Test
     fun anUpgradeAfterTenHoursDecaysTheOriginalFourButNotTheNewcomers() {
         val loaded = SaveCodec.decode(v010Save(T0 - 10 * HOUR))
         val rig = Rig(loaded).started()

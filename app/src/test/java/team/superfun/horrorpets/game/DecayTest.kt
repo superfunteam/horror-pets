@@ -258,16 +258,20 @@ class DecayTest {
         assertTrue(next.pets.getValue(PetId.FREDDY).fakeDeathPending)
     }
 
+    /** [state] with [ids] marked as joining fresh (a save that had no entry for them). */
+    private fun joining(state: GameState, vararg ids: PetId) =
+        state.copy(pets = state.pets.mapValues { (id, p) -> if (id in ids) p.copy(freshJoin = true) else p })
+
     @Test
-    fun newcomersJoinFreshAndAreThenTreatedLikeEveryoneElse() {
+    fun freshPetsSitOutTheTimeAwayAndAreThenTreatedLikeEveryoneElse() {
         // A save from before Chucky and Michael existed: they were added at their defaults on load.
-        val loaded = seen().copy(newcomers = setOf(PetId.CHUCKY, PetId.MICHAEL))
+        val loaded = joining(seen(), PetId.CHUCKY, PetId.MICHAEL)
         val (next, summary) = applyElapsed(loaded, t0 + 8 * day)
         assertEquals(PetState(PetId.CHUCKY), next.pets.getValue(PetId.CHUCKY))
         assertEquals(PetState(PetId.MICHAEL), next.pets.getValue(PetId.MICHAEL))
         assertEquals(PetId.entries.toSet() - PetId.CHUCKY - PetId.MICHAEL, summary.fakeDeath)
         assertTrue(next.pets.getValue(PetId.JASON).fakeDeathPending)
-        assertTrue(next.newcomers.isEmpty())
+        assertTrue(next.pets.values.none { it.freshJoin })
 
         // From then on they decay with the rest.
         val (later, _) = applyElapsed(next, t0 + 8 * day + 10 * hour)
@@ -275,19 +279,20 @@ class DecayTest {
     }
 
     @Test
-    fun newcomersAreClearedEvenWhenNoTimeHasPassed() {
-        val (next, _) = applyElapsed(seen().copy(newcomers = setOf(PetId.MICHAEL)), t0)
-        assertTrue(next.newcomers.isEmpty())
-        val (firstRun, _) = applyElapsed(GameState(newcomers = setOf(PetId.MICHAEL)), t0)
-        assertTrue(firstRun.newcomers.isEmpty())
+    fun theFreshMarkIsClearedEvenWhenNoTimeHasPassed() {
+        val (next, _) = applyElapsed(joining(seen(), PetId.MICHAEL), t0)
+        assertTrue(next.pets.values.none { it.freshJoin })
+        val (firstRun, _) = applyElapsed(joining(GameState(), PetId.MICHAEL), t0)
+        assertTrue(firstRun.pets.values.none { it.freshJoin })
     }
 
     @Test
-    fun newcomersWaitOutAStaleBootClock() {
-        // The clock has not synced yet: nothing is applied, so the newcomers stay marked for the real update.
-        val marked = seen().copy(newcomers = setOf(PetId.CHUCKY))
+    fun freshPetsWaitOutAStaleBootClock() {
+        // The clock has not synced yet: nothing is applied, so the mark stays (and is saved) for the real update.
+        val marked = joining(seen(), PetId.CHUCKY)
         val (next, _) = applyElapsed(marked, Tuning.MIN_VALID_EPOCH_MS - 1)
-        assertEquals(setOf(PetId.CHUCKY), next.newcomers)
+        assertEquals(marked, next)
+        assertTrue(next.pets.getValue(PetId.CHUCKY).freshJoin)
     }
 
     @Test

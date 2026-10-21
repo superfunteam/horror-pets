@@ -1,7 +1,6 @@
 package team.superfun.horrorpets.model
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 
 /**
  * Every killer, in roster order (the pet switcher's order). A pet's facts (its passive, its special, how it
@@ -22,6 +21,10 @@ enum class PetId(val displayName: String) {
  * hunger is a need meter: 0 = full, 100 = starving.
  * funLevel is the "Fun" stat (`fun` is a Kotlin keyword); the UI label stays "Fun".
  * moodBonus is a transient -30..30 nudge on mood that decays back to 0 over time.
+ * freshJoin marks a pet that has just joined: a save from before it existed (Chucky and Michael in a v0.1.0
+ * save) is given it at its defaults with this set, so the time the player was away before it existed never
+ * decays it nor fakes its death. It is saved, so it survives a launch under a stale clock, and cleared the
+ * first time the time away is actually applied (see `applyElapsed`).
  */
 @Serializable
 data class PetState(
@@ -36,21 +39,15 @@ data class PetState(
     val losses: Int = 0,
     val sceneIndex: Int = 0,
     val fakeDeathPending: Boolean = false,
+    val freshJoin: Boolean = false,
 )
 
-/**
- * The whole save. [newcomers] is never saved: it marks the pets a loaded save had no entry for (killers an
- * update added since it was written, filled in at their defaults by `SaveCodec`). They join fresh, so the
- * next [applyElapsed][team.superfun.horrorpets.game.applyElapsed] leaves them untouched (no decay, no fake
- * death for time the player spent away before they existed) and clears the mark.
- */
 @Serializable
 data class GameState(
     val version: Int = 1,
     val pets: Map<PetId, PetState> = PetId.entries.associateWith { PetState(it) },
     val selected: PetId? = null,
     val lastSeenMs: Long? = null,
-    @Transient val newcomers: Set<PetId> = emptySet(),
 )
 
 /**
