@@ -116,9 +116,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Already-compressed media must stay stored so ExoPlayer/ImageDecoder can map it directly.
+    // Media must stay stored so ExoPlayer/ImageDecoder can map it directly and SoundPool can openFd() it.
     androidResources {
-        noCompress += listOf("ogg", "webp")
+        noCompress += listOf("ogg", "wav", "webp")
     }
 }
 

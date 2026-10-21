@@ -19,16 +19,19 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlin.random.Random
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.feedAnim
-import team.superfun.horrorpets.audio.LogSoundSink
+import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
 import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
+import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 
 class MainActivity : ComponentActivity() {
@@ -52,11 +55,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** One per Activity instance: music, effects and voice. Released in [onDestroy]. */
+    private lateinit var audio: GameAudio
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hideSystemBars()
+        audio = GameAudio(this)
         applyDebugTimeTravel(intent)
         vm.start()
+
+        // The music follows the screen. Collecting only while started means a stopped game stays quiet;
+        // GameAudio ignores a track it is already playing, so coming back never restarts it.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                vm.state.map { musicTrackFor(it) }.distinctUntilChanged().collect { audio.music(it) }
+            }
+        }
 
         // A TV left on keeps getting hungrier: tick once a minute while the game is in front.
         lifecycleScope.launch {
@@ -70,14 +85,31 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             HorrorPetsTheme {
-                HorrorPetsApp(vm = vm, loader = loader, sounds = LogSoundSink, onExit = ::finish)
+                HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        audio.resume()
         vm.onResume()
+    }
+
+    override fun onPause() {
+        audio.pause()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        audio.pause()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        // Also reached after a config change, where the new Activity builds its own GameAudio.
+        if (::audio.isInitialized) audio.release()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -92,7 +124,9 @@ class MainActivity : ComponentActivity() {
      * Remote keys the screens don't own:
      * - held OK / Enter / Back repeat: dropped everywhere, so a held button acts once and can never
      *   cascade through several screens;
-     * - on Home, Menu opens the pet switcher and Rewind / Fast-forward walk to the neighbouring scene.
+     * - on Home, Menu opens the pet switcher and Rewind / Fast-forward walk to the neighbouring scene;
+     * - the UI tick sounds: a D-pad arrow plays `ui_move` (except in the pet switcher, which times its own),
+     *   OK / Enter plays `ui_select` and Back plays `ui_back`. Only a key's first down counts, not its repeats.
      *
      * This has to run before the view hierarchy (Compose) sees the key, hence `dispatchKeyEvent`. It is
      * the public `android.app.Activity` method; lint's RestrictedApi hit comes from androidx.core's
@@ -101,6 +135,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.repeatCount > 0 && event.keyCode in NO_REPEAT_KEYS) return true
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) playKeySound(event.keyCode)
         if (event.keyCode in HOME_SHORTCUT_KEYS && vm.state.value.screen == Screen.Home) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 when (event.keyCode) {
@@ -112,6 +147,17 @@ class MainActivity : ComponentActivity() {
             return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    // Lint's GestureBackNavigation is about the touch back gesture, which sends no key event on Android 16+;
+    // a TV remote's Back button is still a real KEYCODE_BACK, and this only plays a tick, it doesn't navigate.
+    @SuppressLint("GestureBackNavigation")
+    private fun playKeySound(keyCode: Int) {
+        when (keyCode) {
+            in MOVE_KEYS -> if (vm.state.value.screen !is Screen.Switcher) audio.sfx("ui_move")
+            in SELECT_KEYS -> audio.sfx("ui_select")
+            KeyEvent.KEYCODE_BACK -> audio.sfx("ui_back")
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -164,11 +210,30 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_NUMPAD_ENTER,
             KeyEvent.KEYCODE_BACK,
         )
+        val MOVE_KEYS = setOf(
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+        )
+        val SELECT_KEYS = setOf(
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+        )
         val HOME_SHORTCUT_KEYS = setOf(
             KeyEvent.KEYCODE_MENU,
             KeyEvent.KEYCODE_MEDIA_REWIND,
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
         )
+
+        /** The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. */
+        fun musicTrackFor(state: UiState): String? = when (state.screen) {
+            Screen.Loading, is Screen.FakeDeath -> null
+            is Screen.Switcher -> "switcher"
+            Screen.Home -> state.game.selected?.name?.lowercase()
+            is Screen.Versus, is Screen.Fight, is Screen.Results -> "fight"
+        }
 
         /**
          * One clock and one asset cache per process: the view model outlives an Activity (it is

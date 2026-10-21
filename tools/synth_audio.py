@@ -1,4 +1,7 @@
-"""Synthesize every original music loop and sound effect into audio-final/ (Opus in .ogg).
+"""Synthesize every original music loop and sound effect into audio-final/.
+
+Music is Opus in .ogg (ExoPlayer plays it on every supported Android version). Sound effects are
+16-bit PCM mono .wav at 44.1 kHz instead: SoundPool cannot decode Opus-in-Ogg below Android 10.
 
 Everything here is generated from scratch with NumPy, so the audio has no third-party license.
 Usage: tools/.venv/bin/python -I tools/synth_audio.py [--only NAME ...]
@@ -16,6 +19,7 @@ from scipy import signal
 
 ROOT = Path(__file__).resolve().parents[1]
 SR = 48_000
+SFX_SR = 44_100  # sound effects ship as 44.1 kHz mono WAV
 SEED = 1313
 
 
@@ -499,6 +503,20 @@ def write_ogg(x: np.ndarray, dest: Path, bitrate: str) -> None:
                     "-vbr", "on", str(dest)], check=True)
 
 
+def write_wav(x: np.ndarray, dest: Path) -> None:
+    """Write a sound effect as 16-bit PCM mono WAV at SFX_SR (resampled from the synth rate SR)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if x.ndim != 1:
+        x = x.mean(axis=1)
+    g = np.gcd(SFX_SR, SR)
+    y = signal.resample_poly(np.clip(x, -1, 1), SFX_SR // g, SR // g)
+    with wave.open(str(dest), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SFX_SR)
+        w.writeframes((np.clip(y, -1, 1) * 32767).astype("<i2").tobytes())
+
+
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
          "ghostface": music_ghostface, "fight": music_fight, "switcher": music_switcher}
 
@@ -516,8 +534,8 @@ def main() -> int:
         print(f"music/{name}.ogg {len(x) / SR:.1f}s")
     if not args.only or "sfx" in args.only:
         for name, x in sfx_all().items():
-            write_ogg(normalize(edge_fade(x), -1.0), out / "sfx" / f"{name}.ogg", "64k")
-            print(f"sfx/{name}.ogg {len(x) / SR:.2f}s")
+            write_wav(normalize(edge_fade(x), -1.0), out / "sfx" / f"{name}.wav")
+            print(f"sfx/{name}.wav {len(x) / SR:.2f}s")
     return 0
 
 

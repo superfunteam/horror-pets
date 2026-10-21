@@ -2,12 +2,12 @@ package team.superfun.horrorpets.audio
 
 import android.util.Log
 
-/** Where the UI hands the view model's sound queues. Task 15 replaces [LogSoundSink] with real playback. */
+/** Where the UI hands the view model's sound queues. [GameAudio] plays them; [LogSoundSink] only logs them. */
 interface SoundSink {
-    /** Play the one-shot effect `audio/sfx/<name>.ogg`. */
+    /** Play the one-shot effect `audio/sfx/<name>.wav`. */
     fun sfx(name: String)
 
-    /** Play the announcer lines `audio/voice/<name>.ogg` back to back. */
+    /** Play the announcer lines `audio/voice/<name>.wav` back to back. */
     fun voice(names: List<String>)
 }
 
