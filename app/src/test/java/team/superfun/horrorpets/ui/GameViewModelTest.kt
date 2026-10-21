@@ -1334,8 +1334,9 @@ class GameViewModelTest {
         assertEquals(PetId.FREDDY, unlocked.pet)
         assertTrue(unlocked.results.won)
         assertEquals(setOf(PetId.JASON, PetId.FREDDY), rig.game.pets.keys)
-        // It joins at its defaults, marked fresh so time from before it joined never touches it.
-        assertEquals(PetState(PetId.FREDDY, freshJoin = true), rig.game.pets.getValue(PetId.FREDDY))
+        // It joins at its defaults, from now: the stable's clock is brought up to the moment it joined.
+        assertEquals(PetState(PetId.FREDDY), rig.game.pets.getValue(PetId.FREDDY))
+        assertEquals(rig.clock.now, rig.game.lastSeenMs)
         assertEquals(listOf("you_win", "unlocked"), rig.ui.voice)
         rig.settle()
         assertTrue(rig.store.last.isUnlocked(PetId.FREDDY))
@@ -1346,6 +1347,34 @@ class GameViewModelTest {
         assertEquals(unlocked.results, rig.ui.screen)
         rig.vm.onResultsDone()
         assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun aKillerUnlockedRightBeforeQuittingStillFeelsTheNextAbsence() {
+        val rig = Rig(soloJason(), rng = winningScript()).started()
+        rig.toFight(PetId.FREDDY)
+        rig.clock.now += 30_000 // the fight took half a minute; no tick has run since the last one
+        rig.playOut()
+        assertTrue(rig.ui.screen is Screen.Unlocked)
+        rig.settle()
+
+        // The player quits at once and comes back a week later: Freddy was there for all of it.
+        val later = Rig(rig.store.last, clock = FakeClock(rig.clock.now + 8 * DAY)).started()
+        val freddy = later.game.pets.getValue(PetId.FREDDY)
+        assertTrue(freddy.fakeDeathPending)
+        assertEquals(Tuning.FAKE_DEATH_HUNGER, freddy.hunger, 1e-9)
+        assertEquals(Tuning.FAKE_DEATH_FUN, freddy.funLevel, 1e-9)
+    }
+
+    @Test
+    fun underAStaleClockAnUnlockedKillerWaitsForTheRealTime() {
+        // Before the TV's clock has synced, no time can be applied, so the newcomer keeps the fresh-join mark and
+        // sits out whatever gap the real clock turns out to be.
+        val stale = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)
+        val rig = Rig(soloJason(), rng = winningScript(), clock = stale).started()
+        rig.toFight(PetId.FREDDY)
+        rig.playOut()
+        assertEquals(PetState(PetId.FREDDY, freshJoin = true), rig.game.pets.getValue(PetId.FREDDY))
     }
 
     @Test

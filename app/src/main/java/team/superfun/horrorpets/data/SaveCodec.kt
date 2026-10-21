@@ -49,7 +49,8 @@ object SaveCodec {
      * - a pet key this build does not know (a character added later) is skipped;
      * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, still
      *   unlocked; the other pets are kept;
-     * - a `selected` pet that is unknown or not in the stable reads as none, so the player picks again.
+     * - a `selected` pet that is unknown or not in the stable reads as the stable's first killer (in roster order),
+     *   or none when the stable is empty; never none beside a stable, which would reopen the starter pick.
      * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
@@ -70,7 +71,7 @@ object SaveCodec {
             if (rest.version > SUPPORTED_VERSION) return null
             if (rest.version < SUPPORTED_VERSION) return GameState()
             val stable = PetId.entries.filter { it.name in pets }.associateWith { id -> petOrDefault(id, pets[id.name]) }
-            rest.copy(pets = stable, selected = petIdOrNull(root["selected"])?.takeIf { it in stable })
+            rest.copy(pets = stable, selected = petIdOrNull(root["selected"])?.takeIf { it in stable } ?: stable.keys.firstOrNull())
         } catch (_: Exception) {
             // SerializationException, IllegalArgumentException (bad number): the save as a whole is unusable.
             null

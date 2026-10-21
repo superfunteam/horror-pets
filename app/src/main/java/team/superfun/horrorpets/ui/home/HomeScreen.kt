@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
@@ -205,6 +206,11 @@ fun HomeScreen(
     val others = remember(state.game.pets, petId) { PetId.entries.filter { it != petId }.mapNotNull { state.game.pets[it] } }
     val badgeShown = others.isNotEmpty() && state.toast == null
     var badgeShows by remember { mutableStateOf<PetId?>(null) }
+    var badgeFocused by remember { mutableStateOf(false) }
+    // The welcome back can take the corner from a focused badge: focus goes to Play rather than nowhere.
+    LaunchedEffect(badgeShown) {
+        if (!badgeShown && badgeFocused) runCatching { playFocus.requestFocus() }
+    }
     // Focus goes back to the badge when the stable closes (to Play if the badge is gone).
     var stableWasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(state.stableOpen) {
@@ -566,6 +572,7 @@ fun HomeScreen(
                     onShown = { badgeShows = it },
                     focusRequester = badgeFocus,
                     canFocus = !state.stableOpen,
+                    modifier = Modifier.onFocusChanged { badgeFocused = it.hasFocus },
                 )
             }
             ActionBar(

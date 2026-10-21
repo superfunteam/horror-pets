@@ -348,6 +348,10 @@ class GameViewModel(
     /**
      * The turn's animation is over. A finished fight turns into its results and the pet is paid; beating a killer
      * the player did not have unlocks it (it joins the stable at its defaults) and shows that before the results.
+     *
+     * The stable's clock is brought up to now first (as the minute tick would), so the newcomer joins from this
+     * moment and decays like the rest through the next absence, even one that starts before the next tick. Only
+     * under a clock not yet trusted (no time can be applied) does it keep the fresh-join mark and wait for it.
      */
     private fun finishTurn(s: UiState): UiState {
         val fight = (s.screen as? Screen.Fight)?.fight ?: return s
@@ -362,7 +366,13 @@ class GameViewModel(
             won -> listOf("you_win")
             else -> listOf("you_lose")
         } + if (unlock != null) listOf("unlocked") else emptyList()
-        val game = s.game.withPet(reward.pet).let { g -> if (unlock == null) g else g.withPet(PetState(unlock, freshJoin = true)) }
+        val game = if (unlock == null) {
+            s.game.withPet(reward.pet)
+        } else {
+            val now = clock.nowMs()
+            val current = applyElapsed(s.game.withPet(reward.pet), now, clockFloorMs).first
+            current.withPet(PetState(unlock, freshJoin = now < clockFloorMs))
+        }
         return s.copy(
             game = game,
             screen = if (unlock == null) results else Screen.Unlocked(unlock, results),

@@ -54,7 +54,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
 
     // Back can arrive between a state change and the recomposition that shows it (Menu then Back in
     // quick succession): only leave the app if the view model is really still on the exiting screen.
-    val exitFromHome = { if (vm.state.value.screen == Screen.Home) onExit() }
+    val exitFromHome = { if (vm.state.value.screen == Screen.Home && !vm.state.value.stableOpen) onExit() }
     val exitFromOnboarding = {
         if (vm.state.value.screen == Screen.Switcher(SwitcherMode.ONBOARD)) onExit()
     }

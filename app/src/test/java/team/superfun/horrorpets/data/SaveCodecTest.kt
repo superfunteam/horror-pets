@@ -110,9 +110,14 @@ class SaveCodecTest {
     }
 
     @Test
-    fun aStarterNotInTheStableReadsAsNone() {
-        assertNull(SaveCodec.decode(v2(""""JASON":{"level":3}""", selected = "FREDDY")).selected)
-        assertNull(SaveCodec.decode(v2(""""JASON":{"level":3}""", selected = "PENNYWISE")).selected)
+    fun aSelectionOutsideTheStableFallsBackToTheFirstKillerInIt() {
+        // Never none while the stable has killers: none would reopen the starter pick and hand out a free killer.
+        val two = """"MICHAEL":{"level":3},"FREDDY":{"level":2}"""
+        assertEquals(PetId.FREDDY, SaveCodec.decode(v2(two, selected = "JASON")).selected)
+        assertEquals(PetId.FREDDY, SaveCodec.decode(v2(two, selected = "PENNYWISE")).selected)
+        assertEquals(PetId.FREDDY, SaveCodec.decode(v2(two)).selected)
+        assertEquals(PetId.MICHAEL, SaveCodec.decode(v2(two, selected = "MICHAEL")).selected)
+        // With an empty stable there is no one to select: the game starts at the starter pick.
         assertNull(SaveCodec.decode("""{"version":2,"selected":"JASON"}""").selected)
     }
 
