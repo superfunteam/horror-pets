@@ -625,6 +625,48 @@ def sfx_all() -> dict[str, np.ndarray]:
     pull = bandpass(noise(lf, int(0.2 * SR)), 300, 1500) * env_exp(int(0.2 * SR), 0.06)
     place(saw_fx, pull, 0.0, 0.6)
     s["special_leatherface"] = saw_fx
+    fd = rng_for("food")  # its own stream too, so the food sounds leave the rest of the bank unchanged
+    m = int(0.6 * SR)
+    t = np.arange(m) / SR
+    hz = 1900 * (480 / 1900) ** (t / t[-1]) * (1 + 0.025 * np.sin(2 * np.pi * 6 * t))  # a falling slide whistle
+    whistle = (sine(hz, m) + 0.15 * sine(2 * hz, m)) * env_adsr(m, 0.03, 0.1, 0.8, 0.05) * 0.6
+    mm = int(0.25 * SR)
+    plop = sine(70 + 220 * np.exp(-np.arange(mm) / SR / 0.05), mm) * env_exp(mm, 0.07)
+    plop += 0.35 * bandpass(noise(fd, mm), 150, 900) * env_exp(mm, 0.03)
+    drop = np.zeros(int(0.9 * SR))
+    place(drop, whistle, 0.0)
+    place(drop, plop, 0.6, 0.9)
+    s["food_drop"] = drop  # lands (the plop) 0.6 s in: FoodDrop's fall takes exactly that long
+    mm = int(0.16 * SR)
+    s["bite"] = bandpass(noise(fd, mm), 300, 2200) * env_exp(mm, 0.035) + 0.6 * punch(fd, 0.35)[:mm]
+    pl = rng_for("play")  # the Play hand's gags, on their own stream as well
+    s["hand_whoosh"] = swoosh(pl, 0.32, 500, 3500, down=False)
+    mm = int(0.18 * SR)
+    t = np.arange(mm) / SR
+    s["boop"] = sine(300 + 700 * (1 - np.exp(-t / 0.03)), mm) * env_exp(mm, 0.06) + 0.4 * punch(pl, 0.25)[:mm]
+    tk = np.zeros(int(0.55 * SR))
+    for k in range(9):  # a squeaky warble, like a giggling toy
+        mm = int(0.045 * SR)
+        hz = pl.uniform(1500, 2600) * (1 + 0.25 * np.sin(2 * np.pi * 30 * np.arange(mm) / SR))
+        place(tk, sine(hz, mm) * env_adsr(mm, 0.005, 0.01, 0.7, 0.015), k * 0.058, pl.uniform(0.5, 0.9))
+    s["tickle"] = tk
+    jg = np.zeros(int(0.9 * SR))
+    for k in range(11):  # keys knocking together on their ring
+        clink = bell(pl.uniform(2200, 4200), 0.35, ((1, 1), (2.76, 0.6), (5.4, 0.35), (8.9, 0.2)))
+        place(jg, clink + 0.3 * highpass(noise(pl, len(clink)), 5000) * env_exp(len(clink), 0.004), pl.uniform(0, 0.6),
+              pl.uniform(0.25, 0.6))
+    s["jingle"] = jg
+    mm = int(0.7 * SR)
+    t = np.arange(mm) / SR
+    ul = rng_for("unlock")  # the unlock fanfare, on its own stream
+    fan = np.zeros(int(1.6 * SR))
+    for k, nm in enumerate(["G4", "C5", "E5", "G5", "C6"]):
+        place(fan, bell(note_hz(nm), 1.0, ((1, 1), (2, 0.35), (3, 0.12))), k * 0.07, 0.45)
+    shimmer = highpass(noise(ul, int(1.0 * SR)), 6000) * env_adsr(int(1.0 * SR), 0.2, 0.3, 0.4, 0.5) * 0.15
+    place(fan, shimmer, 0.3)
+    s["unlock"] = reverb(ul, fan, 1.8, 0.35)
+    s["boing"] = sine(180 * (1 + 0.35 * np.sin(2 * np.pi * 9 * t) * np.exp(-t / 0.25)) + 120 * np.exp(-t / 0.05), mm) \
+        * env_exp(mm, 0.25)
     boom_n = int(2.0 * SR)
     boom = sine(40 + 60 * np.exp(-np.arange(boom_n) / SR / 0.08), boom_n) * env_exp(boom_n, 0.6, 0.002)
     s["ko"] = reverb(rng, boom + 0.3 * lowpass(noise(rng, boom_n), 400) * env_exp(boom_n, 0.3), 2.5, 0.4)

@@ -1,10 +1,12 @@
 package team.superfun.horrorpets.ui.common
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,7 +23,10 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -39,6 +44,32 @@ import team.superfun.horrorpets.model.PetId
 /** Contact-shadow ellipse: width as a fraction of the drawn cell width, height as a fraction of its width. */
 private const val SHADOW_WIDTH_OF_CELL = 0.45f
 private const val SHADOW_ASPECT = 0.2f
+
+/** How much a full [SpritePose.squash] widens and flattens the pet on its feet. */
+private const val SQUASH_X = 0.14f
+private const val SQUASH_Y = 0.12f
+
+/**
+ * Extra motion for a [SpriteView], read while drawing, so it never recomposes: [lift] raises the pet off the floor
+ * (px, up), [shiftX] slides it (px), [swing] turns it (degrees) about the top of its cell, as if held up by the
+ * head, and [squash] (0..1) flattens it onto its feet. Its shadow stays on the floor, following only the slide and
+ * shrinking as the pet rises.
+ */
+@Stable
+class SpritePose {
+    val lift = Animatable(0f)
+    val shiftX = Animatable(0f)
+    val swing = Animatable(0f)
+    val squash = Animatable(0f)
+
+    /** Back to standing still on the floor. */
+    suspend fun reset() {
+        lift.snapTo(0f)
+        shiftX.snapTo(0f)
+        swing.snapTo(0f)
+        squash.snapTo(0f)
+    }
+}
 
 /**
  * Draws one pet animation, one cell of its strip at a time, with bilinear filtering.
@@ -68,6 +99,8 @@ private const val SHADOW_ASPECT = 0.2f
  * 0 is greyscale) and [flashWhite] washes it toward white (0..1, for hit flashes). [shadowOpacity] > 0
  * draws a soft contact shadow under the feet.
  *
+ * [pose], when given, moves the drawn pet (and not its layout) as a [SpritePose] describes.
+ *
  * [loopOffsetMs] starts a looping animation that far into its cycle, so several pets idling side by side
  * don't bob in lockstep. It does not move the "one full cycle" report, and one-shots ignore it.
  */
@@ -84,6 +117,7 @@ fun SpriteView(
     saturation: Float = 1f,
     flashWhite: Float = 0f,
     shadowOpacity: Float = 0f,
+    pose: SpritePose? = null,
     loopOffsetMs: Long = 0L,
     playKey: Any? = null,
     onStarted: (() -> Unit)? = null,
@@ -167,21 +201,34 @@ fun SpriteView(
                     // Nothing, not even the shadow, until the strip is decoded: a lone shadow would
                     // flash on the floor before the pet appears.
                     val s = shown ?: return@onDrawBehind
+                    val lift = pose?.lift?.value ?: 0f
+                    val shift = pose?.shiftX?.value ?: 0f
+                    val swing = pose?.swing?.value ?: 0f
+                    val squash = pose?.squash?.value ?: 0f
                     if (shadowBrush != null) {
-                        scale(scaleX = 1f, scaleY = SHADOW_ASPECT, pivot = feet) {
-                            drawCircle(brush = shadowBrush, radius = shadowRadius, center = feet)
+                        val fade = (1f - lift / size.height).coerceIn(0.25f, 1f)
+                        translate(left = shift) {
+                            scale(scaleX = fade, scaleY = SHADOW_ASPECT * fade, pivot = feet) {
+                                drawCircle(brush = shadowBrush, radius = shadowRadius, center = feet, alpha = fade)
+                            }
                         }
                     }
                     val index = frame.coerceIn(0, (s.spec.frames - 1).coerceAtLeast(0))
-                    drawImage(
-                        image = s.strip,
-                        srcOffset = IntOffset(index * cellW, 0),
-                        srcSize = IntSize(cellW, cellH),
-                        dstOffset = IntOffset(left, top),
-                        dstSize = dstSize,
-                        colorFilter = filter,
-                        filterQuality = FilterQuality.High,
-                    )
+                    withTransform({
+                        translate(shift, -lift)
+                        if (swing != 0f) rotate(swing, pivot = Offset(feet.x, top.toFloat()))
+                        if (squash != 0f) scale(1f + SQUASH_X * squash, 1f - SQUASH_Y * squash, pivot = feet)
+                    }) {
+                        drawImage(
+                            image = s.strip,
+                            srcOffset = IntOffset(index * cellW, 0),
+                            srcSize = IntSize(cellW, cellH),
+                            dstOffset = IntOffset(left, top),
+                            dstSize = dstSize,
+                            colorFilter = filter,
+                            filterQuality = FilterQuality.High,
+                        )
+                    }
                 }
             },
     )
@@ -201,7 +248,7 @@ private const val LUMA_B = 0.072f
  * `android.graphics.ColorMatrix`; alpha passes through untouched, so the transparent cell around the pet
  * stays transparent.
  */
-private fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, saturation: Float, flashWhite: Float): ColorFilter? {
+internal fun spriteFilter(tint: Color?, tintStrength: Float, dim: Float, saturation: Float, flashWhite: Float): ColorFilter? {
     val s = if (tint == null) 0f else tintStrength.coerceIn(0f, 1f)
     val d = dim.coerceIn(0f, 1f)
     val sat = saturation.coerceIn(0f, 1f)

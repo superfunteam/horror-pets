@@ -172,7 +172,7 @@ class MainActivity : ComponentActivity() {
         if (event.keyCode in HOME_SHORTCUT_KEYS && vm.state.value.screen == Screen.Home) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 when (event.keyCode) {
-                    KeyEvent.KEYCODE_MENU -> vm.openSwitcher()
+                    KeyEvent.KEYCODE_MENU -> vm.openStable()
                     KeyEvent.KEYCODE_MEDIA_REWIND -> vm.onWalk(-1)
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> vm.onWalk(1)
                 }
@@ -263,9 +263,9 @@ class MainActivity : ComponentActivity() {
         /** The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. */
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
             Screen.Loading, is Screen.FakeDeath -> null
-            is Screen.Switcher -> "switcher"
+            Screen.Title, is Screen.Switcher -> "switcher"
             Screen.Home -> state.game.selected?.name?.lowercase()
-            is Screen.Versus, is Screen.Fight, is Screen.Results -> "fight"
+            is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
         }
 
         /**

@@ -3,6 +3,7 @@ package team.superfun.horrorpets.model
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
@@ -16,28 +17,15 @@ class ModelTest {
     }
 
     @Test
-    fun defaultGameStateHasEveryPetAtDefaults() {
+    fun aDefaultGameIsAnEmptyStable() {
         val s = GameState()
-        assertEquals(PetId.entries.toSet(), s.pets.keys)
-        assertEquals(PetState(PetId.GHOSTFACE), s.pets.getValue(PetId.GHOSTFACE))
-        assertEquals(PetState(PetId.MICHAEL), s.pets.getValue(PetId.MICHAEL))
-        assertEquals(PetState(PetId.LEATHERFACE), s.pets.getValue(PetId.LEATHERFACE))
-        assertEquals(7, s.pets.size)
-        assertEquals(1, s.version)
+        assertTrue(s.pets.isEmpty())
         assertEquals(null, s.selected)
-        assertEquals(null, s.lastSeenMs)
-    }
-
-    @Test
-    fun petDefaults() {
-        val p = PetState(PetId.JASON)
-        assertEquals(20.0, p.hunger, 0.0)
-        assertEquals(80.0, p.funLevel, 0.0)
-        assertEquals(20.0, p.strength, 0.0)
-        assertEquals(1, p.level)
-        assertEquals(0, p.xp)
-        assertEquals(0.0, p.moodBonus, 0.0)
-        assertFalse(p.fakeDeathPending)
+        assertEquals(2, s.version)
+        assertFalse(s.isUnlocked(PetId.JASON))
+        val one = s.copy(pets = mapOf(PetId.MICHAEL to PetState(PetId.MICHAEL)), selected = PetId.MICHAEL)
+        assertTrue(one.isUnlocked(PetId.MICHAEL))
+        assertFalse(one.isUnlocked(PetId.JASON))
     }
 
     @Test

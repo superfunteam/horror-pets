@@ -8,10 +8,11 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -28,13 +29,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +46,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
@@ -86,20 +89,27 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.FEED_MUNCHES
+import team.superfun.horrorpets.model.Food
+import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
+import team.superfun.horrorpets.ui.common.SpritePose
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.detectWalkSwipes
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.ignoreOkUnless
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.rememberOkReady
 import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.softGlow
+import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
@@ -174,7 +184,9 @@ fun HomeScreen(
     onCare: (CareAction) -> Unit,
     onWalk: (dir: Int) -> Unit,
     onFight: () -> Unit,
-    onOpenSwitcher: () -> Unit,
+    onOpenStable: () -> Unit,
+    onCloseStable: () -> Unit,
+    onStablePick: (PetId) -> Unit,
     onAnimFinished: (token: Long) -> Unit,
     onToastDone: () -> Unit,
     onExit: () -> Unit,
@@ -189,11 +201,30 @@ fun HomeScreen(
     val tint = remember(scene) { hexColor(scene.tint) }
 
     val playFocus = remember { FocusRequester() }
-    val cardFocus = remember { FocusRequester() }
+    val badgeFocus = remember { FocusRequester() }
+    // The stable's other killers, in roster order, and the one the badge is showing (the stable opens on them).
+    val others = remember(state.game.pets, petId) { PetId.entries.filter { it != petId }.mapNotNull { state.game.pets[it] } }
+    val badgeShown = others.isNotEmpty() && state.toast == null
+    var badgeShows by remember { mutableStateOf<PetId?>(null) }
+    var badgeFocused by remember { mutableStateOf(false) }
+    // The welcome back can take the corner from a focused badge: focus goes to Play rather than nowhere.
+    LaunchedEffect(badgeShown) {
+        if (!badgeShown && badgeFocused) runCatching { playFocus.requestFocus() }
+    }
+    // Focus goes back to the badge when the stable closes (to Play if the badge is gone).
+    var stableWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.stableOpen) {
+        if (state.stableOpen) {
+            stableWasOpen = true
+        } else if (stableWasOpen) {
+            stableWasOpen = false
+            runCatching { if (badgeShown) badgeFocus.requestFocus() else playFocus.requestFocus() }
+        }
+    }
     var lastWasFight by remember { mutableStateOf(false) }
 
     // Only the screen being entered handles Back: a Home that is fading out must never exit the app.
-    GameBackHandler(enabled = focusEntry != null, onBack = onExit)
+    GameBackHandler(enabled = focusEntry != null && !state.stableOpen, onBack = onExit)
     RequestFocusOnEntry(playFocus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
     val latestOnWalk by rememberUpdatedState(onWalk)
@@ -207,6 +238,9 @@ fun HomeScreen(
         val play = if (manifest.has(Anim.DANCE)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
         withContext(Dispatchers.IO) {
             for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
+            for (food in Food.entries) loader.food(food)
+            for (id in state.game.pets.keys) loader.head(id)
+            for (art in PLAY_HAND_ART) loader.prop(art)
         }
     }
 
@@ -226,11 +260,22 @@ fun HomeScreen(
     var cardRightPx by remember { mutableFloatStateOf(0f) }
     var homeLeftPx by remember { mutableFloatStateOf(0f) }
     var showSceneTitle by remember { mutableStateOf(false) }
+    // The food a feed dropped, from the press until its last crumbs land (see FoodDrop), and the request
+    // whose food has landed: that request's munch waits for it.
+    var feeding by remember { mutableStateOf<Feeding?>(null) }
+    var landedToken by remember { mutableStateOf<Long?>(null) }
+    // The same for a play: the glove's gag, from the press until the glove has gone, and the request whose gag
+    // has got to the pet's turn to react. The glove moves the pet through [pose] (pokes, tickles, a shake).
+    var playing by remember { mutableStateOf<Playing?>(null) }
+    var reactedToken by remember { mutableStateOf<Long?>(null) }
+    val pose = remember { SpritePose() }
 
     val request = state.petAnim
     LaunchedEffect(request?.token) {
         if (request == null) return@LaunchedEffect
         variety = null
+        request.food?.let { feeding = Feeding(it, request.token) }
+        request.gag?.let { playing = Playing(it, request.token) }
         if (state.refuse != null) {
             bubble = Bubble(refusalText(state.refuse, lastWasFight))
         }
@@ -318,10 +363,19 @@ fun HomeScreen(
     // run under the request's token from the press until the pet has run into the next scene, so the run
     // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
     // A stroll is local too: its run plays under its own key and never reports to the view model.
-    val shownAnim = request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
-    val playKey: Any = request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
+    // A feed's first munch waits for its food to land, and a play's happy reaction for the glove's gag to get to
+    // it; until then the pet idles where it stands (or, picked up and shaken, flails).
+    val holdingGag = request?.gag != null && reactedToken != request.token
+    val holding = holdingGag || (request?.food != null && landedToken != request.token)
+    val shownAnim = when {
+        holdingGag && request?.gag == PlayGag.SHAKE -> Anim.WAVE
+        holding -> Anim.IDLE
+        else -> request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
+    }
+    val playKey: Any = if (holding) HoldKey else request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
     val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
+        holding -> null
         request != null -> {
             { onAnimFinished(request.token) }
         }
@@ -428,12 +482,53 @@ fun HomeScreen(
                 tint = tint,
                 tintStrength = scene.tintStrength,
                 shadowOpacity = scene.shadowOpacity,
+                pose = pose,
                 playKey = playKey,
                 onFinished = onShownFinished,
                 modifier = Modifier
                     .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
+            feeding?.let { f ->
+                key(f.token) {
+                    val munchMs = FEED_MUNCHES * manifest.spec(manifest.feedAnim()).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
+                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
+                    FoodDrop(
+                        food = f.food,
+                        image = remember(f.food) { loader.food(f.food) },
+                        petX = (homeX.value + walkX.value) * screenW,
+                        bodyHalf = drawnCellW * BODY_HALF_OF_CELL,
+                        screenW = screenW,
+                        inset = insetPx,
+                        floorY = floorY,
+                        sizePx = petHeightPx * FOOD_SIZE,
+                        munchMs = munchMs,
+                        filter = filter,
+                        onLanded = { landedToken = f.token },
+                        onDone = { if (feeding === f) feeding = null },
+                    )
+                }
+            }
+            playing?.let { p ->
+                key(p.token) {
+                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
+                    PlayHand(
+                        gag = p.gag,
+                        pet = petId,
+                        loader = loader,
+                        petX = (homeX.value + walkX.value) * screenW,
+                        floorY = floorY,
+                        petH = drawnHeightPx,
+                        fullH = petHeightPx,
+                        bodyHalf = drawnCellW * BODY_HALF_OF_CELL,
+                        screenW = screenW,
+                        pose = pose,
+                        filter = filter,
+                        onReact = { reactedToken = p.token },
+                        onDone = { if (playing === p) playing = null },
+                    )
+                }
+            }
             RefusalBubble(
                 text = bubble?.text,
                 headX = { (homeX.value + walkX.value) * screenW },
@@ -446,9 +541,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().padding(inset)) {
             StatCard(
                 pet = pet,
-                onOpenSwitcher = onOpenSwitcher,
                 width = cardWidth,
-                focusRequester = cardFocus,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .onGloballyPositioned { cardRightPx = it.boundsInRoot().right },
@@ -465,6 +558,23 @@ fun HomeScreen(
                 onDismissed = onToastDone,
                 modifier = Modifier.align(Alignment.TopEnd).widthIn(max = toastMax),
             )
+            // The stable's other killers, top right, once there are any: the welcome back has that corner first.
+            AnimatedVisibility(
+                visible = badgeShown,
+                modifier = Modifier.align(Alignment.TopEnd),
+                enter = fadeIn(tween(400)) + slideInHorizontally(tween(400)) { it / 3 },
+                exit = fadeOut(tween(250)),
+            ) {
+                StableBadge(
+                    others = others,
+                    loader = loader,
+                    onOpen = onOpenStable,
+                    onShown = { badgeShows = it },
+                    focusRequester = badgeFocus,
+                    canFocus = !state.stableOpen,
+                    modifier = Modifier.onFocusChanged { badgeFocused = it.hasFocus },
+                )
+            }
             ActionBar(
                 prevSceneTitle = scenes[(sceneIndex - 1).mod(scenes.size)].title,
                 nextSceneTitle = scenes[(sceneIndex + 1).mod(scenes.size)].title,
@@ -478,9 +588,14 @@ fun HomeScreen(
                     onFight()
                 },
                 playFocus = playFocus,
-                statCardFocus = cardFocus,
+                upFocus = if (badgeShown) badgeFocus else null,
                 modifier = Modifier.align(Alignment.BottomCenter),
+                canFocus = !state.stableOpen,
             )
+        }
+
+        if (state.stableOpen) {
+            StableMenu(game = state.game, first = badgeShows, loader = loader, onPick = onStablePick, onClose = onCloseStable)
         }
     }
 }
@@ -544,6 +659,20 @@ private suspend fun strollOnce(
 
 private object IdleKey
 
+/**
+ * The playback key while a feed's food is still falling or a play's gag is on: the pet idles (or flails), and its
+ * own animation starts fresh after.
+ */
+private object HoldKey
+
+/** The food [food] a feed dropped with its first request ([token]), showing until its last crumbs land. */
+@Immutable
+private class Feeding(val food: Food, val token: Long)
+
+/** The [gag] a play started with its first request ([token]), showing until the glove has gone. */
+@Immutable
+private class Playing(val gag: PlayGag, val token: Long)
+
 /** The coroutine running the current walk-out or walk-in, so the next one can cancel it. */
 private class JobSlot {
     var job: Job? = null
@@ -554,55 +683,71 @@ private class JobSlot {
     }
 }
 
-/** The scene dots: the active one is this wide, the others 10dp, and [SceneDotGap] apart. */
-private val ActiveSceneDot = 14.dp
-private val SceneDotGap = 12.dp
+/** The scene marker's diamonds: the current scene's is this wide, the others [SceneDot], [SceneDotGap] apart. */
+private val ActiveSceneDot = 9.dp
+private val SceneDot = 7.dp
+private val SceneDotGap = 8.dp
+
+/** The scene marker's gold tag pads its diamonds (and, after a walk, the scene's name) this much each side. */
+private val MarkerPadding = 14.dp
 
 /**
  * How wide the welcome-back toast (top right) may be on a [screenWidth]-wide screen: from the safe [inset]
- * in to a little short of the [sceneCount] scene dots at the top centre. A long toast (the 6-day, 3-digit
- * kind) steps its text down to fit instead of covering the dots, at any font scale.
+ * in to a little short of the [sceneCount]-scene marker at the top centre. A long toast (the 6-day, 3-digit
+ * kind) steps its text down to fit instead of covering the marker, at any font scale.
  */
 private fun toastMaxWidth(screenWidth: Dp, inset: Dp, sceneCount: Int): Dp {
-    val dotsHalf = ((10.dp + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
-    return screenWidth / 2f - inset - dotsHalf - 16.dp
+    val dotsHalf = ((SceneDot + SceneDotGap) * (sceneCount - 1) + ActiveSceneDot) / 2f
+    return screenWidth / 2f - inset - dotsHalf - MarkerPadding - 16.dp
 }
 
-/** Scene dots at the top centre; after a walk, the new scene's name fades in under them for a few seconds. */
+/**
+ * The scene marker, top centre: a small gold-framed tag of diamonds, one per scene with the current one lit;
+ * after a walk, the new scene's name slides out beside them for a few seconds.
+ */
 @Composable
 private fun SceneMarker(count: Int, index: Int, title: String, showTitle: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier.padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(
+        modifier
+            .gameFrame(topEnd = 7.dp, bottomStart = 7.dp, inner = false)
+            .height(28.dp)
+            .padding(horizontal = MarkerPadding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(SceneDotGap), verticalAlignment = Alignment.CenterVertically) {
-            repeat(count) { i -> SceneDot(active = i == index) }
+            repeat(count) { i -> SceneDiamond(active = i == index) }
         }
         AnimatedVisibility(
             visible = showTitle,
-            enter = fadeIn(tween(400)) + expandVertically(tween(300)),
-            exit = fadeOut(tween(600)) + shrinkVertically(tween(600)),
+            enter = fadeIn(tween(400)) + expandHorizontally(tween(300)),
+            exit = fadeOut(tween(600)) + shrinkHorizontally(tween(600)),
         ) {
             Text(
                 text = title.uppercase(),
-                style = displayStyle(22.sp, tracking = 0.14f, halo = true),
+                style = displayStyle(14.sp, tracking = 0.16f),
                 maxLines = 1,
-                modifier = Modifier.padding(top = 10.dp),
+                modifier = Modifier.padding(start = 10.dp),
             )
         }
     }
 }
 
 @Composable
-private fun SceneDot(active: Boolean) {
-    val size by animateDpAsState(if (active) ActiveSceneDot else 10.dp, tween(250), label = "dotSize")
-    val color by animateColorAsState(if (active) TextHi else TextHi.copy(alpha = 0.35f), tween(250), label = "dotColor")
+private fun SceneDiamond(active: Boolean) {
+    val size by animateDpAsState(if (active) ActiveSceneDot else SceneDot, tween(250), label = "dotSize")
+    val color by animateColorAsState(if (active) SceneGold else TextHi.copy(alpha = 0.3f), tween(250), label = "dotColor")
     Box(
         Modifier
             .size(size)
             .drawBehind {
-                if (active) softGlow(Color.White, alpha = 0.35f, cornerRadius = this.size.minDimension / 2f, spread = 6.dp, layers = 4)
+                if (active) softGlow(SceneGold, alpha = 0.4f, cornerRadius = 0f, spread = 5.dp, layers = 4)
             }
-            .background(color, CircleShape),
+            .rotate(45f)
+            .background(color),
     )
 }
+
+private val SceneGold = Color(0xFFF5C543)
 
 /** The bubble's tail: where it sits from the bubble's left edge when there is room, and its width. */
 private val BubbleTailInset = 40.dp

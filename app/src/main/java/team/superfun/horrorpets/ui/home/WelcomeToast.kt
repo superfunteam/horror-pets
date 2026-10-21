@@ -10,11 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -28,16 +28,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
-import team.superfun.horrorpets.ui.common.GlassPanel
+import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.TextHi
-import team.superfun.horrorpets.ui.theme.TextLo
 
 /** How long the welcome-back toast stays up. */
 const val TOAST_SHOW_MS = 6_000L
@@ -82,12 +83,16 @@ fun WelcomeToast(message: String?, onDismissed: () -> Unit, modifier: Modifier =
         enter = fadeIn(tween(TOAST_ANIM_MS)) + slideInHorizontally(tween(TOAST_ANIM_MS)) { it / 2 },
         exit = fadeOut(tween(TOAST_ANIM_MS)) + slideOutHorizontally(tween(TOAST_ANIM_MS)) { it / 2 },
     ) {
-        GlassPanel(contentPadding = PaddingValues(start = 14.dp, end = 20.dp, top = 10.dp, bottom = 12.dp)) {
+        Box(
+            Modifier
+                .gameFrame(topEnd = 10.dp, bottomStart = 10.dp, inner = false)
+                .padding(start = 14.dp, end = 20.dp, top = 10.dp, bottom = 12.dp),
+        ) {
             Row(Modifier.height(IntrinsicSize.Min)) {
                 Box(Modifier.width(4.dp).fillMaxHeight().background(Blood, RoundedCornerShape(2.dp)))
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("WELCOME BACK", style = displayStyle(17.sp, color = TextLo, tracking = 0.14f))
+                    Text("WELCOME BACK", style = displayStyle(15.sp, FontWeight.Bold, color = Amber, tracking = 0.18f))
                     // One line: when the caller caps the toast's width, a long message steps down to fit it.
                     BasicText(
                         text,

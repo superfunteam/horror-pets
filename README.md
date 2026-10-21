@@ -17,6 +17,8 @@ them fight. Everything runs offline, with a D-pad remote and nothing else.
 
 - **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. Pick yours from a spotlight carousel. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
+- **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
+- **Feeding time:** a snack whistles down from the sky (meat on the bone, a turkey leg, canned spinach, a cake with a knife in it, popcorn or a jello brain) and gets munched, bite by bite.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS fights:** turn-based, Street-Fighter-style bouts with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
@@ -76,6 +78,10 @@ tools/.venv/bin/python -I -m pytest tools/tests -q
 tools/.venv/bin/python -I tools/synth_audio.py                          # original music and sfx, no key needed
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
+OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_food.py --n 2   # then pick in finalize_food.py
+tools/.venv/bin/python -I tools/finalize_food.py
+OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_hand.py --n 2  # the Play glove; then finalize_hand.py
+ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_player_voice.py
 ```
 
 The keys are read from the `OPENAI_API_KEY` (scenes, cover) and `ELEVENLABS_API_KEY` (announcer) environment variables only. Never write them to a file or commit them.

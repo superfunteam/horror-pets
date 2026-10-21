@@ -137,8 +137,17 @@ private class Rig(
 
     fun settle() = scope.advanceUntilIdle()
 
-    fun started(): Rig {
+    /** Loaded: the save is read and the title screen is up. */
+    fun loaded(): Rig {
         vm.start()
+        settle()
+        return this
+    }
+
+    /** Loaded and past the title (Start pressed), at Home or the starter pick, as a player gets there. */
+    fun started(): Rig {
+        loaded()
+        vm.onStart()
         settle()
         return this
     }
@@ -197,133 +206,52 @@ class GameViewModelTest {
         assertNotNull(rig.ui.toast)
     }
 
-    /** A save as v0.1.0 wrote it (four pets, every field), last seen [lastSeenMs]. */
-    private fun v010Save(lastSeenMs: Long): String = """
-        {"version":1,"pets":{
-        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false},
-        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":false},
-        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false},
-        "GHOSTFACE":{"id":"GHOSTFACE","hunger":30.0,"funLevel":55.0,"strength":61.0,"level":7,"xp":640,"moodBonus":12.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false}},
-        "selected":"GHOSTFACE","lastSeenMs":$lastSeenMs}
-    """.trimIndent()
-
-    private val originalFour = listOf(PetId.JASON, PetId.FREDDY, PetId.PINHEAD, PetId.GHOSTFACE)
-
-    /** The killers added since v0.1.0. */
-    private val sinceV010 = listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE)
+    // ---- the title screen and starting over ----------------------------------------------------
 
     @Test
-    fun aV010UpgradeAfterAWeekAwayFakeKillsTheOriginalFourButTheNewcomersArriveFresh() {
-        val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
-        val rig = Rig(loaded).started()
+    fun theTitleComesFirstAndStartGoesHome() {
+        val rig = Rig(gameOf(lastSeenMs = T0 - (2 * DAY + 4 * HOUR))).loaded()
+        assertEquals(Screen.Title, rig.ui.screen)
+        assertNull("the welcome back waits for Home", rig.ui.toast)
 
-        // The four original killers decay and fake-die exactly as they did before the update.
-        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
-        for (id in originalFour) {
-            assertEquals("$id", asBefore.pets.getValue(id), rig.game.pets.getValue(id))
-            assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
-        }
-        assertEquals(Screen.FakeDeath(PetId.GHOSTFACE), rig.ui.screen)
-        // The three killers added since v0.1.0 have only just arrived: no time away, no fake death, nothing decayed.
-        for (id in sinceV010) {
-            assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
-            assertEquals("$id saved", PetState(id), rig.store.last.pets.getValue(id))
-        }
-        assertEquals(T0, rig.store.last.lastSeenMs)
+        rig.vm.onStart()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals("Away 2d 4h · Hunger +80", rig.ui.toast)
+        rig.vm.onStart() // key repeat
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
 
-        // After the reveal, picking Chucky goes straight Home: no R.I.P. for a pet that just moved in.
-        rig.vm.onFakeDeathDone()
-        rig.vm.openSwitcher()
+    @Test
+    fun startOnANewGameGoesToTheStarterPick() {
+        val rig = Rig(GameState()).loaded()
+        assertEquals(Screen.Title, rig.ui.screen)
+        assertTrue(rig.ui.voice.isEmpty())
+        rig.vm.onStart()
+        assertEquals(Screen.Switcher(SwitcherMode.ONBOARD), rig.ui.screen)
+        assertEquals(listOf("choose_your_killer"), rig.ui.voice)
+    }
+
+    @Test
+    fun startIsOnlyAcceptedOnTheTitle() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.onFightPressed()
+        val before = rig.ui
+        rig.vm.onStart()
+        assertEquals(before, rig.ui)
+    }
+
+    @Test
+    fun anOldSaveStartsOver() {
+        // v0.3.0 had every killer unlocked; the stable starts everyone over with one starter.
+        val v030 = """{"version":1,"selected":"LEATHERFACE","lastSeenMs":${T0 - DAY},"pets":{
+            "JASON":{"id":"JASON","level":3,"xp":120},"LEATHERFACE":{"id":"LEATHERFACE","level":2}}}"""
+        val rig = Rig(SaveCodec.decode(v030)).started()
+        assertEquals(Screen.Switcher(SwitcherMode.ONBOARD), rig.ui.screen)
+        assertTrue(rig.game.pets.isEmpty())
         rig.vm.onSwitcherPick(PetId.CHUCKY)
-        assertEquals(Screen.Home, rig.ui.screen)
-    }
-
-    @Test
-    fun anUpgradeUnderAStaleClockKeepsTheNewcomersFreshUntilTheClockIsGood() {
-        // First launch after the update, before the TV's clock has synced: nothing is applied, and the save
-        // written now must still say that Chucky, Michael and Leatherface have only just joined.
-        val loaded = SaveCodec.decode(v010Save(T0 - 8 * DAY))
-        val stale = Rig(loaded, clock = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)).started()
-        val saved = stale.store.last
-        for (id in sinceV010) assertTrue("$id", saved.pets.getValue(id).freshJoin)
-        assertEquals(T0 - 8 * DAY, saved.lastSeenMs)
-
-        // Next launch with a good clock: the original four decay and fake-die, the new three arrive fresh.
-        val reloaded = SaveCodec.decode(SaveCodec.encode(saved))
-        val good = Rig(reloaded).started()
-        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in originalFour }), T0).first
-        for (id in originalFour) assertEquals("$id", asBefore.pets.getValue(id), good.game.pets.getValue(id))
-        for (id in sinceV010) {
-            assertEquals("$id", PetState(id), good.game.pets.getValue(id))
-            assertEquals("$id saved", PetState(id), good.store.last.pets.getValue(id))
-        }
-    }
-
-    @Test
-    fun anUpgradeAfterTenHoursDecaysTheOriginalFourButNotTheNewcomers() {
-        val loaded = SaveCodec.decode(v010Save(T0 - 10 * HOUR))
-        val rig = Rig(loaded).started()
-        assertEquals(12.5 + 40.0, rig.game.pets.getValue(PetId.JASON).hunger, 1e-9)
-        for (id in sinceV010) assertEquals("$id", PetState(id), rig.game.pets.getValue(id))
-
-        // Once they have joined, they decay like everyone else.
-        rig.clock.now = T0 + 10 * HOUR
-        rig.vm.tick()
-        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.CHUCKY).hunger, 1e-9)
-        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.LEATHERFACE).hunger, 1e-9)
-    }
-
-    /** A save as v0.2.0 wrote it (six pets, every field, the fresh-join mark included), last seen [lastSeenMs]. */
-    private fun v020Save(lastSeenMs: Long): String = """
-        {"version":1,"pets":{
-        "JASON":{"id":"JASON","hunger":12.5,"funLevel":64.0,"strength":31.0,"level":3,"xp":120,"moodBonus":4.5,"wins":5,"losses":2,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false},
-        "FREDDY":{"id":"FREDDY","hunger":40.0,"funLevel":22.25,"strength":18.0,"level":2,"xp":15,"moodBonus":0.0,"wins":1,"losses":3,"sceneIndex":2,"fakeDeathPending":false,"freshJoin":false},
-        "PINHEAD":{"id":"PINHEAD","hunger":20.0,"funLevel":80.0,"strength":20.0,"level":1,"xp":0,"moodBonus":-10.0,"wins":0,"losses":1,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":false},
-        "GHOSTFACE":{"id":"GHOSTFACE","hunger":30.0,"funLevel":55.0,"strength":61.0,"level":7,"xp":640,"moodBonus":12.0,"wins":12,"losses":9,"sceneIndex":2,"fakeDeathPending":false,"freshJoin":false},
-        "CHUCKY":{"id":"CHUCKY","hunger":35.0,"funLevel":70.0,"strength":26.0,"level":2,"xp":40,"moodBonus":0.0,"wins":2,"losses":1,"sceneIndex":1,"fakeDeathPending":false,"freshJoin":false},
-        "MICHAEL":{"id":"MICHAEL","hunger":45.0,"funLevel":50.0,"strength":44.0,"level":4,"xp":210,"moodBonus":-3.0,"wins":6,"losses":4,"sceneIndex":0,"fakeDeathPending":false,"freshJoin":false}},
-        "selected":"MICHAEL","lastSeenMs":$lastSeenMs}
-    """.trimIndent()
-
-    private val v020Six = listOf(PetId.JASON, PetId.FREDDY, PetId.PINHEAD, PetId.GHOSTFACE, PetId.CHUCKY, PetId.MICHAEL)
-
-    @Test
-    fun aV020UpgradeAfterAWeekAwayFakeKillsTheSixButLeatherfaceArrivesFresh() {
-        val loaded = SaveCodec.decode(v020Save(T0 - 8 * DAY))
-        val rig = Rig(loaded).started()
-
-        // The six killers v0.2.0 had decay and fake-die exactly as they did before the update.
-        val asBefore = applyElapsed(loaded.copy(pets = loaded.pets.filterKeys { it in v020Six }), T0).first
-        for (id in v020Six) {
-            assertEquals("$id", asBefore.pets.getValue(id), rig.game.pets.getValue(id))
-            assertTrue("$id", rig.game.pets.getValue(id).fakeDeathPending)
-        }
-        assertEquals(Screen.FakeDeath(PetId.MICHAEL), rig.ui.screen)
-        // Leatherface has only just arrived: no time away, no fake death, nothing decayed, in memory and saved.
-        assertEquals(PetState(PetId.LEATHERFACE), rig.game.pets.getValue(PetId.LEATHERFACE))
-        assertEquals(PetState(PetId.LEATHERFACE), rig.store.last.pets.getValue(PetId.LEATHERFACE))
-        assertEquals(T0, rig.store.last.lastSeenMs)
-
-        // After the reveal, picking Leatherface goes straight Home: no R.I.P. for a pet that just moved in.
-        rig.vm.onFakeDeathDone()
-        rig.vm.openSwitcher()
-        rig.vm.onSwitcherPick(PetId.LEATHERFACE)
-        assertEquals(Screen.Home, rig.ui.screen)
-        assertEquals(PetId.LEATHERFACE, rig.game.selected)
-    }
-
-    @Test
-    fun aV020UpgradeAfterTenHoursDecaysTheSixButNotLeatherface() {
-        val loaded = SaveCodec.decode(v020Save(T0 - 10 * HOUR))
-        val rig = Rig(loaded).started()
-        assertEquals(Screen.Home, rig.ui.screen)
-        assertEquals(45.0 + 40.0, rig.game.pets.getValue(PetId.MICHAEL).hunger, 1e-9)
-        assertEquals(PetState(PetId.LEATHERFACE), rig.game.pets.getValue(PetId.LEATHERFACE))
-
-        // Once he has joined, he decays like everyone else.
-        rig.clock.now = T0 + 10 * HOUR
-        rig.vm.tick()
-        assertEquals(20.0 + 40.0, rig.game.pets.getValue(PetId.LEATHERFACE).hunger, 1e-9)
+        rig.settle()
+        assertEquals(mapOf(PetId.CHUCKY to PetState(PetId.CHUCKY)), rig.store.last.pets)
+        assertEquals(2, rig.store.last.version)
     }
 
     @Test
@@ -414,14 +342,18 @@ class GameViewModelTest {
         assertEquals(Screen.Home, rig.ui.screen)
         assertEquals(PetId.GHOSTFACE, rig.game.selected)
         assertEquals(PetId.GHOSTFACE, rig.store.last.selected)
+        // The starter is the whole stable: the rest are to be unlocked.
+        assertEquals(mapOf(PetId.GHOSTFACE to PetState(PetId.GHOSTFACE)), rig.game.pets)
     }
 
     @Test
-    fun selectModeBackReturnsHome() {
+    fun theStableOpensAndClosesOverHome() {
         val rig = Rig(gameOf()).started()
-        rig.vm.openSwitcher()
-        assertEquals(Screen.Switcher(SwitcherMode.SELECT), rig.ui.screen)
-        rig.vm.onSwitcherBack()
+        rig.vm.openStable()
+        assertTrue(rig.ui.stableOpen)
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.vm.closeStable()
+        assertFalse(rig.ui.stableOpen)
         assertEquals(Screen.Home, rig.ui.screen)
     }
 
@@ -429,8 +361,9 @@ class GameViewModelTest {
     fun selectingAPendingPetShowsItsFakeDeathOnce() {
         val freddy = PetState(PetId.FREDDY, fakeDeathPending = true)
         val rig = Rig(gameOf(pets = arrayOf(freddy))).started()
-        rig.vm.openSwitcher()
-        rig.vm.onSwitcherPick(PetId.FREDDY)
+        rig.vm.openStable()
+        rig.vm.onStablePick(PetId.FREDDY)
+        assertFalse(rig.ui.stableOpen)
         assertEquals(Screen.FakeDeath(PetId.FREDDY), rig.ui.screen)
         assertEquals(PetId.FREDDY, rig.game.selected)
 
@@ -524,9 +457,9 @@ class GameViewModelTest {
         rig.vm.onCare(CareAction.FEED)
         assertEquals(25.0, rig.jason.hunger, 1e-9)
         assertTrue(rig.ui.busy)
-        assertEquals(listOf("chomp"), rig.ui.sfx)
+        assertEquals(listOf("food_drop"), rig.ui.sfx)
 
-        rig.finishAnim()
+        rig.finishAllAnims()
         assertFalse(rig.ui.busy)
         assertNull(rig.ui.petAnim)
         assertEquals(25.0, rig.jason.hunger, 1e-9)
@@ -558,7 +491,7 @@ class GameViewModelTest {
         // Stats change once, at the start.
         assertEquals(65.0, rig.jason.funLevel, 1e-9)
         assertEquals(28.0, rig.jason.hunger, 1e-9)
-        assertEquals(listOf("play"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
 
         rig.vm.onAnimFinished(first.token)
         val second = rig.ui.petAnim!!
@@ -589,7 +522,7 @@ class GameViewModelTest {
         val pet = rig.game.pets.getValue(PetId.LEATHERFACE)
         assertEquals(65.0, pet.funLevel, 1e-9)
         assertEquals(28.0, pet.hunger, 1e-9)
-        assertEquals(listOf("play"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
 
         // One request, one report: the dance's finish ends the action.
         rig.vm.onAnimFinished(dance.token)
@@ -659,6 +592,11 @@ class GameViewModelTest {
         assertEquals(token, rig.ui.petAnim!!.token)
 
         rig.vm.onAnimFinished(token)
+        val second = rig.ui.petAnim!!
+        assertNotEquals(token, second.token)
+        rig.vm.onAnimFinished(token) // the finished token cannot end the feed's second munch
+        assertEquals(second, rig.ui.petAnim)
+        rig.vm.onAnimFinished(second.token)
         assertFalse(rig.ui.busy)
 
         // The finished token cannot end the next action.
@@ -732,7 +670,7 @@ class GameViewModelTest {
         rig.vm.onWalk(1)
         rig.vm.onWalk(-1)
         rig.vm.onFightPressed()
-        rig.vm.openSwitcher()
+        rig.vm.openStable()
         assertEquals(snapshot, rig.ui)
         assertEquals(token, rig.ui.petAnim!!.token)
     }
@@ -740,7 +678,7 @@ class GameViewModelTest {
     @Test
     fun careIsIgnoredOffTheHomeScreen() {
         val rig = Rig(gameOf()).started()
-        rig.vm.openSwitcher()
+        rig.vm.onFightPressed()
         val before = rig.ui
         rig.vm.onCare(CareAction.FEED)
         rig.vm.onWalk(1)
@@ -797,8 +735,8 @@ class GameViewModelTest {
         val rig = Rig(gameOf()).started()
         rig.vm.onWalk(1)
         rig.finishAnim()
-        rig.vm.openSwitcher()
-        rig.vm.onSwitcherPick(PetId.FREDDY)
+        rig.vm.openStable()
+        rig.vm.onStablePick(PetId.FREDDY)
         assertEquals(1, rig.jason.sceneIndex)
         assertEquals(0, rig.game.pets.getValue(PetId.FREDDY).sceneIndex)
     }
@@ -1155,10 +1093,10 @@ class GameViewModelTest {
     @Test
     fun resumeOffTheHomeScreenShowsNoToast() {
         val rig = Rig(gameOf()).started()
-        rig.vm.openSwitcher()
+        rig.vm.onFightPressed()
         rig.clock.now += 5 * HOUR
         rig.vm.onResume()
-        assertEquals(Screen.Switcher(SwitcherMode.SELECT), rig.ui.screen)
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
         assertEquals(40.0, rig.jason.hunger, 1e-9)
         assertNull(rig.ui.toast)
     }
@@ -1218,6 +1156,8 @@ class GameViewModelTest {
         assertTrue(rig.ui.busy)
 
         rig.finishAnim()
+        assertEquals("not between the munches", Screen.Home, rig.ui.screen)
+        rig.finishAnim()
         assertEquals(Screen.FakeDeath(PetId.JASON), rig.ui.screen)
         assertFalse(rig.ui.busy)
     }
@@ -1225,10 +1165,10 @@ class GameViewModelTest {
     @Test
     fun fakeDeathFromATickWaitsOffTheHomeScreenUntilHome() {
         val rig = Rig(gameOf()).started()
-        rig.vm.openSwitcher()
+        rig.vm.onFightPressed()
         rig.clock.now += 7 * DAY
         rig.vm.tick()
-        assertEquals(Screen.Switcher(SwitcherMode.SELECT), rig.ui.screen)
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
 
         rig.vm.onSwitcherBack()
         assertEquals(Screen.FakeDeath(PetId.JASON), rig.ui.screen)
@@ -1243,7 +1183,7 @@ class GameViewModelTest {
         assertEquals(Screen.Home, rig.ui.screen)
 
         rig.vm.onCare(CareAction.FEED)
-        rig.finishAnim()
+        rig.finishAllAnims()
         rig.clock.now += HOUR
         rig.vm.tick()
         rig.vm.onWalk(1)
@@ -1283,10 +1223,242 @@ class GameViewModelTest {
         val vm = GameViewModel(store, FakeClock(T0), Random(1), scope, { Anim.REVIEW })
         vm.start()
         scope.runCurrent() // the first save is now in flight and slow
+        vm.onStart()
         vm.onCare(CareAction.FEED) // its successor must wait for it
         scope.advanceUntilIdle()
         assertEquals(listOf(60.0, 25.0), store.saved.map { it.pets.getValue(PetId.JASON).hunger })
         assertEquals(vm.state.value.game, store.saved.last())
+    }
+
+    @Test
+    fun feedDropsFoodWithItsFirstMunchOnly() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        val first = rig.ui.petAnim!!
+        assertEquals(Anim.REVIEW, first.anim)
+        assertNotNull(first.food)
+
+        rig.finishAnim()
+        val second = rig.ui.petAnim!!
+        assertEquals(Anim.REVIEW, second.anim)
+        assertNull(second.food)
+        assertTrue(rig.ui.busy)
+
+        rig.finishAnim()
+        assertFalse(rig.ui.busy)
+        assertNull(rig.ui.petAnim)
+    }
+
+    @Test
+    fun twoFeedsInARowDropDifferentFood() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 100.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        val first = rig.ui.petAnim!!.food
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.FEED)
+        val second = rig.ui.petAnim!!.food
+        assertNotNull(second)
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun playStartsWithAGagOnItsFirstRequestOnly() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val first = rig.ui.petAnim!!
+        assertEquals(Anim.JUMP, first.anim)
+        assertNotNull(first.gag)
+        assertNull(first.food)
+        rig.finishAnim()
+        assertEquals(Anim.WAVE, rig.ui.petAnim!!.anim)
+        assertNull(rig.ui.petAnim!!.gag)
+        rig.finishAnim()
+        assertFalse(rig.ui.busy)
+    }
+
+    @Test
+    fun twoPlaysInARowDoDifferentGags() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0, funLevel = 10.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        val first = rig.ui.petAnim!!.gag
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.PLAY)
+        val second = rig.ui.petAnim!!.gag
+        assertNotNull(second)
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun feedAndTrainDoNoGag() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
+        rig.vm.onCare(CareAction.FEED)
+        assertNull(rig.ui.petAnim!!.gag)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertNull(rig.ui.petAnim!!.gag)
+    }
+
+    @Test
+    fun otherCareDropsNoFood() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        assertNull(rig.ui.petAnim!!.food)
+        rig.finishAllAnims()
+        rig.vm.onCare(CareAction.TRAIN)
+        assertNull(rig.ui.petAnim!!.food)
+    }
+
+    // ---- the stable: unlocking killers and switching between them ------------------------------
+
+    /** A stable of just a strong Jason, strong enough to win [winningScript]'s fight. */
+    private fun soloJason() = GameState(pets = mapOf(PetId.JASON to jason(strength = 100.0)), selected = PetId.JASON, lastSeenMs = T0)
+
+    /** Plays the fight out with [move] every turn. */
+    private fun Rig.playOut(move: Move = Move.STRIKE) {
+        var turns = 0
+        while (ui.screen is Screen.Fight) {
+            vm.onMove(move)
+            finishAnim()
+            check(++turns < 20) { "the fight never ended" }
+        }
+    }
+
+    @Test
+    fun beatingALockedKillerUnlocksIt() {
+        val rig = Rig(soloJason(), rng = winningScript()).started()
+        rig.toFight(PetId.FREDDY)
+        rig.vm.consumeSounds()
+        rig.playOut()
+
+        val unlocked = rig.ui.screen as Screen.Unlocked
+        assertEquals(PetId.FREDDY, unlocked.pet)
+        assertTrue(unlocked.results.won)
+        assertEquals(setOf(PetId.JASON, PetId.FREDDY), rig.game.pets.keys)
+        // It joins at its defaults, from now: the stable's clock is brought up to the moment it joined.
+        assertEquals(PetState(PetId.FREDDY), rig.game.pets.getValue(PetId.FREDDY))
+        assertEquals(rig.clock.now, rig.game.lastSeenMs)
+        assertEquals(listOf("you_win", "unlocked"), rig.ui.voice)
+        rig.settle()
+        assertTrue(rig.store.last.isUnlocked(PetId.FREDDY))
+
+        rig.vm.onUnlockedDone()
+        assertEquals(unlocked.results, rig.ui.screen)
+        rig.vm.onUnlockedDone() // key repeat
+        assertEquals(unlocked.results, rig.ui.screen)
+        rig.vm.onResultsDone()
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun aKillerUnlockedRightBeforeQuittingStillFeelsTheNextAbsence() {
+        val rig = Rig(soloJason(), rng = winningScript()).started()
+        rig.toFight(PetId.FREDDY)
+        rig.clock.now += 30_000 // the fight took half a minute; no tick has run since the last one
+        rig.playOut()
+        assertTrue(rig.ui.screen is Screen.Unlocked)
+        rig.settle()
+
+        // The player quits at once and comes back a week later: Freddy was there for all of it.
+        val later = Rig(rig.store.last, clock = FakeClock(rig.clock.now + 8 * DAY)).started()
+        val freddy = later.game.pets.getValue(PetId.FREDDY)
+        assertTrue(freddy.fakeDeathPending)
+        assertEquals(Tuning.FAKE_DEATH_HUNGER, freddy.hunger, 1e-9)
+        assertEquals(Tuning.FAKE_DEATH_FUN, freddy.funLevel, 1e-9)
+    }
+
+    @Test
+    fun underAStaleClockAnUnlockedKillerWaitsForTheRealTime() {
+        // Before the TV's clock has synced, no time can be applied, so the newcomer keeps the fresh-join mark and
+        // sits out whatever gap the real clock turns out to be.
+        val stale = FakeClock(Tuning.MIN_VALID_EPOCH_MS - DAY)
+        val rig = Rig(soloJason(), rng = winningScript(), clock = stale).started()
+        rig.toFight(PetId.FREDDY)
+        rig.playOut()
+        assertEquals(PetState(PetId.FREDDY, freshJoin = true), rig.game.pets.getValue(PetId.FREDDY))
+    }
+
+    @Test
+    fun beatingAKillerYouHaveIsARematch() {
+        val rig = Rig(strongJason(), rng = winningScript()).started()
+        val freddy = rig.game.pets.getValue(PetId.FREDDY)
+        rig.toFight(PetId.FREDDY)
+        rig.playOut()
+        assertTrue((rig.ui.screen as Screen.Results).won)
+        assertEquals(freddy, rig.game.pets.getValue(PetId.FREDDY))
+    }
+
+    @Test
+    fun losingUnlocksNoOne() {
+        // As in losingAFightRecordsALoss: the CPU always HEAVYs and Jason's BLOCKs do nothing against it.
+        val heavy = listOf(Roll().miss, Roll().variance, Roll().crit)
+        val doubles = buildList {
+            addAll(heavy)
+            repeat(2) {
+                add(0.99)
+                addAll(heavy)
+            }
+        }
+        val rig = Rig(soloJason(), rng = ScriptedRandom(doubles, ints = listOf(0, 0, 40, 40, 40))).started()
+        rig.toFight(PetId.PINHEAD)
+        rig.playOut(Move.BLOCK)
+        assertFalse((rig.ui.screen as Screen.Results).won)
+        assertEquals(setOf(PetId.JASON), rig.game.pets.keys)
+    }
+
+    @Test
+    fun runningUnlocksNoOne() {
+        val rig = Rig(soloJason()).started()
+        rig.toFight(PetId.PINHEAD)
+        rig.vm.onMove(Move.RUN)
+        rig.finishAnim()
+        assertTrue((rig.ui.screen as Screen.Results).ran)
+        assertEquals(setOf(PetId.JASON), rig.game.pets.keys)
+    }
+
+    @Test
+    fun theStableNeedsASecondKillerAndAnIdleHome() {
+        val solo = Rig(soloJason()).started()
+        solo.vm.openStable()
+        assertFalse("nobody else to go see", solo.ui.stableOpen)
+
+        val rig = Rig(gameOf()).started()
+        rig.vm.onCare(CareAction.PLAY)
+        rig.vm.openStable()
+        assertFalse("not while busy", rig.ui.stableOpen)
+        rig.finishAllAnims()
+        rig.vm.onFightPressed()
+        rig.vm.openStable()
+        assertFalse("not off Home", rig.ui.stableOpen)
+    }
+
+    @Test
+    fun pickingInTheStableGoesToSeeThem() {
+        val rig = Rig(GameState(pets = mapOf(PetId.JASON to jason(), PetId.MICHAEL to PetState(PetId.MICHAEL)), selected = PetId.JASON, lastSeenMs = T0)).started()
+        rig.vm.onStablePick(PetId.MICHAEL)
+        assertEquals("closed: ignored", PetId.JASON, rig.game.selected)
+
+        rig.vm.openStable()
+        rig.vm.onStablePick(PetId.FREDDY)
+        assertEquals("locked: ignored", PetId.JASON, rig.game.selected)
+        assertTrue(rig.ui.stableOpen)
+
+        rig.vm.onStablePick(PetId.MICHAEL)
+        assertEquals(PetId.MICHAEL, rig.game.selected)
+        assertFalse(rig.ui.stableOpen)
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.settle()
+        assertEquals(PetId.MICHAEL, rig.store.last.selected)
+    }
+
+    @Test
+    fun whileTheStableIsOpenHomeTakesNoInput() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.openStable()
+        val before = rig.ui
+        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onWalk(1)
+        rig.vm.onFightPressed()
+        assertEquals(before, rig.ui)
     }
 
     // ---- sounds and toast --------------------------------------------------------------------
@@ -1295,11 +1467,11 @@ class GameViewModelTest {
     fun consumeSoundsClearsBothQueues() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
         rig.vm.onCare(CareAction.FEED)
-        rig.finishAnim()
+        rig.finishAllAnims()
         rig.vm.onFightPressed()
         rig.vm.onSwitcherPick(PetId.GHOSTFACE)
         // Unconsumed sounds pile up in order.
-        assertEquals(listOf("chomp"), rig.ui.sfx)
+        assertEquals(listOf("food_drop"), rig.ui.sfx)
         assertEquals(listOf("jason", "versus", "ghostface"), rig.ui.voice)
 
         rig.vm.consumeSounds()

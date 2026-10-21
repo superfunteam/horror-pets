@@ -2,6 +2,7 @@ package team.superfun.horrorpets.data
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import team.superfun.horrorpets.game.Tuning
@@ -15,7 +16,7 @@ import team.superfun.horrorpets.model.PetState
 /** The save file format: [GameState] as JSON. Decoding never throws; an unusable save is reported as null or becomes a fresh game. */
 object SaveCodec {
     /** Newest save version this build understands; a higher one was written by a newer build. */
-    private const val SUPPORTED_VERSION = 1
+    private const val SUPPORTED_VERSION = 2
 
     private val format = Json {
         ignoreUnknownKeys = true
@@ -38,44 +39,39 @@ object SaveCodec {
 
     /**
      * Reads a save, or returns null when the whole save is unusable: not JSON, truncated, not an object,
-     * a wrongly typed top-level field (`version`, `lastSeenMs`, `pets` that is not an object), or a
-     * version newer than this build. No save at all (null or blank) is a first run: [GameState] defaults.
+     * a wrongly typed top-level field (`version`, `lastSeenMs`, `pets` that is neither an object nor null), or
+     * a version newer than this build. No save at all (null or blank) is a first run: [GameState] defaults.
      *
-     * Otherwise returns the saved state with every [PetId] present, tolerating what a later build or a
-     * damaged entry might leave behind:
+     * A version-1 save (v0.1.0 to v0.3.0, from before the stable, with every killer unlocked) is read as a fresh
+     * game: everyone starts over with one starter. It is still a usable save, so the new game is saved over it.
+     *
+     * Otherwise returns the saved stable, tolerating what a later build or a damaged entry might leave behind:
      * - a pet key this build does not know (a character added later) is skipped;
-     * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, and
-     *   so is a missing one; the other pets are kept;
-     * - a pet with no entry at all (a killer added since the save was written, like Chucky and Michael in
-     *   a v0.1.0 save, or Leatherface in a v0.2.0 one) joins at its defaults with [PetState.freshJoin] set,
-     *   so the time away does not decay it; a damaged entry is still a pet the player had and does not;
-     * - an unknown `selected` pet reads as none, so the player picks again.
+     * - a pet entry that cannot be read (wrong type, bad field) is replaced by that pet's defaults, still
+     *   unlocked; the other pets are kept;
+     * - a `selected` pet that is unknown or not in the stable reads as the stable's first killer (in roster order),
+     *   or none when the stable is empty; never none beside a stable, which would reopen the starter pick.
      * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
      * - hunger, fun and strength are in 0..100 and moodBonus in -30..30 (NaN becomes the field's default);
      * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative.
-     * A version below 1 reads as 1.
      */
     fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
         return try {
             val root = reader.parseToJsonElement(json) as? JsonObject ?: return null
             val pets = when (val p = root["pets"]) {
-                null -> JsonObject(emptyMap())
+                null, JsonNull -> JsonObject(emptyMap())
                 is JsonObject -> p
                 else -> return null
             }
             // Pets and the selection are read on their own below, so neither can sink the rest.
             val rest = reader.decodeFromJsonElement(GameState.serializer(), JsonObject(root - "pets" - "selected"))
             if (rest.version > SUPPORTED_VERSION) return null
-            rest.copy(
-                version = rest.version.coerceAtLeast(1),
-                selected = petIdOrNull(root["selected"]),
-                pets = PetId.entries.associateWith { id ->
-                    if (id.name in pets) petOrDefault(id, pets[id.name]) else PetState(id, freshJoin = true)
-                },
-            )
+            if (rest.version < SUPPORTED_VERSION) return GameState()
+            val stable = PetId.entries.filter { it.name in pets }.associateWith { id -> petOrDefault(id, pets[id.name]) }
+            rest.copy(pets = stable, selected = petIdOrNull(root["selected"])?.takeIf { it in stable } ?: stable.keys.firstOrNull())
         } catch (_: Exception) {
             // SerializationException, IllegalArgumentException (bad number): the save as a whole is unusable.
             null
