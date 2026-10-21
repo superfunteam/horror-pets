@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build, sign, verify and publish a Horror Pets release, entirely from this machine.
+# Build, sign, verify and publish a Virtual Pet Slasher 2 Turbo release, entirely from this machine.
 # The signing key never leaves ~/.horror-pets/ and is never uploaded anywhere (no CI secrets).
 #
 #   tools/release.sh 0.2.0               real release: tag, push, GitHub Release
@@ -339,9 +339,9 @@ info "SHA-256 $(shasum -a 256 "$DIST_APK" | cut -d' ' -f1)"
 # ---------------------------------------------------------------------------
 if [ "$DRY_RUN" -eq 1 ]; then
   info "Dry run: stopping before publishing. A real release would now run:"
-  printf '    git tag -a %s -m "Horror Pets %s" %s\n' "$TAG" "$VERSION" "$COMMIT"
+  printf '    git tag -a %s -m "Virtual Pet Slasher 2 Turbo %s" %s\n' "$TAG" "$VERSION" "$COMMIT"
   printf '    git push origin refs/tags/%s\n' "$TAG"
-  printf '    gh release create %s dist/horror-pets-%s.apk --verify-tag --title "Horror Pets %s" --generate-notes\n' \
+  printf '    gh release create %s dist/horror-pets-%s.apk --verify-tag --title "Virtual Pet Slasher 2 Turbo %s" --generate-notes\n' \
     "$TAG" "$VERSION" "$VERSION"
   exit 0
 fi
@@ -352,10 +352,10 @@ fi
 
 APK_Q="$(printf '%q' "$DIST_APK")"
 PUSH_CMD="git push origin refs/tags/$TAG"
-CREATE_CMD="gh release create $TAG $APK_Q --verify-tag --title \"Horror Pets $VERSION\" --generate-notes"
+CREATE_CMD="gh release create $TAG $APK_Q --verify-tag --title \"Virtual Pet Slasher 2 Turbo $VERSION\" --generate-notes"
 
 info "Tagging $TAG at $COMMIT"
-git tag -a "$TAG" -m "Horror Pets $VERSION" "$COMMIT"
+git tag -a "$TAG" -m "Virtual Pet Slasher 2 Turbo $VERSION" "$COMMIT"
 
 info "Pushing $TAG to origin"
 git push origin "refs/tags/$TAG" || die "pushing $TAG failed; the tag exists only locally and no release was created.
@@ -365,7 +365,7 @@ Fix the problem, then run both:
 Or abandon this release with: git tag -d $TAG"
 
 info "Creating GitHub Release $TAG"
-gh release create "$TAG" "$DIST_APK" --verify-tag --title "Horror Pets $VERSION" --generate-notes \
+gh release create "$TAG" "$DIST_APK" --verify-tag --title "Virtual Pet Slasher 2 Turbo $VERSION" --generate-notes \
   || die "$TAG is pushed, but creating the GitHub Release failed. See what exists with:
   gh release view $TAG
 If there is no release, run:

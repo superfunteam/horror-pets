@@ -1,4 +1,8 @@
-"""Compose the Android TV launcher banner and the app icon from the finished sprites and scenes.
+"""Compose the Android TV launcher banner and the app icon.
+
+The banner is the "Virtual Pet Slasher 2 Turbo" cover: the key art in branding/cover-art.webp with the logo in
+branding/logo.png laid over the open sky at the top (both made by tools/generate_cover.py and picked by eye).
+The icon is Jason's mask, which still reads at 48 px.
 
 Outputs:
   app/src/main/res/drawable-{xhdpi,xxhdpi,xxxhdpi}/banner.png   320x180 / 480x270 / 640x360
@@ -14,18 +18,20 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "app/src/main/res"
-FONT = RES / "font/barlow_condensed_extrabold.ttf"
+COVER_ART = ROOT / "branding/cover-art.webp"
+LOGO = ROOT / "branding/logo.png"
 INK = (7, 7, 10)
 BLOOD = (193, 18, 31)
-GLOW = (255, 77, 87)
-PETS = ["jason", "freddy", "pinhead", "ghostface"]
 BANNERS = {"xhdpi": (320, 180), "xxhdpi": (480, 270), "xxxhdpi": (640, 360)}
 ICONS = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 MASTER = (1280, 720)
+LOGO_WIDTH = 0.58  # of the cover width
+LOGO_TOP = 0.04    # of the cover height
+HALO_OPACITY = 0.75
 
 
 def idle_frame(pet: str) -> tuple[Image.Image, int]:
@@ -36,75 +42,24 @@ def idle_frame(pet: str) -> tuple[Image.Image, int]:
     return strip.crop((0, 0, cw, ch)), m["baselineY"]
 
 
-def vignette(size: tuple[int, int], strength: float) -> Image.Image:
-    w, h = size
-    y, x = np.mgrid[0:h, 0:w]
-    d = np.sqrt(((x - w / 2) / (w / 2)) ** 2 + ((y - h / 2) / (h / 2)) ** 2)
-    a = np.clip((d - 0.35) / 0.9, 0, 1) ** 1.4 * strength
-    out = np.zeros((h, w, 4), dtype=np.uint8)
-    out[..., :3] = INK
-    out[..., 3] = (a * 255).astype(np.uint8)
-    return Image.fromarray(out, "RGBA")
-
-
-def glow_text(base: Image.Image, text: str, size: int, center: tuple[int, int], tracking: float) -> None:
-    """White Barlow ExtraBold title with a soft blood-red glow and a dark drop shadow."""
-    font = ImageFont.truetype(str(FONT), size)
-    widths = [font.getlength(c) for c in text]
-    total = sum(widths) + tracking * size * (len(text) - 1)
-    x0 = center[0] - total / 2
-    ascent, descent = font.getmetrics()
-    y0 = center[1] - (ascent + descent) / 2
-
-    def draw_on(layer: Image.Image, fill, offset=(0, 0)) -> None:
-        d = ImageDraw.Draw(layer)
-        x = x0
-        for c, cw in zip(text, widths):
-            d.text((x + offset[0], y0 + offset[1]), c, font=font, fill=fill)
-            x += cw + tracking * size
-
-    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    draw_on(glow, GLOW + (255,))
-    base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(size * 0.18)))
-    base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(size * 0.06)))
-    shadow = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    draw_on(shadow, (0, 0, 0, 200), (0, size * 0.04))
-    base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(size * 0.03)))
-    face = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    draw_on(face, (242, 242, 242, 255))
-    base.alpha_composite(face)
-
-
 def banner_master() -> Image.Image:
-    w, h = MASTER
-    scene = Image.open(ROOT / "scenes-final/pinhead/chamber.webp").convert("RGB")
-    sw, sh = scene.size
-    ch = round(sw * h / w)
-    scene = scene.crop((0, (sh - ch) // 2, sw, (sh - ch) // 2 + ch)).resize((w, h), Image.LANCZOS)
-    scene = ImageEnhance.Brightness(scene).enhance(0.42)
-    scene = ImageEnhance.Color(scene).enhance(0.8)
-    base = scene.convert("RGBA")
-    base.alpha_composite(vignette((w, h), 0.85))
+    """Key art with the logo centered over the open sky, plus a soft dark halo so it reads at 320x180."""
+    art = Image.open(COVER_ART).convert("RGBA").resize(MASTER, Image.LANCZOS)
+    w, h = art.size
+    logo = Image.open(LOGO).convert("RGBA")
+    logo = logo.crop(logo.getbbox())
+    lw = round(w * LOGO_WIDTH)
+    logo = logo.resize((lw, round(logo.height * lw / logo.width)), Image.LANCZOS)
+    x, y = (w - lw) // 2, round(h * LOGO_TOP)
 
-    floor_y = round(h * 0.93)
-    cell_h = round(h * 0.62)
-    for i, pet in enumerate(PETS):
-        cell, baseline = idle_frame(pet)
-        scale = cell_h / cell.height
-        sprite = cell.resize((round(cell.width * scale), cell_h), Image.LANCZOS)
-        cx = round(w * (0.2 + 0.2 * i))
-        pool = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        pw = round(sprite.width * 0.55)
-        ImageDraw.Draw(pool).ellipse((cx - pw, floor_y - pw // 6, cx + pw, floor_y + pw // 6), fill=BLOOD + (90,))
-        base.alpha_composite(pool.filter(ImageFilter.GaussianBlur(18)))
-        shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        sw2 = round(sprite.width * 0.32)
-        ImageDraw.Draw(shadow).ellipse((cx - sw2, floor_y - sw2 // 7, cx + sw2, floor_y + sw2 // 7), fill=(0, 0, 0, 170))
-        base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(6)))
-        base.alpha_composite(sprite, (cx - sprite.width // 2, floor_y - round(baseline * scale)))
-
-    glow_text(base, "HORROR PETS", round(h * 0.21), (w // 2, round(h * 0.17)), 0.06)
-    return base.convert("RGB")
+    shadow = Image.new("L", (w, h), 0)
+    shadow.paste(logo.getchannel("A"), (x, y))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(w * 0.02))
+    halo = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    halo.putalpha(shadow.point(lambda v: round(v * HALO_OPACITY)))
+    art.alpha_composite(halo)
+    art.alpha_composite(logo, (x, y))
+    return art.convert("RGB")
 
 
 def icon_master(size: int = 768) -> Image.Image:
