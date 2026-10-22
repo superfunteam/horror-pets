@@ -22,7 +22,7 @@ from finalize_food import ALPHA_FLOOR, MARGIN  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "art-work/video/art"
 OUT = ROOT / "video/art"
-TITLES = {"raise": 1, "fight": 1, "pvp": 2, "outro": 2}
+TITLES = {"raise": 1, "fight": 1, "pvp-local": 2, "outro": 2}
 ROOM, TV = 2, 1
 WIDTH = 1600
 

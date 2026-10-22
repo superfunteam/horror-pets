@@ -40,6 +40,8 @@ TITLES = {
              "the pink-to-yellow brush script.",
     "pvp": "\"ONLINE\" on the first line in the chrome block capitals, and \"PvP\" under it, huge, in the "
            "pink-to-yellow brush script.",
+    "pvp-local": "\"ONLINE & LOCAL\" on the first line in the chrome block capitals, and \"PvP\" under it, huge, in "
+                 "the pink-to-yellow brush script.",
     "outro": "\"SLASHING ON ANDROID PHONES & ANDROID TV\" on the first line in the chrome block capitals, and "
              "\"this Halloween\" under it, big, in the pink-to-yellow brush script.",
 }

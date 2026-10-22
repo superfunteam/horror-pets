@@ -68,13 +68,15 @@ def _shade() -> Image.Image:
 
 class TitleCard:
     """[duration] long: killers flying in at their [arrivals] times, the logo landing at [logo_at] and hitting again at
-    [turbo_at], lightning at the [lightning] times, faded in from and out to black over [fade_in] and [fade_out]."""
+    [turbo_at] (with the announcer's [shout] of the name between them), lightning at the [lightning] times, faded in
+    from and out to black over [fade_in] and [fade_out]."""
 
     def __init__(self, duration: float, arrivals: dict[str, float] | None = None, logo_at: float | None = None,
                  turbo_at: float | None = None, lightning: tuple[float, ...] = (), fade_in: float = 0.0,
-                 fade_out: float = 0.0, seed: int = 29):
+                 fade_out: float = 0.0, shout: bool = True, seed: int = 29):
         self.duration, self.arrivals = duration, arrivals or {}
         self.logo_at, self.turbo_at, self.fade_in, self.fade_out = logo_at, turbo_at, fade_in, fade_out
+        self.shout = shout
         hits = [*self.arrivals.values(), *(x for x in (logo_at, turbo_at) if x is not None)]
         self.lightning = sorted({*lightning, *hits})
 
@@ -204,7 +206,7 @@ class TitleCard:
         return fx.flash(out, (0, 0, 0), dark)
 
     def cues(self) -> list[Cue]:
-        if self.logo_at is None or self.turbo_at is None:
+        if not self.shout or self.logo_at is None or self.turbo_at is None:
             return []
         # Sped up so that "Virtual" lands with the logo and "Turbo" on the second hit.
         tempo = (SHOUT_TURBO - SHOUT_FIRST) / (self.turbo_at - self.logo_at)

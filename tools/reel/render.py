@@ -104,9 +104,9 @@ def mix(cues: list[Cue], duration: float, dest: Path) -> Path:
     if music and rest:
         chains += ["[0:a]asplit[bm][bv]", bus("[bm]", music, "m"), bus("[bv]", rest, "v"), "[v]asplit[vk][vo]",
                    "[m][vk]sidechaincompress=threshold=0.1:ratio=3:attack=8:release=200[md]",
-                   "[md][vo]amix=inputs=2:normalize=0,alimiter=limit=0.9[out]"]
+                   "[md][vo]amix=inputs=2:normalize=0,alimiter=limit=0.8:level=disabled[out]"]
     else:
-        chains += [bus("[0:a]", music + rest, "a"), "[a]alimiter=limit=0.9[out]"]
+        chains += [bus("[0:a]", music + rest, "a"), "[a]alimiter=limit=0.8:level=disabled[out]"]
     subprocess.run(args + ["-filter_complex", ";".join(chains), "-map", "[out]", "-c:a", "pcm_s16le", str(dest)], check=True)
     return dest
 

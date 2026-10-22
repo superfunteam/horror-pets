@@ -1,9 +1,10 @@
-"""Fight to evolve your skills: real fights cut on the beat, then a wall of attack cards streaming past.
+"""Fight to evolve your skills: real fights cut on the beat, what winning brings, then a wall of attack cards.
 
-The first half is gameplay recorded off the TV emulator: the VS card into FIGHT!, a crit, Pinhead's super cut-in and
-chains, Jason's guard break into a K.O., the title slamming in over the start. The second half recuts the game's
-learnable attacks into cards: two rows sliding opposite ways, each card a killer swinging their sprite on their stage
-while the attack's marks (AttackMarks.kt, see marks.py) rip across it, its name and its four lit tiers underneath.
+First, gameplay recorded off the TV emulator, cut on the beat: the VS card into FIGHT!, a crit, Pinhead's super and
+chains (on the song's second drop), Freddy's claws draining, a potion, a combo, Jason's guard break into a K.O., with the
+title slamming in over the start; then Pinhead joining the stable, and Freddy learning a new special. Then the game's learnable attacks recut as cards: two rows sliding opposite ways, each
+card a killer swinging their sprite on their stage while the attack's marks (AttackMarks.kt, see marks.py) rip across
+it, its name and its four lit tiers underneath.
 """
 from __future__ import annotations
 
@@ -21,15 +22,17 @@ TITLE = cast.ROOT / "video/art/title-fight.webp"
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
 CARD_W, CARD_H, CARD_GAP = 380, 520, 44
-ZOOM = 1.28  # footage is cropped in on the fighters
 
 
 @dataclass(frozen=True)
 class Cut:
-    """[clip] shown for [length] seconds from [at] into the scene."""
+    """[clip] shown for [length] seconds from [at] into the scene, cropped in [zoom] times on [focus] (a fraction of
+    the frame)."""
     at: float
     length: float
     clip: Clip
+    zoom: float = 1.28  # fights are cropped in on the fighters
+    focus: tuple[float, float] = (0.5, 0.56)
 
 
 @dataclass(frozen=True)
@@ -65,20 +68,36 @@ def _text(s: str, size: int, fill, width: float) -> Image.Image:
 
 
 class FightToEvolve:
-    """[bars] bars of [bar] seconds: the first [fight_bars] of footage, the rest of attack cards."""
+    """[bars] bars of [bar] seconds: five of fights cut on the beat, a bar of the unlock, one of a learn screen, the
+    rest of cards. Pinhead's super lands on the [drop] (seconds in)."""
 
-    def __init__(self, bar: float, beat: float, bars: int = 6, fight_bars: int = 3):
+    def __init__(self, bar: float, beat: float, drop: float, bars: int = 11):
         self.bar, self.beat = bar, beat
         self.duration = bars * bar
-        self.cards_at = fight_bars * bar
+        self.cards_at = 7 * bar
         b = bar
-        self.cuts = [
-            Cut(0.0, b, Clip("tv-fight-pinhead.mp4", 2.3, 4.6, speed=2.3 / b)),  # VS into FIGHT!
-            Cut(b, b / 2, Clip("tv-fight-pinhead.mp4", 7.2, 8.6, speed=1.4 / (b / 2))),  # a crit
-            Cut(1.5 * b, b / 2, Clip("tv-fight-pinhead.mp4", 27.45, 28.3, speed=0.85 / (b / 2))),  # Pinhead's cut-in
-            Cut(2 * b, b / 2, Clip("tv-fight-pinhead.mp4", 28.8, 30.3, speed=1.5 / (b / 2))),  # chains for 55
-            Cut(2.5 * b, b / 2, Clip("tv-fight-freddy.mp4", 40.9, 43.0, speed=2.1 / (b / 2))),  # guard break, K.O.
+        # (beats long, recording, from, to): the montage, cut on the beat.
+        montage = [
+            (4, "tv-fight-pinhead.mp4", 2.3, 4.6),  # VS into FIGHT!
+            (1, "tv-fight-pinhead.mp4", 7.7, 8.6),  # a crit
+            (2, "tv-fight-pinhead.mp4", 27.45, 28.3),  # Pinhead's super cut-in, on the drop
+            (2, "tv-fight-pinhead.mp4", 28.8, 30.3),  # his chains for 55
+            (2, "tv-fight-freddy.mp4", 28.4, 30.0),  # Freddy's claws draining Jason
+            (2, "tv-fight-pinhead.mp4", 52.7, 54.2),  # a potion for 106
+            (2, "tv-fight-freddy.mp4", 12.6, 14.0),  # a combo
+            (2, "tv-fight-freddy.mp4", 40.9, 42.3),  # Jason's guard break
+            (3, "tv-fight-freddy.mp4", 42.3, 43.8),  # K.O.
         ]
+        self.cuts, at = [], 0.0
+        for beats, file, start, end in montage:
+            self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat))))
+            at += beats * beat
+        assert abs(self.cuts[2].at - drop) < 1e-6, "Pinhead's super should land on the drop"
+        self.cuts += [
+            Cut(5 * b, b, Clip("tv-fight-pinhead.mp4", 93.6, 95.6, speed=2.0 / b), zoom=1.5, focus=(0.5, 0.42)),  # UNLOCKED!
+            Cut(6 * b, b, Clip("tv-learn.mp4", 5.6, 8.4, speed=2.8 / b), zoom=1.12, focus=(0.5, 0.45)),  # a new special
+        ]
+        self.drop = drop
         self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=b - 0.25,
                           exit_dx=2400, glint_at=0.55)
         storm = fx.cover(Image.open(STORM).convert("RGB"), W, H).filter(ImageFilter.GaussianBlur(4))
@@ -96,10 +115,11 @@ class FightToEvolve:
         cut = next(c for c in reversed(self.cuts) if c.at <= t)
         local = t - cut.at
         im = cut.clip.frame(local)
-        z = ZOOM + 0.05 * local / cut.length
+        z = cut.zoom + 0.05 * local / cut.length
         cw, ch = im.width / z, im.height / z
-        cx, cy = im.width / 2, im.height * 0.56
-        box = (cx - cw / 2, max(0, cy - ch / 2), cx + cw / 2, max(0, cy - ch / 2) + ch)
+        cx = min(max(cut.focus[0] * im.width, cw / 2), im.width - cw / 2)
+        cy = min(max(cut.focus[1] * im.height, ch / 2), im.height - ch / 2)
+        box = (cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2)
         out = im.resize((W, H), Image.BILINEAR, box=box)
         return fx.flash(out, (255, 255, 255), 0.55 * pulse(local, 0, 0.12))
 
@@ -173,4 +193,4 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        return [Cue(1.5 * self.bar, cast.voice("special_move"), 1.1)]
+        return [Cue(self.drop, cast.voice("special_move"), 1.1), Cue(5 * self.bar + 0.1, cast.voice("unlocked"), 1.1)]

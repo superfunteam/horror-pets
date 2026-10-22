@@ -16,14 +16,21 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 from . import cast, fx, phones
 from .footage import Clip
 from .lettering import Slam
-from .motion import in_out_sine, jitter, lerp, out_back, out_cubic, pulse, ramp
+from .motion import in_cubic, in_out_sine, jitter, lerp, out_cubic, pulse, ramp
 from .render import FPS, H, W, Cue
 
-TITLE = cast.ROOT / "video/art/title-pvp.webp"
+TITLE = cast.ROOT / "video/art/title-pvp-local.webp"
 STORM = cast.ROOT / "site/art/backdrop.webp"
 RIM = (255, 60, 110)
 NFC = (150, 215, 255)
 LAG = 1.667  # Freddy's recording runs this far behind Jason's (lined up on Jason's super)
+HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
+
+
+def clear_x(yaw: float, gap: float) -> float:
+    """How far from the middle a phone turned [yaw] about its upright axis must sit for its nearest point to be
+    [gap] from it: half its width while it faces us, down to half its depth (with the camera bar) edge-on."""
+    return HALF_W * abs(math.cos(yaw)) + HALF_D * abs(math.sin(yaw)) + gap
 
 
 @dataclass(frozen=True)
@@ -77,32 +84,41 @@ class OnlinePvp:
         return str(f.clip.path(t - f.at))
 
     def shot(self, t: float) -> phones.Shot:
-        """Where the phones and camera are at [t], and what each screen shows."""
+        """Where the phones and camera are at [t], and what each screen shows. The phones never pass through each
+        other: while they turn, each keeps as far from the middle as its turn needs (clear_x), so they meet back to
+        back, and part the same way."""
         b = self.bar
-        bob = 0.25 * math.sin(t * 2.1)
-        if t < self.tap:
+        hold_x, hold_yaw = 9.9, 0.3
+        if t < 2 * b:  # flying in, then hanging side by side
             fly = ramp(t, 0, 1.0, out_cubic)
-            close = ramp(t, 1.6, self.tap, in_out_sine)  # turning sideways and closing in to touch backs
+            x, yaw = lerp(48, 10.5, fly) - 0.6 * ramp(t, 1.0, 2 * b), lerp(2.4, hold_yaw, fly)
+            z, still = lerp(-8, 0, fly), 0.0
+            orbit, dist, lift = 0.0, 44.0, 0.0
+        elif t < self.tap:  # turning edge-on and closing until their backs touch
             swing = ramp(t, 2 * b, self.tap, in_out_sine)
-            x = lerp(lerp(48, 10.5, fly), 0.58, close)
-            yaw = lerp(lerp(2.4, 0.3, fly), math.pi / 2, swing)
-            z = lerp(-8, 0, fly)
+            yaw = lerp(hold_yaw, math.pi / 2, swing)
+            gap = (hold_x - clear_x(hold_yaw, 0)) * (1 - ramp(t, 2 * b, self.tap, in_cubic))
+            x, z, still = clear_x(yaw, gap), 0.0, swing
             orbit, dist, lift = 0.75 * swing, lerp(44, 36, swing), 5 * swing
-        elif t < self.vs_at:
-            out = ramp(t, self.tap + 0.08, self.vs_at - 0.2, out_back)
-            x, yaw, z = lerp(0.58, 9.2, out), lerp(math.pi / 2, 0.12, out), 0.0
+        elif t < self.vs_at:  # a little recoil from the tap, then parting and spinning back to face us
+            out = ramp(t, self.tap + 0.1, self.vs_at - 0.2, out_cubic)
+            yaw = lerp(math.pi / 2, 0.12, out)
+            x = max(lerp(0.58, 9.2, out), clear_x(yaw, 0.3 * out)) + 0.25 * pulse(t, self.tap, 0.14)
+            z, still = 0.0, 1 - out
             back = ramp(t, self.tap, self.vs_at, out_cubic)
             orbit, dist, lift = lerp(0.75, 0, back), lerp(36, 44, back), lerp(5, 0, back)
         else:
             near = ramp(t, self.fight_at - 0.3, self.fight_at + 0.2, out_cubic)
-            x, yaw, z = lerp(9.2, 8.45, near), lerp(0.12, 0.08, near), 0.0
+            x, yaw, z, still = lerp(9.2, 8.45, near), lerp(0.12, 0.08, near), 0.0, 0.0
             orbit, dist, lift = 0.0, lerp(44, 36, near), 0.0
+        # Drifting while apart; held still and level while pressed together.
+        bob, tilt = 0.25 * math.sin(t * 2.1) * (1 - still), 0.04 * (1 - still)
         # Lowered under the title while it is up, then centered for the fight.
         y = -2.6 * ramp(t, self.tap + 0.2, self.vs_at, out_cubic) * (1 - ramp(t, self.fight_at - 0.3, self.fight_at + 0.2, out_cubic))
         punch = 1 + 0.03 * pulse(t % self.beat, 0, 0.15) * (t >= self.fight_at)
         cam = (dist * math.sin(orbit), lift, dist * math.cos(orbit))
-        left = phones.Phone((-x, y + bob, z), (0.04 * math.sin(t * 1.3), -yaw, 0.0), self.screen(0, t), scale=punch)
-        right = phones.Phone((x, y - bob, z), (0.04 * math.cos(t * 1.1), yaw, 0.0), self.screen(1, t), scale=punch)
+        left = phones.Phone((-x, y + bob, z), (tilt * math.sin(t * 1.3), -yaw, 0.0), self.screen(0, t), scale=punch)
+        right = phones.Phone((x, y - bob, z), (tilt * math.cos(t * 1.1), yaw, 0.0), self.screen(1, t), scale=punch)
         return phones.Shot((left, right), camera=cam, rim=RIM)
 
     def shots(self) -> dict[int, phones.Shot]:
