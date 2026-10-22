@@ -1,3 +1,7 @@
-# The landing page at pets.superfun.games is the static site in site/, deployed with `netlify deploy --prod`.
+# The landing page at pets.superfun.games is the static site in site/, and its PvP relay is the function in
+# netlify/functions/ (served at /api/pvp). Deployed with `netlify deploy --prod`.
 [build]
   publish = "site"
+
+[functions]
+  directory = "netlify/functions"

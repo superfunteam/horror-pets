@@ -1,0 +1,8 @@
+{
+  "name": "horror-pets-site-functions",
+  "private": true,
+  "description": "The PvP relay behind pets.superfun.games/api/pvp (see functions/pvp.mjs).",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.6"
+  }
+}

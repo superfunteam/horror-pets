@@ -36,3 +36,6 @@ dist/
 
 # Netlify CLI link state
 .netlify/
+
+# The site functions' npm packages
+netlify/node_modules/
