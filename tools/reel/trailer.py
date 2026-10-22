@@ -63,7 +63,7 @@ def make() -> Sequence:
     cuts = [CharacterIntro(cast.BY_ID[pet], beats * BEAT, BEAT) for pet, beats in ORDER]
     fights = FightToEvolve(BAR, BEAT, drop=BAR, bars=6.5)
     environments = Environments(11 * BEAT)
-    pvp = OnlinePvp(BAR, BEAT, approach=1.5, vs=2, turns=2, results=2)
+    pvp = OnlinePvp(BAR, BEAT, approach=1, vs=2, turns=2, results=1)
     scenes = [crt, raise_train, *cuts, fights, environments, pvp, Outro(OUTRO)]
     seq = Sequence(scenes)
     at: dict[str, float] = {}  # each kind of scene's first start
