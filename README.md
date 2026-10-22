@@ -95,12 +95,13 @@ adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and e
 | `learn_all` | The active pet learns what its level unlocks and equips the best attack in each slot, with no learn screens. |
 | `fight <killer>` | Straight into a CPU fight against that killer, through the VS card. |
 | `autoplay on\|off` | Fights (CPU and PvP) pick the player's moves: 0.8 s after the menu is up, SPECIAL when the meter is full, POTION under 30% HP, else the answer to the CPU's tell (BLOCK a STRIKE, STRIKE a HEAVY, HEAVY a BLOCK), else STRIKE and HEAVY in turn. Results, unlock and learn cards continue after 2.5 s (a learn screen learns). |
+| `hud off\|on` | Fights (CPU and PvP) hide their HUD for clean footage: the bars, meters, turn badge and status chips, the command and help windows, and PvP's waiting banner. The fighters, callouts, damage numbers, the CPU's tell, cut-ins, the VS card, K.O. and the cards after still show. The hidden menu still takes `move` and autoplay picks. On by default; it lasts until changed, across fights. |
 | `move <strike\|heavy\|block\|special\|potion\|run>` | Picks that move now, if the fight allows it. A `run` runs without asking. |
 | `meter full` | Fills the player's special meter (CPU fights only: a PvP fight must play the same on both apps). |
 | `feed`, `play`, `train` | That care action, going Home first. |
 | `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch). |
 | `wait <seconds>`, `wait home` | Holds the rest of the line: for that long, or until Home is up and idle (a fight and its cards over). |
-| `status` | Logs the screen, the active pet and whether autoplay is on. |
+| `status` | Logs the screen, the active pet and whether autoplay and the HUD are on. |
 
 Each command waits for the action playing (a turn, a feed) to end first. A command that is refused (logged as
 `refused:` with the reason) drops the rest of its line, and a new line replaces one still waiting. Moves are picked

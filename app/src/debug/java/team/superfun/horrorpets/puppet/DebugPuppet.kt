@@ -16,7 +16,10 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -78,6 +81,10 @@ private const val NO_PET = "no active pet yet: pet <killer> first"
 internal object DebugPuppet : Puppet {
     private val picks = MutableSharedFlow<Move>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val fightPicks: Flow<Move> = picks.asSharedFlow()
+
+    /** Whether fights show their HUD (`hud on|off`). Kept for the process, as [autoplay] is. */
+    val hud = MutableStateFlow(true)
+    override val fightHud: StateFlow<Boolean> = hud.asStateFlow()
 
     /** Whether autoplay is on. Kept for the process, so it carries on in an Activity that is recreated. */
     var autoplay = false
@@ -191,7 +198,7 @@ private class Session(
     }
 
     private suspend fun execute(command: PuppetCommand): Outcome {
-        val immediate = command is PuppetCommand.Autoplay || command is PuppetCommand.Status ||
+        val immediate = command is PuppetCommand.Autoplay || command is PuppetCommand.Hud || command is PuppetCommand.Status ||
             command is PuppetCommand.Wait || command is PuppetCommand.WaitHome || command is PuppetCommand.Invalid
         if (!immediate && !awaitIdle()) return Outcome.Refused("the game was still busy after ${IDLE_WAIT_MS / 1000} s")
         return when (command) {
@@ -244,6 +251,11 @@ private class Session(
                 Outcome.Done("autoplay ${if (command.on) "on" else "off"}")
             }
 
+            is PuppetCommand.Hud -> {
+                DebugPuppet.hud.value = command.on
+                Outcome.Done(if (command.on) "hud on" else "hud off: fights hide their bars, meters, turn, chips, menu and help")
+            }
+
             is PuppetCommand.Pick -> {
                 val screen = state().screen as? Screen.Fight ?: return Outcome.Refused("not in a fight")
                 if (screen.pvp?.waiting == true) return Outcome.Refused("locked in already: waiting for the other player")
@@ -290,7 +302,8 @@ private class Session(
 
             PuppetCommand.Status -> {
                 val s = state()
-                Outcome.Done("${describe(s)}; ${petLine(s)}; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}")
+                val hud = if (DebugPuppet.hud.value) "on" else "off"
+                Outcome.Done("${describe(s)}; ${petLine(s)}; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
             }
 
             is PuppetCommand.Invalid -> Outcome.Refused(command.reason)

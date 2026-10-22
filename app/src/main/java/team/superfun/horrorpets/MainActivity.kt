@@ -15,6 +15,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -139,7 +141,15 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalTapToJoin provides tap) {
                 ProvideScreenDensity {
                     HorrorPetsTheme {
-                        HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish, scriptedPicks = Puppet.current.fightPicks)
+                        val showFightHud by Puppet.current.fightHud.collectAsState()
+                        HorrorPetsApp(
+                            vm = vm,
+                            loader = loader,
+                            sounds = audio,
+                            onExit = ::finish,
+                            scriptedPicks = Puppet.current.fightPicks,
+                            showFightHud = showFightHud,
+                        )
                     }
                 }
             }

@@ -77,6 +77,16 @@ class PuppetCommandTest {
     }
 
     @Test
+    fun hudIsOnOrOff() {
+        assertEquals(PuppetCommand.Hud(false), parseCommand("hud off"))
+        assertEquals(PuppetCommand.Hud(true), parseCommand("hud on"))
+        assertEquals(PuppetCommand.Hud(false), parseCommand("  HUD   Off "))
+        assertInvalid("hud", "on or off")
+        assertInvalid("hud hidden", "on or off")
+        assertInvalid("hud off now", "on or off")
+    }
+
+    @Test
     fun everyMoveByName() {
         for (m in Move.entries) assertEquals(PuppetCommand.Pick(m), parseCommand("move ${m.name}"))
         assertEquals(PuppetCommand.Pick(Move.SPECIAL), parseCommand("move special"))
@@ -109,6 +119,7 @@ class PuppetCommandTest {
     fun anUnknownCommandListsTheCommands() {
         assertInvalid("dance", "unlock_all")
         assertInvalid("dance", "autoplay on|off")
+        assertInvalid("dance", "hud on|off")
         assertInvalid("", "empty")
         // The invalid command keeps its text, for the log.
         assertEquals("dance wildly", (parseCommand("  dance wildly ") as PuppetCommand.Invalid).text)

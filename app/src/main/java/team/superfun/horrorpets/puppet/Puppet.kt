@@ -3,6 +3,9 @@ package team.superfun.horrorpets.puppet
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.ui.GameViewModel
@@ -23,9 +26,18 @@ interface Puppet {
     /** Moves for the fight screen to pick for the player, the cursor going to each first as a remote's would. */
     val fightPicks: Flow<Move> get() = emptyFlow()
 
+    /**
+     * Whether the fight screen shows its HUD: the bars and meters, the turn, the status chips, the command and help
+     * windows. Always true but in a debug build told `hud off`, for clean footage.
+     */
+    val fightHud: StateFlow<Boolean> get() = HUD_SHOWN
+
     companion object {
         /** The installed puppet: a do-nothing one unless a debug build has put its own here. */
         @Volatile
         var current: Puppet = object : Puppet {}
     }
 }
+
+/** The do-nothing puppet's [Puppet.fightHud]: shown, for good. */
+private val HUD_SHOWN: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()

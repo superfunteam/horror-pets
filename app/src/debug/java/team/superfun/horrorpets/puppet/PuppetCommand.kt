@@ -25,6 +25,9 @@ sealed interface PuppetCommand {
     /** `autoplay on|off`: fights pick the player's moves, and the cards after them continue, by themselves. */
     data class Autoplay(val on: Boolean) : PuppetCommand
 
+    /** `hud on|off`: fights show, or hide, their HUD (the bars, meters, turn, chips, command and help windows). */
+    data class Hud(val on: Boolean) : PuppetCommand
+
     /** `move <move>`: picks [move] now in the current fight. */
     data class Pick(val move: Move) : PuppetCommand
 
@@ -54,7 +57,7 @@ sealed interface PuppetCommand {
 const val MAX_WAIT_SECONDS = 600
 
 /** Every command's syntax, for the log when one is not understood. */
-const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, " +
+const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, hud on|off, " +
     "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train, home, wait <seconds>|home, status"
 
 private val KILLERS = PetId.entries.joinToString(", ") { it.name.lowercase() }
@@ -95,6 +98,11 @@ fun parseCommand(text: String): PuppetCommand {
             "on" -> PuppetCommand.Autoplay(true)
             "off" -> PuppetCommand.Autoplay(false)
             else -> invalid("autoplay needs on or off")
+        }
+        "hud" -> when (arg) {
+            "on" -> PuppetCommand.Hud(true)
+            "off" -> PuppetCommand.Hud(false)
+            else -> invalid("hud needs on or off")
         }
         "move" -> {
             val move = Move.entries.firstOrNull { it.name.lowercase() == arg }

@@ -55,7 +55,8 @@ private const val SCREEN_FADE_MS = 280
  * mounted, while moving between screens cross-fades. The view model's sound queues are drained into
  * [sounds] as they fill, and screens reach the same sink through [LocalSoundSink] for the sounds they
  * time themselves. [scriptedPicks] are moves picked for the player by a debug build's puppet (see
- * `FightScreen`); a release build's never has any.
+ * `FightScreen`); a release build's never has any. [showFightHud] off hides the fight screen's HUD, which only a
+ * debug build's puppet does (`hud off`, for clean footage).
  */
 @Composable
 fun HorrorPetsApp(
@@ -64,6 +65,7 @@ fun HorrorPetsApp(
     sounds: SoundSink,
     onExit: () -> Unit,
     scriptedPicks: Flow<Move> = emptyFlow(),
+    showFightHud: Boolean = true,
 ) {
     val state by vm.state.collectAsState()
 
@@ -210,6 +212,7 @@ fun HorrorPetsApp(
                     focusEntry = focusEntry,
                     isBusy = { vm.state.value.busy },
                     scriptedPicks = scriptedPicks,
+                    showHud = showFightHud,
                 )
 
                 is Screen.Unlocked -> UnlockedScreen(

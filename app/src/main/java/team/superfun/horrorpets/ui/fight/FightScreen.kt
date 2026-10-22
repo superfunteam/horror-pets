@@ -239,6 +239,11 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  * `team.superfun.horrorpets.puppet.Puppet`), for footage that looks played: the cursor goes to the move, holds
  * there a moment and takes it with the select tick, as a remote would. A pick that arrives while the menu is not
  * taking moves is dropped. A RUN runs without asking.
+ *
+ * [showHud] off (a debug build's puppet's `hud off`, for clean footage) hides the HUD: the bars, meters, turn
+ * badge and status chips, the command and help windows, and PvP's waiting banner. The command window is only
+ * made invisible, so it still takes focus and picks as ever. The fighters, their callouts, numbers and marks,
+ * the tell, the cut-ins and the K.O. all still show.
  */
 @Composable
 fun FightScreen(
@@ -251,6 +256,7 @@ fun FightScreen(
     focusEntry: Any? = Unit,
     isBusy: () -> Boolean = { false },
     scriptedPicks: Flow<Move> = emptyFlow(),
+    showHud: Boolean = true,
 ) {
     val fight = screen.fight
     val playerId = fight.player.id
@@ -513,15 +519,18 @@ fun FightScreen(
                 cpuValues = stage.cpu.hud,
                 playerStatus = stage.player.status,
                 cpuStatus = stage.cpu.status,
+                // Hidden, it keeps its place, so the callouts and numbers keep below where it would be.
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop },
+                    .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop }
+                    .graphicsLayer { alpha = if (showHud) 1f else 0f },
             )
             // The command window down the left, its help window along the floor under it. Both slide in
-            // from the left as the menu comes back after a turn.
+            // from the left as the menu comes back after a turn. With the HUD hidden they are never drawn, but
+            // the commands are still there to take focus and picks.
             val menuIn = Modifier.graphicsLayer {
                 val m = stage.menu.value
-                alpha = m
+                alpha = if (showHud) m else 0f
                 translationX = -(1f - m) * 40.dp.toPx()
             }
             CommandWindow(
@@ -554,7 +563,7 @@ fun FightScreen(
         }
 
         // PvP: this player has locked in and the other has not yet.
-        if (screen.pvp?.waiting == true && !turnActive) {
+        if (showHud && screen.pvp?.waiting == true && !turnActive) {
             Box(Modifier.fillMaxSize().padding(bottom = safe.vertical + 18.dp), contentAlignment = Alignment.BottomCenter) {
                 WaitingBanner(fight.cpu.id.displayName)
             }
