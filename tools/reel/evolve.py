@@ -1,7 +1,8 @@
 """Fight to evolve your skills: real fights cut on the beat, then a wall of attack cards.
 
-First, gameplay recorded off the TV emulator (driven by the app's puppet mode), cut on the beat: Leatherface and Michael
-trading blows under the title, then from the song's drop a different killer landing a hit every beat (Chucky,
+First Leatherface and Michael squaring off under the title, idling before the fight starts. Then gameplay recorded off
+the TV emulator (driven by the app's puppet mode), cut on the beat: from the song's drop a different killer landing a
+hit every beat (Chucky,
 Ghostface, Jason, Freddy, Leatherface), then specials one after another (Pinhead's chains, Chucky's voodoo,
 Ghostface's knives, Leatherface's saw dance) and a K.O. Then the game's learnable attacks recut as cards, as the
 announcer shouts that killing unlocks over sixty (the line slams down over them as it's said, then zips off): two rows sliding opposite ways, each card a killer swinging their
@@ -27,6 +28,8 @@ FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
 CARD_W, CARD_H, CARD_GAP = 380, 520, 44
 CARD_SPEED = 364  # px a second each row of cards slides
+# The game's fight, as recorded (1920 x 1080): its fighters' sprite cells are this tall, standing on this line here.
+GAME_W, GAME_H, GAME_CELL, GAME_FLOOR, GAME_SPOTS = 1920, 1080, 402, 853, (787, 1353)
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,28 @@ class Cut:
     # keeping the callouts and numbers over the one getting hit (always on the right) in frame.
     zoom: float = 1.35
     focus: tuple[float, float] = (0.56, 0.6)
+
+
+class Standoff:
+    """[left] and [right] idling on [right]'s [stage] before a fight, drawn as the game draws them (its stage art,
+    sprites and spots), to stand in for footage under the title: the game shows a tell from a fight's first frame,
+    and nothing should happen until the title is gone."""
+
+    def __init__(self, left: str, right: str, stage: str):
+        self.left, self.right = left, right
+        art = fx.cover(cast.backdrop(cast.Killer(right, stage, "right")), GAME_W, GAME_H)
+        self.stage = ImageEnhance.Brightness(art).enhance(0.85)  # the game dims its stage behind the fight
+
+    def extract(self) -> None:
+        pass
+
+    def frame(self, t: float) -> Image.Image:
+        im = self.stage.convert("RGBA")
+        for pet, x, phase in ((self.left, GAME_SPOTS[0], 0.0), (self.right, GAME_SPOTS[1], 0.3)):  # not in step
+            cell = sprites.cell(pet, "idle", sprites.frame_at(pet, "idle", t + phase), GAME_CELL)
+            ax, by = sprites.anchor(pet, GAME_CELL)
+            im.alpha_composite(cell, (round(x - ax), round(GAME_FLOOR - by)))
+        return im.convert("RGB")
 
 
 @dataclass(frozen=True)
@@ -85,8 +110,6 @@ class FightToEvolve:
         self.cards_at = montage_bars * bar
         # (beats long, recording, from, to, zoom): the montage, cut on the beat.
         montage = [
-            # Leatherface's chainsaw on Michael under the title, a crit landing as it zips off.
-            (round(drop / beat), "hud-leatherface-michael.mp4", 6.15, 7.75, 1.35),
             (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2),  # Chucky's combo, a guard break (wider for its callout)
             (1, "hud-ghostface-freddy.mp4", 28.6, 29.5, 1.0),  # Ghostface's combo crit (its callout runs the width of the screen)
             (1, "hud-jason-pinhead.mp4", 7.6, 8.5, 1.35),  # Jason's machete on Pinhead
@@ -97,15 +120,16 @@ class FightToEvolve:
             (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35),  # Ghostface's knives,
             (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35),  # Leatherface's saw dance
         ]
-        ko = montage_bars * 4 - sum(m[0] for m in montage)
+        ko = montage_bars * 4 - round(drop / beat) - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
         montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35))  # Freddy's special draining Jason to a K.O.
-        self.cuts, at = [], 0.0
+        # Under the title, Leatherface and Michael square off on the street the fights open on; the hits start at the drop.
+        self.cuts, at = [Cut(0.0, drop, Standoff("leatherface", "michael", "haddonfield"))], drop
         for beats, file, start, end, zoom in montage:
             self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat)), zoom))
             at += beats * beat
         self.specials_at = self.cuts[6].at
-        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.5,
+        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.25,
                           exit_dx=2400, glint_at=0.55)
         # Over the cards for as long as the announcer takes to say it (the line starts 0.1 s in and runs 2.8 s).
         self.cards_title = Slam(Image.open(CARDS_TITLE).convert("RGBA"), (W / 2, H * 0.5), 1060,
