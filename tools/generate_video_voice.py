@@ -22,11 +22,13 @@ from generate_announcer import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 LINES = {
     "title": "[shouting] VIRTUAL PET SLASHER 2 TURBO!!!",
+    "learn": "[shouting] LEARN OVER SIXTY SPECIAL ATTACKS!!!",
 }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--only", action="append", choices=list(LINES))
     ap.add_argument("--takes", type=int, default=3, help="takes per line; the loudest one that reads back right wins")
     args = ap.parse_args()
     key = os.environ.get("ELEVENLABS_API_KEY")
@@ -38,6 +40,8 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     failed = 0
     for name, text in LINES.items():
+        if args.only and name not in args.only:
+            continue
         best = None
         for take in range(args.takes):
             raw = raw_dir / f"{name}-{take}.mp3"

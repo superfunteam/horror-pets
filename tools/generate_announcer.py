@@ -84,7 +84,7 @@ LINES = {
     "whiffed": "[shouting] WHIFFED IT!!!",
     "nowhere_close": "[shouting] NOWHERE CLOSE!!!",
 }
-NUMBERS = {"2": "two"}
+NUMBERS = {"2": "two", "60": "sixty"}
 
 # trim the breath before the shout and the quiet end of the tail (the voice keeps its own arena reverb), add a
 # short slap-back, normalize. Tight trims keep "[name]! Versus! [name]!" inside the VS card.

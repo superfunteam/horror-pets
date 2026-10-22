@@ -1,10 +1,11 @@
 """Online PvP on two real phones (3D, see phones.py), each playing its own side of one real match.
 
-The match was recorded on two phone emulators, Jason hosting and Freddy joining by code (art-work/video/capture/
-pvp-*.mp4). The phones fly in out of the storm, Jason's showing the room code and Freddy's typing it in, then swing
-round and press back to back on the bass hit, an NFC burst between them. They spin out to face us as both screens
-cut to the VS card and FIGHT! under the title, and on the drop they fight: the same turns on both screens, each from
-its own side, Jason's super, and a K.O. that reads YOU WIN on one phone and YOU LOSE on the other.
+The match was recorded on two phone emulators, Jason hosting and Freddy joining (art-work/video/capture/pvp-*.mp4),
+and each phone's home screen beside it (home-*-phone.mp4). The phones fly in out of the storm, each showing its own
+killer at home, then swing round and press back to back, an NFC burst between them, and the tap is all it takes: both
+screens cut straight to the VS card as they spin out to face us, FIGHT! under the title, and on the drop they fight:
+the same turns on both screens, each from its own side, Jason's super, and a K.O. that reads YOU WIN on one phone and
+YOU LOSE on the other.
 """
 from __future__ import annotations
 
@@ -24,6 +25,10 @@ STORM = cast.ROOT / "site/art/backdrop.webp"
 RIM = (255, 60, 110)
 NFC = (150, 215, 255)
 LAG = 1.667  # Freddy's recording runs this far behind Jason's (lined up on Jason's super)
+# Where each phone's VS card starts in its recording, how long the stretch through FIGHT! runs, and when VS and FIGHT!
+# land in Jason's (seconds after its start).
+VS_JASON, VS_FREDDY, VS_LEN = 30.3, 29.0, 5.0
+VS_SLAM, FIGHT_SLAM = 1.13, 3.02
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
 
 
@@ -62,12 +67,12 @@ class OnlinePvp:
                  3: [(84.6, 86.6), (92.6, 95.0), (132.2, 135.2)]}[fight - 1]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
         self.feeds = (
-            [feed("pvp-jason.mp4", 0, self.tap, 20.0, 21.0),
-             feed("pvp-jason.mp4", self.tap, self.fight_at - self.tap, 29.4, 34.4)]
+            [feed("home-jason-phone.mp4", 0, self.tap, 1.5, 1.5 + self.tap),
+             feed("pvp-jason.mp4", self.tap, self.fight_at - self.tap, VS_JASON, VS_JASON + VS_LEN)]
             + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e) for k, (s, e) in enumerate(turns)]
             + [feed("pvp-jason-ko.mp4", ko, b, 10.6, 14.4)],
-            [feed("pvp-freddy.mp4", 0, self.tap, 23.5, 28.4),
-             feed("pvp-freddy.mp4", self.tap, self.fight_at - self.tap, 28.9, 33.9)]
+            [feed("home-freddy-phone.mp4", 0, self.tap, 1.5, 1.5 + self.tap),
+             feed("pvp-freddy.mp4", self.tap, self.fight_at - self.tap, VS_FREDDY, VS_FREDDY + VS_LEN)]
             + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG) for k, (s, e) in enumerate(turns)]
             + [feed("pvp-freddy-ko.mp4", ko, b, 11.6, 15.4)],
         )
@@ -176,7 +181,7 @@ class OnlinePvp:
         return fx.flash(out, (255, 255, 255), max(0.75 * pulse(t, self.tap, 0.16), 0.4 * pulse(t, self.ko, 0.12)))
 
     def cues(self) -> list[Cue]:
-        vs = self.tap + (30.5 - 29.4) / (5.0 / (self.fight_at - self.tap))
-        fight = self.tap + (32.5 - 29.4) / (5.0 / (self.fight_at - self.tap))
+        stretch = (self.fight_at - self.tap) / VS_LEN
+        vs, fight = self.tap + VS_SLAM * stretch, self.tap + FIGHT_SLAM * stretch
         return [Cue(vs, cast.voice("versus"), 1.1), Cue(fight, cast.voice("fight"), 1.1),
                 Cue(self.ko + 0.05, cast.voice("ko"), 1.1)]

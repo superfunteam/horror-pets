@@ -37,12 +37,13 @@ def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killer
     assert raise_start == pytest.approx(trailer.bar(4))
 
 
-def test_the_name_is_shown_and_shouted_once_and_the_fights_hit_the_second_drop(seq):
+def test_the_name_is_shown_and_shouted_once_and_the_hits_start_on_the_second_drop(seq):
     assert not any(isinstance(c, TitleCard) for c in seq.scenes)  # the title screen on the TV is the only one
     assert sum(c.path == title.SHOUT for c in seq.cues()) == 1
     start, fights = start_of(seq, FightToEvolve)
     assert start == pytest.approx(trailer.bar(15))
-    assert start + fights.cuts[2].at == pytest.approx(trailer.bar(16))
+    assert start + fights.cuts[1].at == pytest.approx(trailer.bar(16))  # the hits start on the drop
+    assert fights.special_at > fights.cuts[6].at  # Pinhead's super comes after six of them
 
 
 def test_the_phones_tap_in_the_breakdown_and_fight_from_the_last_drop(seq):

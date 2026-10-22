@@ -19,6 +19,7 @@ from .motion import pulse
 from .render import H, W, Cue
 
 TITLE = cast.ROOT / "video/art/title-fight.webp"
+LEARN = cast.ROOT / "video/voice/learn.wav"  # "Learn over sixty special attacks!" (tools/generate_video_voice.py)
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
 CARD_W, CARD_H, CARD_GAP = 380, 520, 44
@@ -68,27 +69,27 @@ def _text(s: str, size: int, fill, width: float) -> Image.Image:
 
 
 class FightToEvolve:
-    """[bars] bars of [bar] seconds: [montage_bars] of fights cut on the beat, a bar of the unlock, one of a learn
-    screen, the rest of cards. Pinhead's super lands on the [drop] (seconds in): the VS card runs up to a beat before
-    it and a crit takes that beat."""
+    """[bars] bars of [bar] seconds: [montage_bars] of fights cut on the beat, a bar of the unlock, the rest of cards.
+    The VS card runs up to the [drop] (seconds in), where the hits start flying, a different killer every beat, before
+    Pinhead's super, his chains and a K.O."""
 
-    def __init__(self, bar: float, beat: float, drop: float, bars: int = 11, montage_bars: int = 5):
+    def __init__(self, bar: float, beat: float, drop: float, bars: int = 9, montage_bars: int = 4):
         self.bar, self.beat, self.drop = bar, beat, drop
         self.duration = bars * bar
-        self.cards_at = (montage_bars + 2) * bar
-        b = bar
+        self.unlock_at = montage_bars * bar
+        self.cards_at = (montage_bars + 1) * bar
         # (beats long, recording, from, to): the montage, cut on the beat.
         montage = [
-            (round(drop / beat) - 1, "tv-fight-pinhead.mp4", 2.3, 4.6),  # VS into FIGHT!
-            (1, "tv-fight-pinhead.mp4", 7.7, 8.6),  # a crit
-            (2, "tv-fight-pinhead.mp4", 27.45, 28.3),  # Pinhead's super cut-in, on the drop
+            (round(drop / beat), "tv-fight-chucky-ghostface.mp4", 1.3, 4.7),  # Chucky vs Ghostface: VS into FIGHT!
+            (1, "tv-fight-leatherface-michael.mp4", 12.6, 13.5),  # Leatherface's saw, a crit
+            (1, "tv-fight-chucky-ghostface.mp4", 7.1, 7.9),  # Chucky's crit
+            (1, "tv-fight-ghostface-freddy.mp4", 20.6, 21.5),  # Ghostface's combo crit
+            (1, "tv-fight-pinhead.mp4", 7.7, 8.6),  # Jason's crit on Pinhead
+            (1, "tv-fight-freddy.mp4", 28.6, 29.8),  # Freddy's claws draining Jason
+            (1, "tv-fight-ghostface-freddy.mp4", 24.6, 25.5),  # Ghostface's guard break
+            (2, "tv-fight-pinhead.mp4", 27.45, 28.3),  # Pinhead's super cut-in
             (2, "tv-fight-pinhead.mp4", 28.8, 30.3),  # his chains for 55
-            (2, "tv-fight-freddy.mp4", 28.4, 30.0),  # Freddy's claws draining Jason
         ]
-        if montage_bars >= 5:
-            montage += [(2, "tv-fight-pinhead.mp4", 52.7, 54.2),  # a potion for 106
-                        (2, "tv-fight-freddy.mp4", 12.6, 14.0)]  # a combo
-        montage.append((2, "tv-fight-freddy.mp4", 40.9, 42.3))  # Jason's guard break
         ko = montage_bars * 4 - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
         montage.append((ko, "tv-fight-freddy.mp4", 42.3, 43.8))  # K.O.
@@ -96,14 +97,10 @@ class FightToEvolve:
         for beats, file, start, end in montage:
             self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat))))
             at += beats * beat
-        self.cuts += [
-            Cut(montage_bars * b, b, Clip("tv-fight-pinhead.mp4", 93.6, 95.6, speed=2.0 / b), zoom=1.5,
-                focus=(0.5, 0.42)),  # UNLOCKED!
-            Cut((montage_bars + 1) * b, b, Clip("tv-learn.mp4", 5.6, 8.4, speed=2.8 / b), zoom=1.12,
-                focus=(0.5, 0.45)),  # a new special
-        ]
-        self.unlock_at = montage_bars * b
-        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=b - 0.25,
+        self.special_at = self.cuts[-3].at
+        self.cuts.append(Cut(self.unlock_at, bar, Clip("tv-fight-pinhead.mp4", 94.3, 96.3, speed=2.0 / bar), zoom=1.5,
+                             focus=(0.5, 0.42)))  # UNLOCKED!
+        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.25,
                           exit_dx=2400, glint_at=0.55)
         storm = fx.cover(Image.open(STORM).convert("RGB"), W, H).filter(ImageFilter.GaussianBlur(4))
         self.storm = ImageEnhance.Brightness(storm).enhance(0.4).convert("RGBA")
@@ -198,4 +195,5 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        return [Cue(self.drop, cast.voice("special_move"), 1.1), Cue(self.unlock_at + 0.1, cast.voice("unlocked"), 1.1)]
+        return [Cue(self.special_at, cast.voice("special_move"), 1.1), Cue(self.unlock_at + 0.1, cast.voice("unlocked"), 1.1),
+                Cue(self.cards_at + 0.1, LEARN, 1.15)]
