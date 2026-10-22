@@ -36,7 +36,7 @@ BAR = 4 * BEAT
 DOWNBEAT = 0.04  # where bar 0 starts in the song
 # The killers in order, and how many beats each one's intro runs: long enough for their line (cast.intro_sound),
 # Michael's short and silent, landing on the second drop.
-ORDER = [("jason", 6), ("freddy", 6), ("ghostface", 8), ("chucky", 6), ("pinhead", 6), ("michael", 4),
+ORDER = [("jason", 6), ("freddy", 6), ("ghostface", 8), ("chucky", 6), ("pinhead", 6), ("michael", 6),
          ("leatherface", 8)]
 OUTRO = 9.5
 

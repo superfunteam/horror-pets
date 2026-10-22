@@ -104,8 +104,8 @@ def punch(path: Path) -> float:
 
 
 # The killers' sounds in their intros: the trailer's own clips in audio/trailer/<pet>.mp3 (supplied for the trailer;
-# not in the repo, not in the game): a line or a sound bite each, their leading silence trimmed, the second half of
-# Pinhead's ("has a face") twice as loud, and all matched in loudness. Michael has none; he is silent.
+# not in the repo, not in the game): a line or a sound bite each (Michael's, a few notes of his piano theme), their
+# leading silence trimmed, the second half of Pinhead's ("has a face") twice as loud, and all matched in loudness.
 TRAILER_AUDIO = ROOT / "audio/trailer"
 INTRO_LUFS = -14.0
 INTRO_BOOST = {"pinhead": (1.3, 2.0)}  # from this many seconds into the clip, this many times louder
@@ -122,10 +122,8 @@ def _lufs(path: Path) -> float:
 
 
 def intro_sound(pet: str) -> Path | None:
-    """[pet]'s clip for its intro (see TRAILER_AUDIO), built into the cache the first time; None for Michael."""
+    """[pet]'s clip for its intro (see TRAILER_AUDIO), built into the cache the first time."""
     src = TRAILER_AUDIO / f"{pet}.mp3"
-    if pet == "michael":
-        return None
     if not src.exists():
         raise FileNotFoundError(f"missing the trailer clip {src.relative_to(ROOT)}")
     out = SOUND_CACHE / f"trailer-{pet}.wav"
