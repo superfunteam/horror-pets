@@ -10,7 +10,7 @@ Where a take gets one hand right and the other worse than the original, --merge 
 take back onto the original (MERGE), which the repaint stays close enough to for the seam to vanish.
 
 Usage: OPENAI_API_KEY=... tools/.venv/bin/python -I tools/retouch_site_art.py --only freddy [--n 2] [--start 3]
-       tools/.venv/bin/python -I tools/retouch_site_art.py --merge freddy 12 --start 15
+       tools/.venv/bin/python -I tools/retouch_site_art.py --merge freddy 22 glove --start 28
 """
 from __future__ import annotations
 
@@ -39,13 +39,15 @@ KEEP = (
 )
 # pet: (the pick to retouch, boxes around the hands as (left, top, right, bottom) px, what to fix)
 RETOUCH = {
-    "freddy": (1, [(1190, 590, 1500, 860), (300, 330, 720, 760)],
-               "his bare, burned hand on the right side of the image keeps its exact clawing gesture, angle and long, "
-               "slender, bony fingers, but has exactly five digits: a thumb and four fingers, add the missing finger. "
-               "His bladed glove on the left side of the image keeps its four long, sweeping, glowing curved blades "
-               "exactly as they are now (same length, curve, spacing and shine) and its four brass knuckle caps, one "
-               "blade off each of the four fingers; add only his thumb, a plain brown leather glove thumb with no "
-               "blade and no cap, tucked beside the fingers on the glove's near side, clearly visible."),
+    # 15 has the bare hand fixed (merged from take 12), so only the glove's missing thumb is left, masked to just the
+    # gap under its palm (masking the whole glove has it redraw the caps and blades)
+    "freddy": (15, [(450, 590, 610, 770)],
+               "his bare, burned hand on the right side of the image stays exactly as it is. His bladed glove on the "
+               "left side of the image keeps every brass finger cap and every long, sweeping, glowing curved steel "
+               "blade exactly as it is now (same place, length, curve, spacing and shine), still exactly four caps "
+               "and four blades. Add only his missing thumb: a plain brown leather glove thumb with a rounded leather "
+               "tip, no blade and no cap, coming out from under the bottom of the leather palm and curling down and "
+               "inward between the two lower blades, in front of the red sweater fringe, clearly visible."),
     "ghostface": (1, [(1000, 730, 1460, 1070)],
                   "his open, reaching black-gloved hand on the right side of the image must have exactly five digits, "
                   "a thumb and four fingers, splayed and grasping toward the viewer."),
@@ -53,9 +55,10 @@ RETOUCH = {
                 "both of his pale open hands must have exactly five digits each, a thumb and four fingers, elegant and "
                 "relaxed with the palms open toward the viewer, the same pose as now."),
 }
-# pet: (the take's part to keep, as (left, top, right, bottom) px, cut across the sleeve, where both look alike)
+# pet: {part: the take's part to keep, as (left, top, right, bottom) px, cut where take and original look alike}
 MERGE = {
-    "freddy": (1150, 540, 1536, 920),  # his bare hand, keeping the original's bladed glove
+    "freddy": {"hand": (1150, 540, 1536, 920),  # his bare hand, keeping the original's bladed glove (1 + 12 = 15)
+               "glove": (425, 565, 630, 825)},  # the thumb under his glove, keeping 15's caps and blades (15 + 22 = 28)
 }
 FEATHER = 12  # px the merged part blends into the original over
 
@@ -91,12 +94,12 @@ def retouch(key: str, pet: str, k: int) -> Path:
     return dest
 
 
-def merge(pet: str, take: int, k: int) -> Path:
-    """[pet]'s original pick with [take]'s MERGE part laid over it, feathered in, as candidate [k]."""
+def merge(pet: str, take: int, part: str, k: int) -> Path:
+    """[pet]'s original pick with [take]'s MERGE [part] laid over it, feathered in, as candidate [k]."""
     original = Image.open(SRC / f"{pet}-{RETOUCH[pet][0]}.png").convert("RGBA")
     painted = Image.open(SRC / f"{pet}-{take}.png").convert("RGBA")
     m = Image.new("L", original.size, 0)
-    l, t, r, b = MERGE[pet]
+    l, t, r, b = MERGE[pet][part]
     ImageDraw.Draw(m).rectangle([l, t, r, b], fill=255)
     out = Image.composite(painted, original, m.filter(ImageFilter.GaussianBlur(FEATHER)))
     dest = SRC / f"{pet}-{k}.png"
@@ -109,14 +112,14 @@ def main() -> int:
     ap.add_argument("--only", action="append", choices=list(RETOUCH))
     ap.add_argument("--n", type=int, default=2, help="candidates of each")
     ap.add_argument("--start", type=int, default=3, help="first candidate number (past the picks, so none is overwritten)")
-    ap.add_argument("--merge", nargs=2, metavar=("PET", "TAKE"), help="lay TAKE's MERGE part over PET's original")
+    ap.add_argument("--merge", nargs=3, metavar=("PET", "TAKE", "PART"), help="lay TAKE's MERGE PART over PET's original")
     args = ap.parse_args()
     if args.merge:
-        pet, take = args.merge[0], int(args.merge[1])
+        pet, take, part = args.merge[0], int(args.merge[1]), args.merge[2]
         if (SRC / f"{pet}-{args.start}.png").exists():
             print(f"{pet}-{args.start}.png already exists; pass a later --start", file=sys.stderr)
             return 2
-        print(f"wrote {merge(pet, take, args.start).relative_to(ROOT)}")
+        print(f"wrote {merge(pet, take, part, args.start).relative_to(ROOT)}")
         return 0
     key = os.environ.get("OPENAI_API_KEY")
     if not key:

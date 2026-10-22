@@ -41,7 +41,11 @@ POSE = (
 )
 POSES = {
     "jason": "leaping toward the viewer with his machete raised high over his head, ready to strike.",
-    "freddy": "lunging forward and slashing at the viewer with his bladed glove, fingers spread, cackling.",
+    "freddy": "lunging forward and slashing at the viewer with the bladed glove on his right hand, his bare left "
+              "hand open and clawing, cackling. Get both hands exactly right: the glove is brown leather with four "
+              "brass-capped fingers, each ending in one long curved steel blade, so exactly four blades fanned out, "
+              "and a plain leather thumb with no blade, clearly visible wrapped beside them; his bare, burned left "
+              "hand has exactly a thumb and four fingers.",
     "pinhead": "floating upright with arms spread wide, pale hands open, long chains with hooks flying out around him.",
     "ghostface": "diving forward in mid-air with his knife drawn back to stab, black robe billowing behind him.",
     "chucky": "leaping at the viewer with a big kitchen knife raised high overhead in his right hand and his left arm "

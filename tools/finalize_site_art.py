@@ -18,7 +18,7 @@ from finalize_food import ALPHA_FLOOR, MARGIN  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "art-work/site"
 OUT = ROOT / "site/art"
-PICKS = {"backdrop": 2, "jason": 1, "freddy": 15, "pinhead": 3, "ghostface": 3, "chucky": 2, "michael": 1, "leatherface": 1}
+PICKS = {"backdrop": 2, "jason": 1, "freddy": 32, "pinhead": 3, "ghostface": 3, "chucky": 2, "michael": 1, "leatherface": 1}
 KILLER_SIZE = 1100
 BACKDROP_WIDTH = 2560
 
