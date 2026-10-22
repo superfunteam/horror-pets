@@ -1,0 +1,3 @@
+# The landing page at pets.superfun.games is the static site in site/, deployed with `netlify deploy --prod`.
+[build]
+  publish = "site"
