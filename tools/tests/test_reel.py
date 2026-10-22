@@ -25,7 +25,9 @@ def start_of(seq, kind):
 
 def test_the_killers_land_one_a_bar_from_the_first_drop(seq):
     starts = [s for s, c in zip(seq.starts, seq.scenes) if isinstance(c, CharacterIntro)]
-    assert starts == pytest.approx([trailer.bar(8 + k) for k in range(7)])
+    beats = [0] + [b for _, b in trailer.ORDER]
+    assert starts == pytest.approx([trailer.bar(8) + sum(beats[:k + 1]) * trailer.BEAT for k in range(7)])
+    assert starts[5] == pytest.approx(trailer.bar(16))  # Michael on the second drop
 
 
 def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killers(seq):
@@ -37,31 +39,34 @@ def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killer
     assert raise_start == pytest.approx(trailer.bar(4))
 
 
-def test_the_name_is_shown_and_shouted_once_and_the_hits_start_on_the_second_drop(seq):
+def in_song(seq, t: float) -> float:
+    """Where video time [t] falls in the song, across the edit."""
+    cue = [c for c in seq.cues() if c.music and c.t <= t + 1e-9][-1]
+    return cue.skip + (t - cue.t)
+
+
+def test_the_name_is_shown_and_shouted_once_and_the_hits_land_on_a_drop(seq):
     assert not any(isinstance(c, TitleCard) for c in seq.scenes)  # the title screen on the TV is the only one
     assert sum(c.path == title.SHOUT for c in seq.cues()) == 1
     start, fights = start_of(seq, FightToEvolve)
-    assert start == pytest.approx(trailer.bar(15))
-    assert start + fights.cuts[1].at == pytest.approx(trailer.bar(16))  # the hits start on the drop
+    assert in_song(seq, start) == pytest.approx(trailer.bar(15))  # the fill, under the title
+    assert in_song(seq, start + fights.cuts[1].at) == pytest.approx(trailer.bar(16))  # the hits start on the drop
     assert fights.specials_at == pytest.approx(fights.cuts[1].at + 5 * trailer.BEAT)  # five hits, then the specials
 
 
 def test_the_phones_tap_as_the_breakdown_starts_and_fight_from_the_last_drop(seq):
     start, pvp = start_of(seq, OnlinePvp)
-    song = [c for c in seq.cues() if c.music]
-    splice = song[1].t
-
-    def in_song(t: float) -> float:  # where video time t falls in the song, across the splice
-        return t if t < splice else song[1].skip + (t - splice)
-
-    assert in_song(start + pvp.tap) == pytest.approx(trailer.bar(24))
-    assert in_song(start + pvp.fight_at) == pytest.approx(trailer.bar(32))
+    assert in_song(seq, start + pvp.tap) == pytest.approx(trailer.bar(24))
+    assert in_song(seq, start + pvp.fight_at) == pytest.approx(trailer.bar(32))
+    assert in_song(seq, start + pvp.duration) == pytest.approx(trailer.bar(36))  # the outro as the song ends
 
 
-def test_the_song_jumps_from_bar_26_to_31_on_the_beat(seq):
-    first, second = [c for c in seq.cues() if c.music]
-    assert first.t == 0 and first.skip == 0 and first.length == pytest.approx(trailer.bar(26) + 0.02)
-    assert second.t == pytest.approx(trailer.bar(26)) and second.skip == pytest.approx(trailer.bar(31))
+def test_every_jump_in_the_song_is_on_a_bar(seq):
+    first, *rest = [c for c in seq.cues() if c.music]
+    assert first.t == 0 and first.skip == 0  # the video starts with the song
+    for c in rest:
+        assert round((c.t - trailer.DOWNBEAT) / trailer.BAR, 6) % 1 == 0
+        assert c.skip == 0 or round((c.skip - trailer.DOWNBEAT) / trailer.BAR, 6) % 1 == 0
 
 
 def test_the_phones_never_pass_through_each_other(seq):

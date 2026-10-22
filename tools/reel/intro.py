@@ -1,8 +1,8 @@
-"""A killer's intro cut, in the spirit of Super Street Fighter II Turbo: one bar of the music, just them and their name.
+"""A killer's intro cut, in the spirit of Super Street Fighter II Turbo: a few beats of the music, just them and their name.
 
 It starts on a blast in the music with a white flash and the camera punching in on their stage. The killer flies in
 from their side (Killer.entry) with afterimages and speed lines and lands with a shake, then their name slams down out
-of the camera on the next beat, with a flash, focus lines and an RGB split, and their special's sound. They hold, with
+of the camera on the next beat, with a flash, focus lines and an RGB split, as their own line plays. They hold, with
 embers drifting and a glint across the name, until the camera rushes in for the cut to whatever comes next.
 """
 from __future__ import annotations
@@ -202,5 +202,6 @@ class CharacterIntro:
                                         0.6 * pulse(t, self.beat, 0.1), 0.3 * self.rush(t)))
 
     def cues(self) -> list[Cue]:
+        # The killer's clip from the moment they appear, faded out as the next one comes in.
         sound = cast.intro_sound(self.k.id)
-        return [Cue(self.beat, sound, 1.0)] if sound else []
+        return [Cue(0.05, sound, 1.0, length=self.duration - 0.05, fade_out=0.12)] if sound else []

@@ -80,11 +80,15 @@ def sfx(name: str) -> Path:
     return ROOT / f"audio-final/sfx/{name}.wav"
 
 
-# The killers' sounds in their intros: each one's special-move sound from the game, made for the trailer only (the
-# game's files are left as they are): Pinhead's hit, the second half of his, is 50% louder, and all are matched in
-# loudness. Michael has no sound of his own; he is silent.
+# The killers' sounds in their intros: the trailer's own clips in audio/trailer/<pet>.mp3 (supplied for the trailer;
+# not in the repo, not in the game): a line or a sound bite each, their leading silence trimmed, the second half of
+# Pinhead's ("has a face") 50% louder, and all matched in loudness. Michael has none; he is silent.
+TRAILER_AUDIO = ROOT / "audio/trailer"
 INTRO_LUFS = -14.0
-INTRO_BOOST = {"pinhead": (0.7, 1.5)}  # from this many seconds in, this many times louder
+INTRO_BOOST = {"pinhead": (1.3, 1.5)}  # from this many seconds into the clip, this many times louder
+# Freddy's and Chucky's lines start under room tone (so trimming silence takes nothing) and run a little long for six
+# beats: their lead-in is cut and they are played a touch faster, pitch kept.
+INTRO_FIT = {"freddy": (0.25, 1.06), "chucky": (0.4, 1.06)}  # (seconds cut from the start, tempo)
 SOUND_CACHE = ROOT / "art-work/video/cache/sfx"
 
 
@@ -95,19 +99,25 @@ def _lufs(path: Path) -> float:
 
 
 def intro_sound(pet: str) -> Path | None:
-    """[pet]'s sound for its intro (see INTRO_LUFS), built into the cache the first time; None for Michael."""
+    """[pet]'s clip for its intro (see TRAILER_AUDIO), built into the cache the first time; None for Michael."""
+    src = TRAILER_AUDIO / f"{pet}.mp3"
     if pet == "michael":
         return None
-    out = SOUND_CACHE / f"intro-{pet}.wav"
-    if out.exists():
+    if not src.exists():
+        raise FileNotFoundError(f"missing the trailer clip {src.relative_to(ROOT)}")
+    out = SOUND_CACHE / f"trailer-{pet}.wav"
+    if out.exists() and out.stat().st_mtime > src.stat().st_mtime:
         return out
     SOUND_CACHE.mkdir(parents=True, exist_ok=True)
-    boosted = SOUND_CACHE / f"intro-{pet}-boosted.wav"
+    shaped = SOUND_CACHE / f"trailer-{pet}-shaped.wav"
     at, gain = INTRO_BOOST.get(pet, (0.0, 1.0))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(sfx(f"special_{pet}")), "-af",
-                    f"volume={gain}:enable='gte(t,{at})'", str(boosted)], check=True)
-    db = INTRO_LUFS - _lufs(boosted)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(boosted), "-af",
+    cut, tempo = INTRO_FIT.get(pet, (0.0, 1.0))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-af",
+                    f"volume={gain}:enable='gte(t,{at})',atrim=start={cut},asetpts=PTS-STARTPTS,atempo={tempo},"
+                    "afade=t=in:d=0.03,silenceremove=start_periods=1:start_threshold=-40dB:start_silence=0.03",
+                    "-c:a", "pcm_f32le", str(shaped)], check=True)
+    db = INTRO_LUFS - _lufs(shaped)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(shaped), "-af",
                     f"volume={db:.2f}dB,alimiter=limit=0.95:level=disabled", str(out)], check=True)
-    boosted.unlink()
+    shaped.unlink()
     return out
