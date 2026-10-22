@@ -11,8 +11,6 @@ from PIL import Image
 from . import fx
 
 ROOT = Path(__file__).resolve().parents[2]
-FONT_BLACK = str(ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
-FONT_BOLD = str(ROOT / "app/src/main/res/font/barlow_condensed_bold.ttf")
 
 # The landing page's picks (tools/finalize_site_art.py): the full-size render when it is here, else the site's copy.
 POSE_PICKS = {"jason": 1, "freddy": 1, "pinhead": 2, "ghostface": 1, "chucky": 1, "michael": 1, "leatherface": 1}
@@ -21,7 +19,6 @@ POSE_PICKS = {"jason": 1, "freddy": 1, "pinhead": 2, "ghostface": 1, "chucky": 1
 @dataclass(frozen=True)
 class Killer:
     id: str
-    epithet: str  # their passive, as the game names it (model/Roster.kt)
     stage: str  # which of their scenes in scenes-final/ they are shown on
     entry: str  # where their intro brings them in from: right, left, top, bottom or depth
 
@@ -31,13 +28,13 @@ class Killer:
 
 
 KILLERS = [
-    Killer("jason", "Unstoppable", "dock", "top"),
-    Killer("freddy", "Lucid", "boiler", "right"),
-    Killer("pinhead", "Retribution", "chamber", "depth"),
-    Killer("ghostface", "Slippery", "house", "left"),
-    Killer("chucky", "Scrappy", "toystore", "bottom"),
-    Killer("michael", "Relentless", "haddonfield", "right"),
-    Killer("leatherface", "Chainsaw", "butcher", "left"),
+    Killer("jason", "dock", "top"),
+    Killer("freddy", "boiler", "right"),
+    Killer("pinhead", "chamber", "depth"),
+    Killer("ghostface", "house", "left"),
+    Killer("chucky", "toystore", "bottom"),
+    Killer("michael", "haddonfield", "right"),
+    Killer("leatherface", "butcher", "left"),
 ]
 BY_ID = {k.id: k for k in KILLERS}
 

@@ -8,7 +8,7 @@ import math
 import random
 
 import numpy as np
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ALPHA_FLOOR = 8  # specks fainter than this are the image model's haze
 
@@ -67,6 +67,17 @@ def glow(im: Image.Image, color: tuple[int, int, int], radius: int, strength: fl
     a.paste(im.getchannel("A"), (pad, pad))
     a = a.filter(ImageFilter.GaussianBlur(radius)).point(lambda v: min(255, round(v * strength)))
     out.putalpha(a)
+    out.alpha_composite(im, (pad, pad))
+    return out
+
+
+def shadowed(im: Image.Image, dy: int, radius: int, alpha: float) -> Image.Image:
+    """[im] over a soft black shadow [dy] px below it, padded evenly so its center stays where it was."""
+    pad = radius * 2 + abs(dy)
+    out = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (0, 0, 0, 0))
+    a = Image.new("L", out.size, 0)
+    a.paste(im.getchannel("A"), (pad, pad + dy))
+    out.putalpha(a.filter(ImageFilter.GaussianBlur(radius)).point(lambda v: round(v * alpha)))
     out.alpha_composite(im, (pad, pad))
     return out
 
@@ -199,37 +210,25 @@ def flash(frame: Image.Image, color: tuple[int, int, int], amount: float) -> Ima
     return Image.blend(frame, Image.new("RGB", frame.size, color), min(1.0, amount))
 
 
-def text(s: str, font: str, size: int, fill, stroke: int = 0, stroke_fill=(0, 0, 0), tracking: float = 0.0,
-         skew: float = 0.0) -> Image.Image:
-    """[s] set in [font], with letters [tracking] ems apart and slanted [skew] (0.2 is a strong italic)."""
-    f = ImageFont.truetype(font, size)
-    gap = tracking * size
-    widths = [f.getlength(ch) for ch in s]
-    asc, desc = f.getmetrics()
-    w = math.ceil(sum(widths) + gap * (len(s) - 1) + 2 * stroke)
-    h = asc + desc + 2 * stroke
-    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    d = ImageDraw.Draw(out)
-    x = stroke
-    for ch, cw in zip(s, widths):
-        d.text((x, stroke), ch, font=f, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
-        x += cw + gap
-    out = out.crop(out.getchannel("A").getbbox())
-    if skew:
-        extra = math.ceil(skew * out.height)
-        out = out.transform((out.width + extra, out.height), Image.AFFINE, (1, skew, -skew * out.height, 0, 1, 0),
-                            Image.BICUBIC)
-    return out
+class Embers:
+    """Sparks drifting up through the frame in [tones], some meant to go behind the cast and some in front."""
 
+    def __init__(self, n: int, seed: int, tones: list[tuple[int, int, int]], w: int, h: int):
+        rng = random.Random(seed)
+        self.w, self.h = w, h
+        self.sprites = [[soft_dot(r, c) for c in tones] for r in (2, 3, 5)]
+        self.items = [
+            dict(x=rng.uniform(0, w), y=rng.uniform(0, h), vy=rng.uniform(50, 190), sway=rng.uniform(8, 40),
+                 freq=rng.uniform(0.8, 2.4), phase=rng.uniform(0, 6.3), size=rng.choices([0, 1, 2], [5, 3, 1])[0],
+                 tone=rng.randrange(len(tones)), front=rng.random() < 0.3)
+            for _ in range(n)
+        ]
 
-def slab(w: int, h: int, slant: float, fill, edge=None, edge_px: int = 0) -> Image.Image:
-    """A parallelogram w wide (along its middle) and h tall, its sides leaning [slant] px across its height, with an
-    optional [edge] color along its top and bottom."""
-    out = Image.new("RGBA", (w + abs(round(slant)), h), (0, 0, 0, 0))
-    d = ImageDraw.Draw(out)
-    s = abs(slant)
-    d.polygon([(s, 0), (w + s, 0), (w, h), (0, h)], fill=fill)
-    if edge and edge_px:
-        d.polygon([(s, 0), (w + s, 0), (w + s - s * edge_px / h, edge_px), (s - s * edge_px / h, edge_px)], fill=edge)
-        d.polygon([(s * edge_px / h, h - edge_px), (w + s * edge_px / h, h - edge_px), (w, h), (0, h)], fill=edge)
-    return out
+    def draw(self, canvas: Image.Image, t: float, front: bool, dx: float = 0, dy: float = 0) -> None:
+        """The embers at [t] that go [front] of the cast (or behind it), shifted by (dx, dy); the front ones bigger."""
+        for e in self.items:
+            if e["front"] != front:
+                continue
+            y = (e["y"] - e["vy"] * t) % (self.h + 120) - 60
+            x = e["x"] + e["sway"] * math.sin(e["freq"] * t + e["phase"])
+            place(canvas, self.sprites[min(2, e["size"] + front)][e["tone"]], x + dx, y + dy)
