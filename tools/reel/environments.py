@@ -1,10 +1,11 @@
 """Over 25 unique environments: the game's stages run through a film projector, faster and faster.
 
 Each stage is a frame on a strip of film between black edges punched with sprocket holes. The first, the most
-recognizable (1428 Elm St, Crystal Lake, the Myers house...), hold for a moment and are pulled down into the gate one
-at a time; every frame after holds a little less, until they flicker past fifteen a second. Grain, flicker, a scratch
-or two and a warm cast sell the film. The title slams down as the announcer shouts it, then zips off, leaving the
-stages in the clear.
+recognizable (1428 Elm St, Crystal Lake, the Myers house...), hold for a moment and are pulled into the gate one at a
+time; every frame after holds a little less, until they flicker past fifteen a second. The film itself never stops:
+its sprocket holes stream past the gate, faster and faster, until they blur. Grain, flicker, a scratch or two and a
+warm cast sell the film. The title slams down as the announcer shouts it, then zips off, leaving the stages in the
+clear.
 """
 from __future__ import annotations
 
@@ -31,9 +32,15 @@ ORDER = [("freddy", "house"), ("jason", "dock"), ("michael", "myershouse"), ("le
 EDGE = 150  # the black film edge on each side, with its sprocket holes
 FRAME_H = round(H * 0.88)  # a frame's height; the rest of its pitch is the black line between frames
 PITCH = H  # the strip moves a frame along by this much
+HOLES = PITCH / 4  # the sprocket holes' spacing down each edge
 FIRST, SHRINK, FASTEST = 0.5, 0.86, 1 / 15  # the first frame's hold, how much shorter each gets, and the shortest
 PULL = 0.09  # the longest the gate takes to pull the next frame down (less of a hold, the faster it goes)
 CUT = 0.15  # frames held shorter than this just cut from one to the next
+
+
+def vertical_smear(im: Image.Image, px: float) -> Image.Image:
+    """[im] blurred [px] along its height, as film running past."""
+    return fx.smear(im.transpose(Image.Transpose.ROTATE_90), px).transpose(Image.Transpose.ROTATE_270)
 
 
 class Environments:
@@ -53,7 +60,7 @@ class Environments:
             self.starts.append(t)
             t += hold
             hold = max(FASTEST, hold * SHRINK)
-        self.strip = self.film_strip()
+        self.edge = self.film_edge()
         self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.5), 900, land=title_at, glint_at=1.2,
                           leave=title_off, exit_dx=-2400)
         rng = random.Random(41)
@@ -61,19 +68,23 @@ class Environments:
                                       "L").resize((W, H), Image.BILINEAR) for _ in range(4)]
         self.vignette = fx.vignette(W, H, 0.8)
 
-    def film_strip(self) -> Image.Image:
-        """The film's black edges for one frame's pitch: a sprocket hole on each side, and the line between frames."""
-        strip = Image.new("RGBA", (W, PITCH), (0, 0, 0, 0))
-        d = ImageDraw.Draw(strip)
-        d.rectangle([0, 0, EDGE, PITCH], fill=(8, 6, 6, 255))
-        d.rectangle([W - EDGE, 0, W, PITCH], fill=(8, 6, 6, 255))
-        d.rectangle([0, FRAME_H, W, PITCH], fill=(8, 6, 6, 255))  # the line between this frame and the next
+    def film_edge(self) -> Image.Image:
+        """One of the film's black edges with its sprocket holes, a hole's spacing longer than the frame, to run."""
+        edge = Image.new("RGB", (EDGE, round(H + HOLES)), (8, 6, 6))
+        d = ImageDraw.Draw(edge)
         hole_w, hole_h = EDGE * 0.42, PITCH * 0.11
-        for k in range(4):
-            y = PITCH * (k + 0.5) / 4 - hole_h / 2
-            for x in (EDGE / 2 - hole_w / 2, W - EDGE / 2 - hole_w / 2):
-                d.rounded_rectangle([x, y, x + hole_w, y + hole_h], radius=hole_w * 0.22, fill=(205, 196, 180, 255))
-        return strip
+        x = EDGE / 2 - hole_w / 2
+        for k in range(int(edge.height // HOLES) + 1):
+            y = HOLES * (k + 0.5) - hole_h / 2
+            d.rounded_rectangle([x, y, x + hole_w, y + hole_h], radius=hole_w * 0.22, fill=(205, 196, 180))
+        return edge
+
+    def run(self, t: float) -> float:
+        """How many frames of film have run through by [t]: the film itself runs on without stopping, a frame per
+        frame's hold, however the pictures are pulled into the gate."""
+        k = max(i for i, s in enumerate(self.starts) if s <= t + 1e-9)
+        end = self.starts[k + 1] if k + 1 < len(self.starts) else self.duration
+        return k + (t - self.starts[k]) / (end - self.starts[k])
 
     def position(self, t: float) -> float:
         """How many frames along the strip is at [t]: each frame pulled down into the gate and held still, as a
@@ -95,17 +106,22 @@ class Environments:
             if j < 0:
                 continue
             y = top + (j - pos) * PITCH
-            if -PITCH < y < H:
+            if -PITCH < y < H:  # (the black line between frames is the film showing through)
                 canvas.paste(self.frames[j % len(self.frames)], (EDGE, round(y)))
-                strip_y = round(y - top)
-                canvas.paste(self.strip, (0, strip_y), self.strip)
-                canvas.paste(self.strip, (0, strip_y - PITCH), self.strip)
-        # The faster the strip runs, the more it blurs along its length.
+        # A picture being pulled into the gate blurs along the film.
         step = self.position(min(self.duration, t + 1 / FPS)) - pos
         speed = step * PITCH if step < 0.9 else 0.0  # a hard cut is a jump, not motion
         if speed > 12:
-            canvas = canvas.transpose(Image.Transpose.ROTATE_90)
-            canvas = fx.smear(canvas, min(speed * 0.6, 110)).transpose(Image.Transpose.ROTATE_270)
+            canvas = vertical_smear(canvas, min(speed * 0.6, 110))
+        # The edges run on, the sprocket holes streaming past and blurring as the film speeds up.
+        ran = self.run(t) * PITCH
+        flow = self.run(min(self.duration, t + 1 / FPS)) * PITCH - ran
+        y0 = ran % HOLES
+        edge = self.edge.crop((0, round(y0), EDGE, round(y0) + H))
+        if flow > 3:
+            edge = vertical_smear(edge, min(flow, HOLES))
+        canvas.paste(edge, (0, 0))
+        canvas.paste(edge, (W - EDGE, 0))
         rng = random.Random(round(t * FPS))
         canvas = ImageEnhance.Brightness(canvas).enhance(0.94 + 0.08 * rng.random())  # projector flicker
         grain = self.grain[round(t * FPS) % len(self.grain)]

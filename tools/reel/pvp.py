@@ -37,8 +37,11 @@ KO_EXCHANGE, KO_LANDS, RESULTS = (6.6, 11.3), 10.75, (13.3, 16.8)
 KO_BLOWS = ((8.22, "punch_heavy"), (9.8, "whiff"))  # in that recording: Jason's combo lands, Freddy's swing misses
 BELL = cast.TRAILER_AUDIO / "bell.mp3"  # the fight's over: rung on the results (supplied for the trailer)
 KO_SAID = 0.85  # the announcer's "K.O.!" is said by this long after it lands, before the bell
-TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends!" (tools/generate_video_voice.py)
+TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends, in local PvP or online play!"
 TAP_KILL = 1.04  # "KILL" in the line, which lands on the tap
+# The rest of the line ("...your friends, in local PvP or online play!", from this far into it to its end) follows
+# KILL closer and a touch quicker, so it's said before FIGHT!.
+TAP_REST, TAP_END, TAP_REST_AT, TAP_REST_TEMPO = 1.92, 5.4, 0.7, 1.15
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
 START_YAW, START_GAP = 0.15, 40.0  # how the phones start: turned a little toward each other, this far out of place
 
@@ -64,9 +67,10 @@ def feed(file: str, at: float, length: float, start: float, end: float) -> Feed:
 class OnlinePvp:
     """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones flying in and turning to meet in one move, the
     tap on the next downbeat, [vs] bars of VS after that bar, [turns] bars of blows traded, then two bars of the last
-    exchange and the K.O., and [results] bars of the results."""
+    exchange and the K.O., and [results] bars of the results, held [hold] bars more on the last of them."""
 
-    def __init__(self, bar: float, beat: float, approach: float = 3, vs: int = 2, turns: int = 2, results: int = 2):
+    def __init__(self, bar: float, beat: float, approach: float = 3, vs: int = 2, turns: int = 2, results: int = 2,
+                 hold: float = 0):
         self.bar, self.beat = bar, beat
         b = bar
         self.tap = approach * b
@@ -74,7 +78,7 @@ class OnlinePvp:
         self.fight_at = self.vs_at + vs * b
         self.ko = self.fight_at + turns * b  # the last exchange
         self.results_at = self.ko + 2 * b
-        self.duration = self.results_at + results * b
+        self.duration = self.results_at + (results + hold) * b
         stretch = (KO_EXCHANGE[1] - KO_EXCHANGE[0]) / (2 * b)
         self.ko_hit = self.ko + (KO_LANDS - KO_EXCHANGE[0]) / stretch  # when K.O. hits the screens
         played = TRADES[:turns]
@@ -188,8 +192,11 @@ class OnlinePvp:
         return fx.flash(out, (255, 255, 255), max(0.75 * pulse(t, self.tap, 0.16), 0.4 * pulse(t, self.ko_hit, 0.12)))
 
     def cues(self) -> list[Cue]:
-        fight = self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN
+        said = self.tap + TAP_REST_AT + (TAP_END - TAP_REST) / TAP_REST_TEMPO  # the line's done
+        fight = max(self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN, said + 0.12)  # on the FIGHT! card
         hits = [Cue(t - cast.punch(cast.blow(name)), cast.blow(name), cast.BLOW_GAIN[name], ducking=False)
                 for t, name in [*self.blows, (self.ko_hit, "knockout")]]
-        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1), *hits,
+        line = [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15, length=TAP_REST - 0.17, fade_out=0.05),
+                Cue(self.tap + TAP_REST_AT, TAP_LINE, 1.15, skip=TAP_REST, tempo=TAP_REST_TEMPO)]
+        return [*line, Cue(fight, cast.voice("fight"), 1.1), *hits,
                 Cue(self.ko_hit, cast.voice("ko"), 1.1), Cue(max(self.results_at, self.ko_hit + KO_SAID), BELL, 1.0)]

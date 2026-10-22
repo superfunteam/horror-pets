@@ -32,6 +32,9 @@ CARD_SPEED = 364  # px a second each row of cards slides
 GAME_W, GAME_H, GAME_CELL, GAME_FLOOR, GAME_SPOTS = 1920, 1080, 402, 853, (787, 1353)
 
 
+RIGHT, LEFT = (0.56, 0.6), (0.44, 0.6)  # where to frame a fight: on the one getting hit, and the callouts over them
+
+
 @dataclass(frozen=True)
 class Cut:
     """[clip] shown for [length] seconds from [at] into the scene, cropped in [zoom] times on [focus] (a fraction of
@@ -40,7 +43,7 @@ class Cut:
     length: float
     clip: Clip
     # The fights are recorded with the HUD hidden (the puppet's `hud off`), so this only closes in on the fighters,
-    # keeping the callouts and numbers over the one getting hit (always on the right) in frame.
+    # keeping the callouts and numbers over the one getting hit (RIGHT or LEFT) in frame.
     zoom: float = 1.35
     focus: tuple[float, float] = (0.56, 0.6)
 
@@ -108,34 +111,34 @@ class FightToEvolve:
         self.bar, self.beat, self.drop = bar, beat, drop
         self.duration = bars * bar
         self.cards_at = montage_bars * bar
-        # (beats long, recording, from, to, zoom): the montage, cut on the beat.
-        # (beats long, recording, from, to, zoom, when the blow lands in the recording, the game's sounds for it):
-        # the montage, cut on the beat.
+        # (beats long, recording, from, to, zoom, who's hit, when the blow lands in the recording, its sounds): the
+        # montage, cut on the beat, the blows trading back and forth before the specials.
         montage = [
-            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, 14.57, ("punch_heavy",)),  # Chucky's combo, a guard
-            # break (wider for its callout)
-            (1, "hud-ghostface-freddy.mp4", 28.6, 29.5, 1.0, 28.85, ("crit",)),  # Ghostface's combo crit (its callout
-            # runs the width of the screen)
-            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, 7.53, ("punch_heavy",)),  # Jason's machete on Pinhead
-            (1, "hud-freddy-jason.mp4", 29.7, 30.7, 1.35, 30.07, ("punch",)),  # Freddy's claws draining Jason
-            (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35, 35.47, ("crit",)),  # Leatherface's saw, a crit
+            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, RIGHT, 14.57, ("punch_heavy",)),  # Chucky's combo on
+            # Ghostface, a guard break (wider for its callout)
+            (1, "hud-ghostface-freddy.mp4", 16.25, 17.15, 1.35, LEFT, 16.52, ("punch",)),  # Freddy's claws back at
+            # Ghostface, draining him
+            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, RIGHT, 7.53, ("punch_heavy",)),  # Jason's machete on Pinhead
+            (1, "hud-freddy-jason.mp4", 36.95, 37.85, 1.2, LEFT, 37.18, ("crit",)),  # Jason's crit back on Freddy (wider:
+            # Freddy stands far left)
+            (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35, RIGHT, 35.47, ("crit",)),  # Leatherface's saw, a crit
             # Specials: Pinhead's chains (wide, to fit them),
-            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, 44.03, ("super",)),
-            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, 33.62, ("super",)),  # Chucky's voodoo,
-            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, 34.58, ("super",)),  # his knives,
+            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, RIGHT, 44.03, ("super",)),
+            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, RIGHT, 33.62, ("super",)),  # Chucky's voodoo,
+            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, RIGHT, 34.58, ("super",)),  # his knives,
             # Leatherface's saw dance
-            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, 30.32, ("super",)),
+            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, RIGHT, 30.32, ("super",)),
         ]
         ko = montage_bars * 4 - round(drop / beat) - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
         # Freddy's special draining Jason to a K.O.
-        montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35, 78.3, ("knockout",)))
+        montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35, RIGHT, 78.3, ("knockout",)))
         # Under the title, Leatherface and Michael square off on the street the fights open on; the hits start at the drop.
         self.cuts, at = [Cut(0.0, drop, Standoff("leatherface", "michael", "haddonfield"))], drop
         self.blows: list[tuple[float, float, tuple[str, ...]]] = []  # (when it lands, when its cut ends, its sounds)
-        for beats, file, start, end, zoom, lands, sounds in montage:
+        for beats, file, start, end, zoom, hit, lands, sounds in montage:
             speed = (end - start) / (beats * beat)
-            self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=speed), zoom))
+            self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=speed), zoom, hit))
             self.blows.append((at + (lands - start) / speed, at + beats * beat, sounds))
             at += beats * beat
         self.specials_at = self.cuts[6].at

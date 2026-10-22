@@ -63,7 +63,7 @@ def make() -> Sequence:
     cuts = [CharacterIntro(cast.BY_ID[pet], beats * BEAT, BEAT) for pet, beats in ORDER]
     fights = FightToEvolve(BAR, BEAT, drop=BAR, bars=6.5)
     environments = Environments(11 * BEAT)
-    pvp = OnlinePvp(BAR, BEAT, approach=1, vs=2, turns=2, results=1)
+    pvp = OnlinePvp(BAR, BEAT, approach=1, vs=2.5, turns=2, results=1, hold=0.25)
     scenes = [crt, raise_train, *cuts, fights, environments, pvp, Outro(OUTRO)]
     seq = Sequence(scenes)
     at: dict[str, float] = {}  # each kind of scene's first start
@@ -75,6 +75,6 @@ def make() -> Sequence:
     # further, so the phones tap as the breakdown starts (a beat of the drop cut at the tap); most of the breakdown is
     # skipped so they fight on the last drop; and the outro gets the last drop again, running out to the song's end.
     edit = [(0.0, 0.0), (at["CharacterIntro"], bar(8)), (at["FightToEvolve"], bar(15)),
-            (at["Environments"], bar(15) + fights.duration - 2 * BAR), (tap, bar(24)), (tap + 2 * BAR, bar(31)),
+            (at["Environments"], bar(15) + fights.duration - 2 * BAR), (tap, bar(24)), (at["OnlinePvp"] + pvp.fight_at - BAR, bar(31)),
             (at["Outro"], bar(32))]
     return Sequence(scenes, (*song_cues(edit), Cue(bar(4) + 0.25, cast.voice("choose_your_killer"), 1.1)))

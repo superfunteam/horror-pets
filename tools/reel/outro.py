@@ -44,9 +44,9 @@ class Outro:
         self.phone_feed = Clip("home-freddy-phone.mp4", 2.0, 8.0)
         line = Image.open(TITLE).convert("RGBA")
         big = min(1640, 0.74 * H * line.width / line.height)  # as big as the middle of the frame takes
-        small = 0.28 * H * line.width / line.height  # up top, over the TV and the phone
+        small = 0.364 * H * line.width / line.height  # up top, overhanging the TV and the phone a little
         self.title = Slam(line, (W / 2, H * 0.47), big, land=0.14, glint_at=0.75,
-                          settle=(*SETTLE, (W / 2, H * 0.17), small / big))
+                          settle=(*SETTLE, (W / 2, H * 0.24), small / big))
         self._shots: dict[int, phones.Shot] | None = None
 
     def shot(self, t: float) -> phones.Shot:
