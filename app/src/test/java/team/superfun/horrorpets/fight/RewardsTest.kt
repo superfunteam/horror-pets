@@ -27,7 +27,8 @@ class RewardsTest {
         fakeDeathPending = true,
     )
 
-    private val won = stateOf(winner = Side.PLAYER)
+    /** A scrappy win, down to 10 HP: rank C, so it pays no bonus and the base numbers show. */
+    private val won = stateOf(player = fighter(hp = 10, maxHp = 100), winner = Side.PLAYER)
     private val lost = stateOf(winner = Side.CPU)
     private val ran = stateOf(winner = Side.CPU, playerRan = true)
 
@@ -122,13 +123,71 @@ class RewardsTest {
         for (id in PetId.entries) {
             val p = reference.copy(id = id)
             for (s in listOf(won, lost, ran)) {
-                val r = applyFightResult(p, stateOf(player = fighter(id = id), cpu = fighter(id = PetId.JASON), winner = s.winner, playerRan = s.playerRan))
+                val r = applyFightResult(p, s.copy(player = s.player.copy(id = id)))
                 val expected = applyFightResult(reference, s)
                 assertEquals("$id", expected.pet.copy(id = id), r.pet)
                 assertEquals("$id", expected.xpGained, r.xpGained)
                 assertEquals("$id", expected.levelsGained, r.levelsGained)
             }
         }
+    }
+
+    // ---- battle rank ----
+
+    /** A win with [hp] of 100 left after [turns] turns, its best combo [combo], having drunk [potions]. */
+    private fun win(hp: Int = 100, turns: Int = 0, combo: Int = 0, potions: Int = 0) = stateOf(
+        player = fighter(hp = hp, maxHp = 100),
+        turn = turns + 1,
+        winner = Side.PLAYER,
+    ).copy(playerPotions = FightTuning.POTIONS_PER_FIGHT - potions, stats = FightStats(bestCombo = combo))
+
+    @Test
+    fun aWinIsScoredOnHpLeftComboSpeedAndPotions() {
+        // 72% left is 36, a best combo of 3 is 20, six turns is one over par (20 - 4), a potion is -10.
+        assertEquals(RankScore(hpPercent = 72, hpPoints = 36, comboPoints = 20, speedPoints = 16, potionPoints = -10), rankScore(win(72, 6, 3, 1)))
+        assertEquals(62, rankScore(win(72, 6, 3, 1))!!.total)
+        assertEquals(Rank.A, rankScore(win(72, 6, 3, 1))!!.rank)
+    }
+
+    @Test
+    fun eachPartHasItsLimits() {
+        val combos = rankScore(win(combo = 9))!!
+        assertEquals("a combo counts up to 4 hits", 30, combos.comboPoints)
+        assertEquals("a single hit is no combo", 0, rankScore(win(combo = 1))!!.comboPoints)
+        assertEquals("speed never goes below 0", 0, rankScore(win(turns = 30))!!.speedPoints)
+        assertEquals(20, rankScore(win(turns = 5))!!.speedPoints)
+        assertEquals(-20, rankScore(win(potions = 2))!!.potionPoints)
+    }
+
+    @Test
+    fun theRanks() {
+        fun rankOf(total: Int) = RankScore(hpPercent = 0, hpPoints = total, comboPoints = 0, speedPoints = 0, potionPoints = 0).rank
+        assertEquals(Rank.S, rankOf(80))
+        assertEquals(Rank.A, rankOf(79))
+        assertEquals(Rank.A, rankOf(60))
+        assertEquals(Rank.B, rankOf(59))
+        assertEquals(Rank.B, rankOf(35))
+        assertEquals(Rank.C, rankOf(34))
+        assertEquals(Rank.C, rankOf(-20))
+        assertEquals(listOf(30, 20, 10, 0), Rank.entries.map { it.bonusXp })
+    }
+
+    @Test
+    fun onlyAWinIsRanked() {
+        assertEquals(null, rankScore(lost))
+        assertEquals(null, rankScore(ran))
+        assertEquals(null, applyFightResult(pet(), lost).scored)
+        assertEquals(0, applyFightResult(pet(), lost).bonusXp)
+    }
+
+    @Test
+    fun aWinPaysItsRanksBonus() {
+        // Full HP, a combo of 4, in par: 50 + 30 + 20 = S.
+        val r = applyFightResult(pet(), win(combo = 4, turns = 4))
+        assertEquals(Rank.S, r.scored!!.rank)
+        assertEquals(30, r.bonusXp)
+        assertEquals(70, r.xpGained)
+        assertEquals(70, r.pet.xp)
     }
 
     @Test

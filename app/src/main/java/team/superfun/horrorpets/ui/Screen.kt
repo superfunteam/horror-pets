@@ -53,7 +53,8 @@ sealed interface Screen {
         val cpuTell: Move? = null,
     ) : Screen
 
-    data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean) : Screen
+    /** A fight's results: what the pet earned ([reward]), and the [fight] as it ended, for its stats (null when not known). */
+    data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean, val fight: FightState? = null) : Screen
 
     /** The player just beat [pet], a killer they did not have, and it joined their stable; [results] come next. */
     data class Unlocked(val pet: PetId, val results: Results) : Screen

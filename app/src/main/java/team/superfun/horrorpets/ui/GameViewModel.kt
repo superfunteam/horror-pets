@@ -364,7 +364,7 @@ class GameViewModel(
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
-        val results = Screen.Results(reward, won = won, ran = fight.playerRan)
+        val results = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight)
         val unlock = fight.cpu.id.takeIf { won && !fight.playerRan && !s.game.isUnlocked(it) }
         val voice = when {
             fight.playerRan -> emptyList()

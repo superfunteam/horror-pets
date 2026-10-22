@@ -75,6 +75,17 @@ object FightTuning {
     const val CPU_WEIGHT_HEAVY = 30
     const val CPU_WEIGHT_BLOCK = 30
 
+    // Battle rank (wins only): points for HP left (RANK_HP_POINTS at full), for the best combo (RANK_COMBO_POINTS
+    // per hit past the first, counting up to RANK_COMBO_MAX hits), for speed (RANK_SPEED_POINTS within
+    // RANK_PAR_TURNS turns, RANK_SLOW_TURN fewer for each turn over), RANK_POTION for each potion drunk.
+    const val RANK_HP_POINTS = 50
+    const val RANK_COMBO_POINTS = 10
+    const val RANK_COMBO_MAX = 4
+    const val RANK_SPEED_POINTS = 20
+    const val RANK_PAR_TURNS = 5
+    const val RANK_SLOW_TURN = 4
+    const val RANK_POTION = -10
+
     // Rewards (applied on top of the pet's stats, then clamped)
     const val FIGHT_HUNGER = 15.0 // win or loss, not run
     const val XP_WIN = 40

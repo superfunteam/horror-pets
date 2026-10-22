@@ -132,7 +132,8 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * side that dealt more damage this turn wins (the dealt damage, not capped by remaining hit
  * points), and PLAYER wins a tie. Only the loser gets a [FightEvent.Ko], so the winner of a double
  * KO is left standing at 0 hp. The returned state has `turn + 1`, the player's move appended to
- * `playerHistory`, and no [FightState.cpuPlan] (it has been played: plan the next with [planCpu]).
+ * `playerHistory`, the turn tallied into [FightState.stats], and no [FightState.cpuPlan] (it has been played:
+ * plan the next with [planCpu]).
  *
  * @throws IllegalStateException if the fight already has a winner.
  * @throws IllegalArgumentException if the CPU plays RUN or POTION, the player plays POTION with none
@@ -171,11 +172,12 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         FightEvent.Bleed(Side.CPU, cpuBleed).takeIf { cpuBleed > 0 },
     )
     val events = player.events + cpu.events + bleeds + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
+    val playerCombo = comboAfter(s.player, player, hitBy = cpu)
     val next = s.copy(
         player = s.player.copy(
             hp = playerHp,
             meter = player.meter,
-            combo = comboAfter(s.player, player, hitBy = cpu),
+            combo = playerCombo,
             bleed = bleedAfter(s.player, cpu),
             dazed = cpu.inflicts == SpecialEffect.DAZE,
         ),
@@ -191,8 +193,38 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         winner = winner,
         playerPotions = s.playerPotions - if (playerMove == Move.POTION) 1 else 0,
         cpuPlan = null,
+        stats = tally(s.stats, events),
     )
     return TurnResult(next, events)
+}
+
+/** [stats] with one more turn's [events] counted in. */
+private fun tally(stats: FightStats, events: List<FightEvent>): FightStats {
+    var t = stats
+    for (e in events) {
+        t = when (e) {
+            is FightEvent.Hit -> if (e.attacker == Side.PLAYER) {
+                t.copy(
+                    damageDealt = t.damageDealt + e.damage,
+                    hits = t.hits + 1,
+                    crits = t.crits + if (e.crit) 1 else 0,
+                    specials = t.specials + if (e.move == Move.SPECIAL) 1 else 0,
+                    // This hit is the (combo + 1)th in a row, even if the other side's lands on the same turn.
+                    bestCombo = maxOf(t.bestCombo, e.combo + 1),
+                )
+            } else {
+                t.copy(damageTaken = t.damageTaken + e.damage)
+            }
+            is FightEvent.Miss -> if (e.attacker == Side.PLAYER) t.copy(misses = t.misses + 1) else t
+            is FightEvent.Bleed -> if (e.side == Side.CPU) t.copy(damageDealt = t.damageDealt + e.damage) else t.copy(damageTaken = t.damageTaken + e.damage)
+            is FightEvent.Heal -> if (e.side == Side.PLAYER) t.copy(healed = t.healed + e.amount) else t
+            is FightEvent.Drain -> if (e.side == Side.PLAYER) t.copy(healed = t.healed + e.amount) else t
+            is FightEvent.Blocked -> if (e.blocker == Side.CPU) t.copy(stopped = t.stopped + 1) else t
+            is FightEvent.Interrupted -> if (e.side == Side.PLAYER) t.copy(stopped = t.stopped + 1) else t
+            is FightEvent.SpecialReady, is FightEvent.Ko -> t
+        }
+    }
+    return t
 }
 
 private fun requireSpecialReady(side: Side, f: Fighter, move: Move) {

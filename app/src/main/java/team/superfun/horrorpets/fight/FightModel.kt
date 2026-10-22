@@ -31,6 +31,25 @@ data class Fighter(
 )
 
 /**
+ * How the player has fought so far, for the results screen and the battle rank: the damage it dealt (hits and
+ * the bleeds it caused) and took (hits and bleeds), its landed [hits], whiffed [misses] and [stopped] attacks (a
+ * STRIKE blocked, a HEAVY interrupted), how many of the hits
+ * were [crits] and [specials], the hit points it [healed] (potions and drains), and its [bestCombo]: the longest run
+ * of hits it landed turn after turn (each one part of its combo, as the hit's COMBO ×N said).
+ */
+data class FightStats(
+    val damageDealt: Int = 0,
+    val damageTaken: Int = 0,
+    val hits: Int = 0,
+    val misses: Int = 0,
+    val stopped: Int = 0,
+    val crits: Int = 0,
+    val specials: Int = 0,
+    val healed: Int = 0,
+    val bestCombo: Int = 0,
+)
+
+/**
  * What the CPU will play next turn ([move]), chosen before the player picks, and the [tell] it shows the
  * player: the same move, unless it feints (see [cpuPlan]).
  */
@@ -41,7 +60,8 @@ data class CpuPlan(val move: Move, val tell: Move)
  * [playerHistory] every move the player has chosen (the CPU reads it), [winner] is null while the
  * fight is on, and [playerRan] is true when the player forfeited. [playerPotions] is how many potions the
  * player has left ([FightTuning.POTIONS_PER_FIGHT] to start). [cpuPlan] is the CPU's move for the coming
- * turn and its tell, null until it is planned and once it has been played.
+ * turn and its tell, null until it is planned and once it has been played. [stats] tallies how the player has
+ * fought.
  */
 data class FightState(
     val player: Fighter,
@@ -52,7 +72,14 @@ data class FightState(
     val playerRan: Boolean = false,
     val playerPotions: Int = FightTuning.POTIONS_PER_FIGHT,
     val cpuPlan: CpuPlan? = null,
-)
+    val stats: FightStats = FightStats(),
+) {
+    /** How many turns have been played. */
+    val turnsPlayed: Int get() = turn - 1
+
+    /** How many potions the player has drunk. */
+    val potionsUsed: Int get() = FightTuning.POTIONS_PER_FIGHT - playerPotions
+}
 
 /** What happened during a turn, in the order the fight screen should play it. */
 sealed interface FightEvent {
