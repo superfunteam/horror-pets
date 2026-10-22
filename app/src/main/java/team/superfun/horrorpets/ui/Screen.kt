@@ -17,6 +17,39 @@ import team.superfun.horrorpets.model.PlayGag
  */
 enum class SwitcherMode { ONBOARD, OPPONENT }
 
+/** Where the PvP lobby is. */
+sealed interface LobbyPhase {
+    /** Host or join; [problem] says why the last try did not work out. */
+    data class Menu(val problem: PvpProblem? = null) : LobbyPhase
+
+    /** Opening a room ([code] null until the relay answers), then waiting in it for a challenger. */
+    data class Hosting(val code: String? = null) : LobbyPhase
+
+    /** Typing a friend's code: the [digits] so far, [busy] while joining, and why the last try failed. */
+    data class Joining(val digits: String = "", val busy: Boolean = false, val problem: PvpProblem? = null) : LobbyPhase
+}
+
+/** Why PvP did not work out, as the lobby explains it. */
+enum class PvpProblem {
+    /** The relay could not be reached. */
+    OFFLINE,
+
+    /** No open room has that code. */
+    NO_ROOM,
+
+    /** Someone else got into the room first. */
+    FULL,
+
+    /** The other player runs another version of the game. */
+    VERSION,
+
+    /** The connection dropped in the middle of a fight. */
+    LOST,
+}
+
+/** A PvP fight's link to the other player, for the fight screen: this player is [waiting] for the other to lock in, who [opponentIn] already has. */
+data class PvpView(val waiting: Boolean = false, val opponentIn: Boolean = false)
+
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
 sealed interface Screen {
     /** The save is still being read. */
@@ -32,7 +65,11 @@ sealed interface Screen {
 
     data object Home : Screen
 
-    data class Versus(val opponent: PetId) : Screen
+    /** The VS card before a fight with [opponent]: the CPU's, or, in [pvp], the other player's killer. */
+    data class Versus(val opponent: PetId, val pvp: Boolean = false) : Screen
+
+    /** PvP: open a room and share its 4-digit code, or join one by its code (or, on a phone, by a tap). */
+    data class PvpLobby(val phase: LobbyPhase) : Screen
 
     /**
      * [lastEvents] are the events of the turn just resolved, in the order to animate them (empty before
@@ -51,6 +88,7 @@ sealed interface Screen {
         val playerMove: Move? = null,
         val cpuMove: Move? = null,
         val cpuTell: Move? = null,
+        val pvp: PvpView? = null,
     ) : Screen
 
     /** A fight's results: what the pet earned ([reward]), and the [fight] as it ended, for its stats (null when not known). */

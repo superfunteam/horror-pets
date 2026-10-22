@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The PvP room code a hosting phone hands to a phone tapped against it (see PvpTapService). The AID is
+     TapProtocol's PVP_AID: proprietary (F0), "HPVP" and 1. -->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/pvp_tap_description"
+    android:requireDeviceUnlock="false">
+    <aid-group
+        android:category="other"
+        android:description="@string/pvp_tap_description">
+        <aid-filter android:name="F04850565031" />
+    </aid-group>
+</host-apdu-service>

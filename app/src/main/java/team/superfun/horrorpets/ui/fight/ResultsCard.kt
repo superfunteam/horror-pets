@@ -566,17 +566,22 @@ internal fun scoreLines(s: RankScore): List<ScoreLine> = listOf(
 private fun ColumnScope.RankPanel(screen: Screen.Results, fight: FightState?, stamp: () -> Float) {
     val scored = screen.reward.scored
     if (scored == null) {
-        // A loss or a run earns no rank: say why, without a letter.
+        // A loss, a run or a win by forfeit earns no rank: say why, without a letter.
+        val theyRan = fight?.cpuRan == true
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 BasicText(
-                    if (screen.ran) "FLED" else "K.O.",
-                    style = displayStyle(54.sp, color = TextLo, tracking = 0.06f, lineHeight = 56.sp),
+                    when {
+                        screen.ran -> "FLED"
+                        theyRan -> "FORFEIT"
+                        else -> "K.O."
+                    },
+                    style = displayStyle(if (theyRan) 44.sp else 54.sp, color = if (theyRan) Amber else TextLo, tracking = 0.06f, lineHeight = 56.sp),
                     maxLines = 1,
                 )
                 Spacer(Modifier.height(8.dp))
                 BasicText(
-                    "WIN TO EARN A RANK",
+                    if (theyRan) "THEY RAN \u00b7 NO RANK" else "WIN TO EARN A RANK",
                     style = displayStyle(13.sp, FontWeight.Bold, color = TextLo, tracking = 0.14f),
                     maxLines = 1,
                     autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 13.sp, stepSize = 1.sp),

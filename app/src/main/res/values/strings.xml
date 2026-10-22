@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Virtual Pet Slasher 2 Turbo</string>
+    <!-- Shown by Android for the NFC service a hosting phone uses to hand its PvP room code to a tapped phone. -->
+    <string name="pvp_tap_description">Virtual Pet Slasher PvP room code</string>
 </resources>

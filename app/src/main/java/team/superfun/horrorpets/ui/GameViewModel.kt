@@ -6,6 +6,8 @@ import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,10 +18,14 @@ import kotlinx.coroutines.sync.withLock
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
+import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.applyFightResult
+import team.superfun.horrorpets.fight.buildFighter
+import team.superfun.horrorpets.fight.forfeit
+import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.fight.cpuPlan
 import team.superfun.horrorpets.fight.planCpu
 import team.superfun.horrorpets.fight.resolveTurn
@@ -40,6 +46,11 @@ import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.nextFood
 import team.superfun.horrorpets.model.nextPlayGag
+import team.superfun.horrorpets.pvp.PvpException
+import team.superfun.horrorpets.pvp.PvpMatch
+import team.superfun.horrorpets.pvp.PvpRelay
+import team.superfun.horrorpets.pvp.Role
+import team.superfun.horrorpets.pvp.resolvePvpTurn
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -80,6 +91,8 @@ class GameViewModel(
     private val onError: (Throwable) -> Unit = {},
     private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
     private val pickRng: Random = Random.Default,
+    private val pvpRelay: PvpRelay? = null,
+    private val onHostCode: (String?) -> Unit = {},
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -308,17 +321,29 @@ class GameViewModel(
 
     // ---- fight -------------------------------------------------------------------------------
 
-    /** Back on the VS card: no fight exists yet, so it simply returns to the opponent switcher. */
+    /**
+     * Back on the VS card: no fight exists yet, so it simply returns to the opponent switcher. In PvP that walks
+     * out of the room, and the other player wins by forfeit.
+     */
     fun onVersusBack() {
         val s = _state.value
-        if (s.screen !is Screen.Versus) return
+        val versus = s.screen as? Screen.Versus ?: return
+        if (versus.pvp) endMatch(leave = true)
         _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT))
     }
 
-    /** The VS card is done: the fight starts with the selected pet against the picked opponent. */
+    /** The VS card is done: the fight starts with the selected pet against the picked opponent (or the other player). */
     fun onVersusDone() {
         val s = _state.value
         val versus = s.screen as? Screen.Versus ?: return
+        if (versus.pvp) {
+            val m = match ?: return
+            val fight = m.start()
+            canonical = fight
+            _state.value = s.copy(screen = Screen.Fight(m.view(fight), emptyList(), pvp = PvpView()))
+            watchTurn()
+            return
+        }
         val player = s.game.selected?.let { s.game.pets[it] } ?: return
         // The CPU plans its first move (and its tell) before the player sees the menu.
         _state.value = s.copy(screen = Screen.Fight(planCpu(startFight(player, versus.opponent, rng), rng), emptyList()))
@@ -340,6 +365,10 @@ class GameViewModel(
         if (m == Move.SPECIAL && fight.player.meter < FightTuning.METER_MAX) return
         // A potion needs one left, and at full health it would be wasted.
         if (m == Move.POTION && (fight.playerPotions == 0 || fight.player.hp >= fight.player.maxHp)) return
+        if (screen.pvp != null) {
+            lockIn(s, screen, m)
+            return
+        }
 
         // The CPU plays the move it planned (and told, or feinted) before the player chose, then plans the
         // next turn's. Running ends the fight before the CPU acts, and the engine ignores the plan it is handed.
@@ -397,6 +426,337 @@ class GameViewModel(
         val s = _state.value
         if (s.screen !is Screen.Results) return
         _state.value = s.goHome()
+    }
+
+    // ---- pvp ---------------------------------------------------------------------------------
+
+    /** The PvP room this player is fighting in (or about to), from its side. */
+    private var match: PvpMatch? = null
+
+    /** The room this player opened and is waiting in for a challenger, until one joins. */
+    private var hostedRoom: Pair<String, String>? = null
+
+    /** The PvP fight as both apps keep it: the host as PLAYER (see [PvpMatch]). */
+    private var canonical: FightState? = null
+
+    /** The lobby's request or wait, or the fight's watch on the current turn: one at a time. */
+    private var pvpJob: Job? = null
+
+    /** Whether PvP is on offer: only with a relay to meet through. */
+    val pvpAvailable: Boolean get() = pvpRelay != null
+
+    /** PvP Battle, the last pick in the opponent switcher: on to the lobby. */
+    fun onPvpPicked() {
+        val s = _state.value
+        val switcher = s.screen as? Screen.Switcher ?: return
+        if (switcher.mode != SwitcherMode.OPPONENT || pvpRelay == null || s.game.selected == null) return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
+    }
+
+    /** Opens a room: once the relay answers, its code is shown (and offered to a phone tapped against this one). */
+    fun onLobbyHost() {
+        val relay = pvpRelay ?: return
+        val s = _state.value
+        val lobby = s.screen as? Screen.PvpLobby ?: return
+        if (lobby.phase !is LobbyPhase.Menu) return
+        val me = myFighter(s) ?: return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Hosting()))
+        pvpJob?.cancel()
+        pvpJob = scope.launch {
+            val hosted = try {
+                relay.create(me)
+            } catch (e: PvpException) {
+                setLobby(LobbyPhase.Menu(problemOf(e)), onlyIf = { it is LobbyPhase.Hosting })
+                return@launch
+            }
+            hostedRoom = hosted.room to hosted.token
+            onHostCode(hosted.code)
+            setLobby(LobbyPhase.Hosting(hosted.code), onlyIf = { it is LobbyPhase.Hosting })
+            // Wait for a challenger. A dropped request or two is only a slower wait.
+            while (true) {
+                delay(LOBBY_POLL_MS)
+                val room = try {
+                    relay.room(hosted.room, hosted.token)
+                } catch (e: PvpException) {
+                    continue
+                }
+                val guest = room.guest ?: continue
+                startMatch(PvpMatch(Role.HOST, hosted.room, hosted.token, hosted.seed, me, guest))
+                return@launch
+            }
+        }
+    }
+
+    /** On to typing a friend's code. */
+    fun onLobbyJoin() {
+        val s = _state.value
+        val lobby = s.screen as? Screen.PvpLobby ?: return
+        if (lobby.phase !is LobbyPhase.Menu) return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining()))
+    }
+
+    /** A digit of the code; the fourth one joins. */
+    fun onLobbyDigit(digit: Int) {
+        val s = _state.value
+        val phase = (s.screen as? Screen.PvpLobby)?.phase as? LobbyPhase.Joining ?: return
+        if (phase.busy || digit !in 0..9 || phase.digits.length >= CODE_LENGTH) return
+        val digits = phase.digits + digit
+        if (digits.length == CODE_LENGTH) join(digits) else _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(digits)))
+    }
+
+    /** Takes back the last digit typed. */
+    fun onLobbyErase() {
+        val s = _state.value
+        val phase = (s.screen as? Screen.PvpLobby)?.phase as? LobbyPhase.Joining ?: return
+        if (phase.busy || phase.digits.isEmpty()) return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(phase.digits.dropLast(1))))
+    }
+
+    /** A code read from another phone by a tap (NFC): joins its room, from the lobby's menu or code entry. */
+    fun onTapCode(code: String) {
+        val phase = (_state.value.screen as? Screen.PvpLobby)?.phase ?: return
+        if (code.length != CODE_LENGTH || !code.all(Char::isDigit)) return
+        when (phase) {
+            is LobbyPhase.Menu -> join(code)
+            is LobbyPhase.Joining -> if (!phase.busy) join(code)
+            is LobbyPhase.Hosting -> Unit
+        }
+    }
+
+    /** Back in the lobby: from the menu to the opponent switcher, from hosting or joining back to the menu. */
+    fun onLobbyBack() {
+        val s = _state.value
+        val lobby = s.screen as? Screen.PvpLobby ?: return
+        pvpJob?.cancel()
+        pvpJob = null
+        when (lobby.phase) {
+            is LobbyPhase.Menu -> _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT))
+            is LobbyPhase.Hosting -> {
+                closeHostedRoom()
+                _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
+            }
+            is LobbyPhase.Joining -> _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
+        }
+    }
+
+    private fun join(code: String) {
+        val relay = pvpRelay ?: return
+        val s = _state.value
+        if (s.screen !is Screen.PvpLobby) return
+        val me = myFighter(s) ?: return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(code, busy = true)))
+        pvpJob?.cancel()
+        pvpJob = scope.launch {
+            val joined = try {
+                relay.join(code, me)
+            } catch (e: PvpException) {
+                setLobby(LobbyPhase.Joining("", problem = problemOf(e)), onlyIf = { it is LobbyPhase.Joining })
+                return@launch
+            }
+            startMatch(PvpMatch(Role.GUEST, joined.room, joined.token, joined.seed, joined.host, me))
+        }
+    }
+
+    /** Both players are in: on to the VS card. */
+    private fun startMatch(m: PvpMatch) {
+        val s = _state.value
+        if ((s.screen as? Screen.PvpLobby) == null) return
+        hostedRoom = null
+        onHostCode(null)
+        match = m
+        val mine = if (m.role == Role.HOST) m.host.id else m.guest.id
+        val theirs = if (m.role == Role.HOST) m.guest.id else m.host.id
+        _state.value = s.copy(
+            screen = Screen.Versus(theirs, pvp = true),
+            voice = s.voice + listOf(mine.soundName(), "versus", theirs.soundName()),
+        )
+    }
+
+    /** This player locks in [m] for the turn and waits for the other; a RUN forfeits on the spot. */
+    private fun lockIn(s: UiState, screen: Screen.Fight, m: Move) {
+        val relay = pvpRelay ?: return
+        val pvp = screen.pvp ?: return
+        val game = match ?: return
+        val fight = canonical ?: return
+        if (pvp.waiting) return
+        if (m == Move.RUN) {
+            // Locked in as a RUN too, so the other app (which may be resolving this turn) agrees it was a forfeit.
+            scope.launch {
+                runCatching { relay.lockIn(game.room, game.token, fight.turn, Move.RUN) }
+                runCatching { relay.leave(game.room, game.token) }
+            }
+            pvpJob?.cancel()
+            pvpJob = null
+            endPvpFight(s, forfeit(fight, game.side), playerMove = Move.RUN, cpuMove = null)
+            return
+        }
+        _state.value = s.copy(screen = screen.copy(pvp = pvp.copy(waiting = true)))
+        scope.launch {
+            repeat(LOCK_IN_TRIES) { attempt ->
+                try {
+                    relay.lockIn(game.room, game.token, fight.turn, m)
+                    return@launch
+                } catch (e: PvpException) {
+                    delay(TURN_POLL_MS * (attempt + 1))
+                }
+            }
+            lostConnection()
+        }
+    }
+
+    /** Watches the current turn until both moves are in (or the other player leaves), then plays it. */
+    private fun watchTurn() {
+        val relay = pvpRelay ?: return
+        val game = match ?: return
+        val turn = canonical?.turn ?: return
+        pvpJob?.cancel()
+        pvpJob = scope.launch {
+            var failures = 0
+            while (true) {
+                val view = try {
+                    relay.turn(game.room, game.token, turn).also { failures = 0 }
+                } catch (e: PvpException) {
+                    if (++failures >= MAX_POLL_FAILURES) {
+                        lostConnection()
+                        return@launch
+                    }
+                    delay(TURN_POLL_MS)
+                    continue
+                }
+                val host = view.host
+                val guest = view.guest
+                if (host != null && guest != null) {
+                    playPvpTurn(host, guest)
+                    return@launch
+                }
+                if (view.left == game.them) {
+                    opponentLeft()
+                    return@launch
+                }
+                val s = _state.value
+                val screen = s.screen as? Screen.Fight
+                val pvp = screen?.pvp
+                if (screen != null && pvp != null && pvp.opponentIn != view.isIn(game.them)) {
+                    _state.value = s.copy(screen = screen.copy(pvp = pvp.copy(opponentIn = view.isIn(game.them))))
+                }
+                delay(TURN_POLL_MS)
+            }
+        }
+    }
+
+    /** Both moves are in: the turn plays out, the same as on the other app. */
+    private fun playPvpTurn(host: Move, guest: Move) {
+        val game = match ?: return
+        val fight = canonical ?: return
+        val s = _state.value
+        if (s.screen !is Screen.Fight || s.busy) return
+        val turn = resolvePvpTurn(fight, host, guest, game.seed)
+        canonical = turn.state
+        val mine = if (game.role == Role.HOST) host else guest
+        val theirs = if (game.role == Role.HOST) guest else host
+        _state.value = s.copy(
+            screen = Screen.Fight(game.view(turn.state), game.viewEvents(turn.events), playerMove = mine, cpuMove = theirs, pvp = PvpView()),
+        ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
+    }
+
+    /** The other player walked out: they forfeit, and this player wins. */
+    private fun opponentLeft() {
+        val game = match ?: return
+        val fight = canonical ?: return
+        val s = _state.value
+        if (s.screen !is Screen.Fight || s.busy || fight.winner != null) return
+        endPvpFight(s, forfeit(fight, game.side.other()), playerMove = null, cpuMove = Move.RUN)
+    }
+
+    /** Plays the forfeit that ended [fight] (canonical), then on to the results. */
+    private fun endPvpFight(s: UiState, fight: FightState, playerMove: Move?, cpuMove: Move?) {
+        val game = match ?: return
+        canonical = fight
+        _state.value = s.copy(
+            screen = Screen.Fight(game.view(fight), emptyList(), playerMove = playerMove, cpuMove = cpuMove, pvp = PvpView()),
+        ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
+    }
+
+    /**
+     * A PvP turn's animation is over: the next turn's watch starts, or the fight is paid like any other (but
+     * unlocks no one: the other killer is someone else's) and the room is left.
+     */
+    private fun finishPvpTurn(s: UiState): UiState {
+        val fight = (s.screen as? Screen.Fight)?.fight ?: return s
+        val winner = fight.winner
+        if (winner == null) {
+            watchTurn()
+            return s
+        }
+        val pet = s.game.pets[fight.player.id] ?: return s
+        endMatch(leave = true)
+        val reward = applyFightResult(pet, fight)
+        val won = winner == Side.PLAYER
+        return s.copy(
+            game = s.game.withPet(reward.pet),
+            screen = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight),
+            sfx = s.sfx + if (reward.levelsGained > 0) listOf("levelup") else emptyList(),
+            voice = s.voice + when {
+                fight.playerRan -> emptyList()
+                won -> listOf("you_win")
+                else -> listOf("you_lose")
+            },
+        )
+    }
+
+    /** The relay stopped answering mid-fight: the fight is off, back to the lobby to say so. */
+    private fun lostConnection() {
+        val s = _state.value
+        if (s.busy) return
+        endMatch(leave = true)
+        if (s.screen is Screen.Fight || s.screen is Screen.Versus) {
+            _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu(PvpProblem.LOST)))
+        }
+    }
+
+    /** Forgets the room (walking out of it first if [leave]) and stops watching it. */
+    private fun endMatch(leave: Boolean) {
+        val game = match
+        val relay = pvpRelay
+        if (leave && game != null && relay != null) scope.launch { runCatching { relay.leave(game.room, game.token) } }
+        pvpJob?.cancel()
+        pvpJob = null
+        match = null
+        canonical = null
+        closeHostedRoom()
+    }
+
+    /** Takes down the room this player opened, if nobody has joined it yet. */
+    private fun closeHostedRoom() {
+        val (room, token) = hostedRoom ?: return
+        hostedRoom = null
+        onHostCode(null)
+        val relay = pvpRelay ?: return
+        scope.launch { runCatching { relay.leave(room, token) } }
+    }
+
+    private fun setLobby(phase: LobbyPhase, onlyIf: (LobbyPhase) -> Boolean) {
+        val s = _state.value
+        val lobby = s.screen as? Screen.PvpLobby ?: return
+        if (onlyIf(lobby.phase)) _state.value = s.copy(screen = Screen.PvpLobby(phase))
+    }
+
+    private fun myFighter(s: UiState): team.superfun.horrorpets.fight.Fighter? = s.game.selected?.let { s.game.pets[it] }?.let(::buildFighter)
+
+    private fun problemOf(e: PvpException): PvpProblem = when (e) {
+        is PvpException.NoRoom -> PvpProblem.NO_ROOM
+        is PvpException.Full -> PvpProblem.FULL
+        is PvpException.Version -> PvpProblem.VERSION
+        is PvpException.Offline -> PvpProblem.OFFLINE
+    }
+
+    override fun onCleared() {
+        // The view model's own scope is gone by now: walk out of the room on a scope of its own.
+        val game = match
+        val relay = pvpRelay
+        if (game != null && relay != null) CoroutineScope(Dispatchers.IO).launch { runCatching { relay.leave(game.room, game.token) } }
+        hostedRoom?.let { (room, token) -> if (relay != null) CoroutineScope(Dispatchers.IO).launch { runCatching { relay.leave(room, token) } } }
+        super.onCleared()
     }
 
     // ---- animation, toast, sounds ------------------------------------------------------------
@@ -487,6 +847,19 @@ class GameViewModel(
 
 /** The pause before the one retry of a failed load. */
 private const val LOAD_RETRY_DELAY_MS = 250L
+
+/** A PvP room's code is this many digits. */
+internal const val CODE_LENGTH = 4
+
+/** How often a host asks whether a challenger has joined, and a fighter whether the other has locked in. */
+private const val LOBBY_POLL_MS = 1_500L
+private const val TURN_POLL_MS = 800L
+
+/** A fight is called off after this many failed asks in a row (about half a minute without the relay). */
+private const val MAX_POLL_FAILURES = 25
+
+/** Tries at locking a move in before the fight is called off. */
+private const val LOCK_IN_TRIES = 5
 
 /** A pet's name as the announcer audio files spell it ("jason", "freddy", ...). */
 private fun PetId.soundName(): String = name.lowercase()

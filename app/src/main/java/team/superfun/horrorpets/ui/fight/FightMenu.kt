@@ -428,3 +428,35 @@ internal fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier =
 
 private fun choiceStyle(lit: Boolean) =
     displayStyle(26.sp, color = if (lit) TextHi else TextHi.copy(alpha = 0.6f), tracking = 0.04f)
+
+// ---- PvP ----
+
+/** PvP: this player has locked in; "WAITING FOR <their killer>..." until the other player has too. */
+@Composable
+internal fun WaitingBanner(opponent: String) {
+    val t = rememberInfiniteTransition(label = "waiting").animateFloat(
+        initialValue = 0f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(1600)),
+        label = "waitingDots",
+    )
+    Row(
+        Modifier
+            .gameFrame(topEnd = 10.dp, bottomStart = 10.dp)
+            .padding(horizontal = 26.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicText(
+            "LOCKED IN  ·  WAITING FOR ${opponent.uppercase()}",
+            style = displayStyle(20.sp, color = TextHi, tracking = 0.1f, lineHeight = 22.sp),
+            maxLines = 1,
+        )
+        Box(Modifier.width(28.dp)) {
+            Row {
+                for (i in 0 until 3) {
+                    BasicText(".", style = displayStyle(20.sp, color = TextHi, lineHeight = 22.sp), maxLines = 1, modifier = Modifier.graphicsLayer { alpha = if (t.value > i + 1) 1f else 0f })
+                }
+            }
+        }
+    }
+}

@@ -94,6 +94,7 @@ import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.TextHi
 
 // ---- staging, as fractions of the screen ----
 
@@ -270,7 +271,7 @@ fun FightScreen(
     val turnActive = petAnim != null || stage.playing
     // Keys are handled between frames, so a Back right behind OK can arrive before the recomposition that
     // shows the new turn: ask the view model itself whether a move is still being played.
-    val canAct = { !isBusy() && !stage.playing && fight.winner == null }
+    val canAct = { !isBusy() && !stage.playing && fight.winner == null && screen.pvp?.waiting != true }
     // Read from the meter as shown, which only moves while a turn plays: SPECIAL comes and goes while
     // the menu is hidden, never under the player's eyes. Not cleared when the fight ends either: the menu
     // is fading out then, and a row vanishing mid-fade flickers.
@@ -313,6 +314,12 @@ fun FightScreen(
 
     LaunchedEffect(refocus) {
         refocus?.let { focusMenu(it.move) }
+    }
+
+    // PvP: the menu steps aside once this player has locked in, until the turn plays (which brings it back).
+    val waiting = screen.pvp?.waiting == true
+    LaunchedEffect(waiting) {
+        if (waiting) stage.menu.animateTo(0f, tween(MENU_MS))
     }
 
     // One turn's playback per marker token, reported once when it has played out.
@@ -421,6 +428,20 @@ fun FightScreen(
                 }
             }
         }
+        // PvP: the other player has locked in their move (which stays hidden until both have).
+        if (screen.pvp?.opponentIn == true && !turnActive && fight.winner == null) {
+            ThoughtBubble(
+                caption = "READY",
+                text = "LOCKED IN!",
+                accent = PotionGreen,
+                ink = TextHi,
+                visible = { stage.menu.value.coerceAtLeast(if (screen.pvp.waiting) 1f else 0f) },
+                x = { w * stage.homeFraction(Side.CPU) },
+                y = { stage.floor - cellH * stage.cpu.body * TELL_AT },
+                top = belowHud,
+                inset = insetPx,
+            )
+        }
         // The CPU's tell for the coming turn, over its head while the player picks.
         stage.shownTell?.let { tell ->
             key(tell) {
@@ -485,6 +506,13 @@ fun FightScreen(
             HelpWindow(hint, Modifier.align(Alignment.BottomStart).then(menuIn))
         }
 
+        // PvP: this player has locked in and the other has not yet.
+        if (screen.pvp?.waiting == true && !turnActive) {
+            Box(Modifier.fillMaxSize().padding(bottom = safe.vertical + 18.dp), contentAlignment = Alignment.BottomCenter) {
+                WaitingBanner(fight.cpu.id.displayName)
+            }
+        }
+
         KoSlam(visible = stage.koShown, progress = { stage.ko.value }, lift = { stage.koLift.value }, liftPx = h * KO_LIFT)
 
         AnimatedVisibility(
@@ -525,7 +553,7 @@ internal fun playerHomeFraction(widthDp: Float, menuRightDp: Float): Float =
  * fight is over, never the next. Running away plays no turn (the engine leaves `turn` as it was).
  */
 private fun shownTurn(fight: FightState, turnActive: Boolean): Int {
-    val played = (turnActive || fight.winner != null) && !fight.playerRan
+    val played = (turnActive || fight.winner != null) && !fight.playerRan && !fight.cpuRan
     return if (played) (fight.turn - 1).coerceAtLeast(1) else fight.turn
 }
 
@@ -794,6 +822,10 @@ private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> =
             add(player.pet to Anim.RUN_LEFT)
             add(cpu.pet to Anim.WAVE)
         }
+        fight.cpuRan -> {
+            add(cpu.pet to Anim.RUN_RIGHT)
+            add(player.pet to Anim.WAVE)
+        }
         winner != null -> {
             add(rig(winner.other()).pet to Anim.FAIL)
             add(rig(winner).pet to Anim.JUMP)
@@ -838,6 +870,11 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
 
     if (turn.playerMove == Move.RUN) {
         runAway(this, loader)
+        playing = false
+        return@coroutineScope
+    }
+    if (turn.cpuMove == Move.RUN) {
+        opponentRunsAway(this, loader)
         playing = false
         return@coroutineScope
     }
@@ -1231,6 +1268,20 @@ private suspend fun FightStage.runAway(scope: CoroutineScope, loader: AssetLoade
     }
     scope.launch { player.alpha.animateTo(0f, tween(500, delayMillis = 250)) }
     player.step.animateTo(-0.4f, tween(800, easing = FastOutLinearInEasing))
+}
+
+/** PvP: the other player turns tail: it runs off to the right and fades, and the player waves it goodbye. */
+private suspend fun FightStage.opponentRunsAway(scope: CoroutineScope, loader: AssetLoader) {
+    front = Side.CPU
+    cpu.show(Anim.RUN_RIGHT)
+    scope.launch {
+        delay(200)
+        player.play(Anim.WAVE, timeoutFor(loader, player, Anim.WAVE))
+        player.show(Anim.IDLE)
+    }
+    scope.launch { cpu.alpha.animateTo(0f, tween(500, delayMillis = 250)) }
+    // Its "step" runs toward the player; negative is away, off the right edge.
+    cpu.step.animateTo(-0.4f, tween(800, easing = FastOutLinearInEasing))
 }
 
 /** The K.O.: the loser plays FAIL and greys out as K.O. slams in, then the winner jumps and waves. */

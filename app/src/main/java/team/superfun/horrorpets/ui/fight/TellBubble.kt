@@ -49,6 +49,25 @@ internal fun TellBubble(tell: Move, visible: () -> Float, x: () -> Float, y: () 
         Move.BLOCK -> ShieldBlue
         else -> BloodGlow
     }
+    ThoughtBubble("NEXT MOVE", tellText(tell), accent, if (tell == Move.SPECIAL) Amber else TextHi, visible, x, y, top, inset)
+}
+
+/**
+ * A thought bubble over a fighter's head: a small Amber [caption] over [text] in [ink], rimmed in [accent], with
+ * two dots trailing down to the head; see [TellBubble], which is its main use.
+ */
+@Composable
+internal fun ThoughtBubble(
+    caption: String,
+    text: String,
+    accent: Color,
+    ink: Color,
+    visible: () -> Float,
+    x: () -> Float,
+    y: () -> Float,
+    top: () -> Float,
+    inset: Float,
+) {
     val bob = rememberInfiniteTransition(label = "tellBob").animateFloat(
         initialValue = -1f,
         targetValue = 1f,
@@ -95,10 +114,10 @@ internal fun TellBubble(tell: Move, visible: () -> Float, x: () -> Float, y: () 
             .padding(horizontal = 18.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        BasicText("NEXT MOVE", style = displayStyle(11.sp, FontWeight.Bold, color = Amber, tracking = 0.22f, lineHeight = 12.sp), maxLines = 1)
+        BasicText(caption, style = displayStyle(11.sp, FontWeight.Bold, color = Amber, tracking = 0.22f, lineHeight = 12.sp), maxLines = 1)
         BasicText(
-            tellText(tell),
-            style = displayStyle(28.sp, color = if (tell == Move.SPECIAL) Amber else TextHi, tracking = 0.08f, lineHeight = 30.sp),
+            text,
+            style = displayStyle(28.sp, color = ink, tracking = 0.08f, lineHeight = 30.sp),
             maxLines = 1,
             softWrap = false,
         )

@@ -38,6 +38,10 @@ import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.pvp.HttpPvpRelay
+import team.superfun.horrorpets.pvp.nfc.HostedCode
+import team.superfun.horrorpets.pvp.nfc.NfcTapReader
+import team.superfun.horrorpets.ui.LobbyPhase
 import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
@@ -46,6 +50,7 @@ import team.superfun.horrorpets.ui.common.LocalTouchDevice
 import team.superfun.horrorpets.ui.common.ProvideScreenDensity
 import team.superfun.horrorpets.ui.common.isTouchDevice
 import team.superfun.horrorpets.ui.common.isTouchInput
+import team.superfun.horrorpets.ui.pvp.LocalTapToJoin
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 
 class MainActivity : ComponentActivity() {
@@ -66,6 +71,9 @@ class MainActivity : ComponentActivity() {
                     canDance = { loader.manifest(it).has(Anim.DANCE) },
                     onError = { Log.e(TAG, "Save or load failed; carrying on from memory", it) },
                     clockFloorMs = clockFloorMs(appContext),
+                    pvpRelay = HttpPvpRelay(PVP_RELAY, appVersionCode(appContext)),
+                    // A phone tapped against this one reads the room code this one is hosting (see PvpTapService).
+                    onHostCode = { HostedCode.current = it },
                 )
             }
         }
@@ -77,9 +85,13 @@ class MainActivity : ComponentActivity() {
     /** Whether this device takes touch (a phone or tablet, never a TV); see `isTouchDevice`. */
     private var touchDevice = false
 
+    /** This phone's NFC for PvP taps; null without NFC (every TV). */
+    private var tap: NfcTapReader? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         touchDevice = detectTouchDevice(this)
+        tap = NfcTapReader.create(this)
         // On a phone the scene runs under the camera cutout too (Android 15 does this anyway); the UI keeps
         // clear of it through `safeInset`. A TV has no cutout.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -100,6 +112,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // While this phone shows a room code, a phone tapped against it reaches this app's card service.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                vm.state.map { ((it.screen as? Screen.PvpLobby)?.phase as? LobbyPhase.Hosting)?.code != null }
+                    .distinctUntilChanged()
+                    .collect { hosting -> runCatching { tap?.preferHosting(hosting) } }
+            }
+        }
+
         // A TV left on keeps getting hungrier: tick once a minute while the game is in front.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -111,7 +132,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            CompositionLocalProvider(LocalTouchDevice provides touchDevice) {
+            CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalTapToJoin provides tap) {
                 ProvideScreenDensity {
                     HorrorPetsTheme {
                         HorrorPetsApp(vm = vm, loader = loader, sounds = audio, onExit = ::finish)
@@ -125,10 +146,12 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         audio.resume()
         vm.onResume()
+        tap?.onResume()
     }
 
     override fun onPause() {
         audio.pause()
+        tap?.onPause()
         super.onPause()
     }
 
@@ -234,6 +257,18 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val TAG = "HorrorPets"
         const val TICK_MS = 60_000L
+
+        /** The PvP relay (netlify/functions/pvp.mjs, deployed with the landing page). */
+        const val PVP_RELAY = "https://pets.superfun.games/api/pvp"
+
+        /**
+         * This build's versionCode: PvP only pairs apps of the same one, since both must play a fight the same
+         * way (every dev build is 1).
+         */
+        fun appVersionCode(context: android.content.Context): Int {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt() else @Suppress("DEPRECATION") info.versionCode
+        }
         const val MS_PER_HOUR = 3_600_000.0
         const val EXTRA_ADVANCE_HOURS = "advance_hours"
 
@@ -263,7 +298,7 @@ class MainActivity : ComponentActivity() {
         /** The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. */
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
             Screen.Loading, is Screen.FakeDeath -> null
-            Screen.Title, is Screen.Switcher -> "switcher"
+            Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
             Screen.Home -> state.game.selected?.name?.lowercase()
             is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
         }
