@@ -197,7 +197,7 @@ class TitleCard:
 
         out = canvas.convert("RGB")
         out = fx.chroma(out, 14 * self.hit(t, self.logo_at, 0.2) + 20 * self.hit(t, self.turbo_at, 0.25))
-        out = fx.flash(out, WHITE, max(0.0, *(0.35 * pulse(t, a, 0.1) for a in self.arrivals.values()),
+        out = fx.flash(out, WHITE, max(0.0, *(0.2 * pulse(t, a, 0.1) for a in set(self.arrivals.values())),
                                        0.7 * self.hit(t, self.logo_at, 0.12), 0.85 * self.hit(t, self.turbo_at, 0.16)))
         dark = max(1 - ramp(t, 0, self.fade_in) if self.fade_in else 0.0,
                    ramp(t, self.duration - self.fade_out, self.duration) if self.fade_out else 0.0)

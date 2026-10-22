@@ -1,0 +1,160 @@
+"""Online PvP on two real phones (3D, see phones.py), each playing its own side of one real match.
+
+The match was recorded on two phone emulators, Jason hosting and Freddy joining by code (art-work/video/capture/
+pvp-*.mp4). The phones fly in out of the storm, Jason's showing the room code and Freddy's typing it in, then swing
+round and press back to back on the bass hit, an NFC burst between them. They spin out to face us as both screens
+cut to the VS card and FIGHT! under the title, and on the drop they fight: the same turns on both screens, each from
+its own side, Jason's super, and a K.O. that reads YOU WIN on one phone and YOU LOSE on the other.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+
+from . import cast, fx, phones
+from .footage import Clip
+from .lettering import Slam
+from .motion import in_out_sine, jitter, lerp, out_back, out_cubic, pulse, ramp
+from .render import FPS, H, W, Cue
+
+TITLE = cast.ROOT / "video/art/title-pvp.webp"
+STORM = cast.ROOT / "site/art/backdrop.webp"
+RIM = (255, 60, 110)
+NFC = (150, 215, 255)
+LAG = 1.667  # Freddy's recording runs this far behind Jason's (lined up on Jason's super)
+
+
+@dataclass(frozen=True)
+class Feed:
+    """What one phone shows from [at] (seconds into the scene): [clip] played over [length] seconds."""
+    at: float
+    length: float
+    clip: Clip
+
+
+def feed(file: str, at: float, length: float, start: float, end: float) -> Feed:
+    return Feed(at, length, Clip(file, start, end, speed=(end - start) / length))
+
+
+class OnlinePvp:
+    """[bar] seconds a bar, [beat] a beat: three bars of approach, the tap on the fourth's downbeat, two bars of VS,
+    five of fighting."""
+
+    def __init__(self, bar: float, beat: float):
+        self.bar, self.beat = bar, beat
+        b = bar
+        self.tap, self.vs_at, self.fight_at = 3 * b, 4 * b, 6 * b
+        self.duration = 11 * b
+        ko = 10 * b
+        # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
+        self.feeds = (
+            [feed("pvp-jason.mp4", 0, self.tap, 20.0, 21.0),
+             feed("pvp-jason.mp4", self.tap, self.fight_at - self.tap, 29.4, 34.4)]
+            + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e)
+               for k, (s, e) in enumerate([(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)])]
+            + [feed("pvp-jason-ko.mp4", ko, b, 10.6, 14.4)],
+            [feed("pvp-freddy.mp4", 0, self.tap, 23.5, 28.4),
+             feed("pvp-freddy.mp4", self.tap, self.fight_at - self.tap, 28.9, 33.9)]
+            + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG)
+               for k, (s, e) in enumerate([(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)])]
+            + [feed("pvp-freddy-ko.mp4", ko, b, 11.6, 15.4)],
+        )
+        self.ko = ko
+        storm = fx.cover(Image.open(STORM).convert("RGB"), round(W * 1.1), round(H * 1.1))
+        self.storm = ImageEnhance.Brightness(storm.filter(ImageFilter.GaussianBlur(3))).enhance(0.38)
+        self.vignette = fx.vignette(W, H, 0.75)
+        self.embers = fx.Embers(50, 17, [RIM, (255, 170, 80), (255, 235, 200)], W, H)
+        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.2), 640, land=self.vs_at + 0.12,
+                          leave=self.fight_at - 0.25, exit_dx=0, glint_at=self.vs_at + 0.9)
+        self._shots: dict[int, phones.Shot] | None = None
+
+    # The phones --------------------------------------------------------------------------------------------------
+
+    def screen(self, side: int, t: float) -> str:
+        f = next(f for f in reversed(self.feeds[side]) if f.at <= t)
+        return str(f.clip.path(t - f.at))
+
+    def shot(self, t: float) -> phones.Shot:
+        """Where the phones and camera are at [t], and what each screen shows."""
+        b = self.bar
+        bob = 0.25 * math.sin(t * 2.1)
+        if t < self.tap:
+            fly = ramp(t, 0, 1.0, out_cubic)
+            close = ramp(t, 1.6, self.tap, in_out_sine)  # turning sideways and closing in to touch backs
+            swing = ramp(t, 2 * b, self.tap, in_out_sine)
+            x = lerp(lerp(48, 10.5, fly), 0.58, close)
+            yaw = lerp(lerp(2.4, 0.3, fly), math.pi / 2, swing)
+            z = lerp(-8, 0, fly)
+            orbit, dist, lift = 0.75 * swing, lerp(44, 36, swing), 5 * swing
+        elif t < self.vs_at:
+            out = ramp(t, self.tap + 0.08, self.vs_at - 0.2, out_back)
+            x, yaw, z = lerp(0.58, 9.2, out), lerp(math.pi / 2, 0.12, out), 0.0
+            back = ramp(t, self.tap, self.vs_at, out_cubic)
+            orbit, dist, lift = lerp(0.75, 0, back), lerp(36, 44, back), lerp(5, 0, back)
+        else:
+            near = ramp(t, self.fight_at - 0.3, self.fight_at + 0.2, out_cubic)
+            x, yaw, z = lerp(9.2, 8.45, near), lerp(0.12, 0.08, near), 0.0
+            orbit, dist, lift = 0.0, lerp(44, 36, near), 0.0
+        # Lowered under the title while it is up, then centered for the fight.
+        y = -2.6 * ramp(t, self.tap + 0.2, self.vs_at, out_cubic) * (1 - ramp(t, self.fight_at - 0.3, self.fight_at + 0.2, out_cubic))
+        punch = 1 + 0.03 * pulse(t % self.beat, 0, 0.15) * (t >= self.fight_at)
+        cam = (dist * math.sin(orbit), lift, dist * math.cos(orbit))
+        left = phones.Phone((-x, y + bob, z), (0.04 * math.sin(t * 1.3), -yaw, 0.0), self.screen(0, t), scale=punch)
+        right = phones.Phone((x, y - bob, z), (0.04 * math.cos(t * 1.1), yaw, 0.0), self.screen(1, t), scale=punch)
+        return phones.Shot((left, right), camera=cam, rim=RIM)
+
+    def shots(self) -> dict[int, phones.Shot]:
+        if self._shots is None:
+            self._shots = {i: self.shot(i / FPS) for i in range(round(self.duration * FPS) + 1)}
+        return self._shots
+
+    def prepare(self) -> None:
+        for side in self.feeds:
+            for f in side:
+                f.clip.extract()
+        phones.render_all(list(self.shots().values()))
+
+    # Drawing -------------------------------------------------------------------------------------------------------
+
+    def burst(self, canvas: Image.Image, t: float) -> None:
+        """The NFC tap: rings rippling out from where the phones meet, and a flash."""
+        u = ramp(t, self.tap, self.tap + 0.7)
+        if not 0 < u < 1:
+            return
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        for k in range(4):
+            r = 60 + (u * 900 - k * 120)
+            if r > 20:
+                a = round(220 * (1 - u) * (1 - k * 0.2))
+                d.ellipse([W / 2 - r, H / 2 - r * 0.8, W / 2 + r, H / 2 + r * 0.8], outline=NFC + (a,), width=10 - 2 * k)
+        canvas.alpha_composite(layer.filter(ImageFilter.GaussianBlur(2)))
+        fx.place(canvas, fx.radial(900, 900, NFC, 0.8 * (1 - u)), W / 2, H / 2)
+
+    def frame(self, t: float) -> Image.Image:
+        hit = 30 * pulse(t, self.tap, 0.35) + 26 * pulse(t, self.ko, 0.4)
+        jx, jy = jitter(t, FPS, 23)
+        dx, dy = jx * hit, jy * hit
+        z = 1 + 0.05 * t / self.duration
+        bw, bh = self.storm.size
+        vw, vh = W * 1.1 / z, H * 1.1 / z
+        box = (bw / 2 - vw / 2 - dx, bh / 2 - vh / 2 - dy, bw / 2 + vw / 2 - dx, bh / 2 + vh / 2 - dy)
+        canvas = self.storm.resize((W, H), Image.BILINEAR, box=box).convert("RGBA")
+        self.embers.draw(canvas, t, False, dx, dy)
+        self.burst(canvas, t)
+        shot = self.shots()[min(round(t * FPS), len(self.shots()) - 1)]
+        fx.place(canvas, phones.load(shot), W / 2 + dx, H / 2 + dy)
+        self.title.draw(canvas, t, dx, dy)
+        self.embers.draw(canvas, t, True, dx, dy)
+        canvas.alpha_composite(self.vignette)
+        out = canvas.convert("RGB")
+        out = fx.chroma(out, 12 * pulse(t, self.tap, 0.25) + 10 * pulse(t, self.ko, 0.25))
+        return fx.flash(out, (255, 255, 255), max(0.75 * pulse(t, self.tap, 0.16), 0.4 * pulse(t, self.ko, 0.12)))
+
+    def cues(self) -> list[Cue]:
+        vs = self.tap + (30.5 - 29.4) / (5.0 / (self.fight_at - self.tap))
+        fight = self.tap + (32.5 - 29.4) / (5.0 / (self.fight_at - self.tap))
+        return [Cue(vs, cast.voice("versus"), 1.1), Cue(fight, cast.voice("fight"), 1.1),
+                Cue(self.ko + 0.05, cast.voice("ko"), 1.1)]

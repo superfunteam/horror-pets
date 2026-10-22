@@ -1,0 +1,10 @@
+{
+  "name": "phones3d",
+  "private": true,
+  "type": "module",
+  "description": "Renders 3D smartphones with gameplay on their screens to transparent PNGs for the launch video.",
+  "dependencies": {
+    "puppeteer-core": "25.16.0",
+    "three": "0.186.1"
+  }
+}

@@ -52,6 +52,14 @@ PROPS = {  # (prompt, size, transparent background)
         "game controller on the coffee table. Cinematic and moody, deep purple and orange light, glossy high-end 3D "
         "render. No people, no characters, no text or logos. Landscape 16:9.",
         "2560x1440", False),
+    "room-crt": (
+        "A dark, cozy living room at night in late October, seen from behind the couch: an old 1990s CRT television "
+        "with a deep boxy plastic back and a slightly curved glass screen sits on a low wooden stand, a VHS player "
+        f"under it, and it is the room's main light; its screen is {GREEN}. A rain-streaked window beside it shows a "
+        "lightning storm outside, carved jack-o'-lanterns glow on the stand and the windowsill, a few cobwebs, a game "
+        "controller on the coffee table. Cinematic and moody, deep purple and orange light, glossy high-end 3D "
+        "render. No people, no characters, no text or logos. Landscape 16:9.",
+        "2560x1440", False),
     "phone": (
         "A modern Android smartphone lying sideways in landscape orientation, seen straight on from the front, thin "
         f"black bezels, a small punch-hole front camera, a glossy dark frame; its screen is {GREEN}. Isolated on a "

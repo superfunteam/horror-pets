@@ -40,6 +40,12 @@ class Scene(Protocol):
     def cues(self) -> list[Cue]: ...
 
 
+def prepare(scene) -> None:
+    """Runs [scene]'s one-time work (cutting footage, rendering 3D phones), if it has any, before frames are drawn."""
+    if hasattr(scene, "prepare"):
+        scene.prepare()
+
+
 @dataclass
 class Sequence:
     """Scenes back to back, each starting where the one before it ends, plus [extra] cues over the whole run."""
@@ -59,6 +65,10 @@ class Sequence:
 
     def cues(self) -> list[Cue]:
         return [replace(c, t=c.t + s) for s, scene in zip(self.starts, self.scenes) for c in scene.cues()] + list(self.extra)
+
+    def prepare(self) -> None:
+        for scene in self.scenes:
+            prepare(scene)
 
 
 def _chain(i: int, c: Cue) -> str:
@@ -127,6 +137,7 @@ def render(make: Callable[[], Scene], dest: Path, fps: int = FPS, crf: int = 16,
     each building its own copy of the scene (so [make] must be a top-level function) and encoding one stretch."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     scene = make()
+    prepare(scene)
     frames = round(scene.duration * fps)
     with tempfile.TemporaryDirectory() as tmp:
         audio = mix(scene.cues(), frames / fps, Path(tmp) / "mix.wav")
@@ -145,6 +156,7 @@ def render(make: Callable[[], Scene], dest: Path, fps: int = FPS, crf: int = 16,
 def stills(scene: Scene, times: list[float], dest_dir: Path, stem: str) -> list[Path]:
     """Frames of [scene] at [times], as JPEGs, for checking a scene without rendering it."""
     dest_dir.mkdir(parents=True, exist_ok=True)
+    prepare(scene)
     out = []
     for t in times:
         p = dest_dir / f"{stem}-{t:05.2f}.jpg"

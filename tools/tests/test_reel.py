@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from reel import title, trailer  # noqa: E402
 from reel.intro import CharacterIntro  # noqa: E402
+from reel.pvp import OnlinePvp  # noqa: E402
 from reel.title import TitleCard  # noqa: E402
 
 
@@ -15,29 +16,32 @@ def seq():
     return trailer.make()
 
 
-def song_time(t: float) -> float:
-    return trailer.START + t
+def start_of(seq, kind):
+    return next((s, c) for s, c in zip(seq.starts, seq.scenes) if isinstance(c, kind))
 
 
-def test_every_cut_starts_on_a_blast(seq):
-    bar = 0
-    for start, scene in zip(seq.starts, seq.scenes):
-        if isinstance(scene, CharacterIntro):
-            assert song_time(start) == pytest.approx(trailer.FIRST_BLAST + bar * trailer.BAR)
-            bar += round(scene.duration / trailer.BAR)
-    assert bar == 8
+def test_the_killers_land_one_a_bar_from_the_first_drop(seq):
+    starts = [s for s, c in zip(seq.starts, seq.scenes) if isinstance(c, CharacterIntro)]
+    assert starts == pytest.approx([trailer.bar(trailer.INTRO_BARS + k) for k in range(7)])
 
 
-def test_the_logo_lands_on_the_last_blast_and_turbo_on_the_drop(seq):
-    start, card = next((s, c) for s, c in zip(seq.starts, seq.scenes) if isinstance(c, TitleCard) and c.logo_at)
-    assert song_time(start + card.logo_at) == pytest.approx(trailer.FIRST_BLAST + 11 * trailer.BAR)
-    assert song_time(start + card.turbo_at) == pytest.approx(trailer.FIRST_BLAST + 12 * trailer.BAR)
+def test_the_logo_lands_a_beat_into_the_title_and_turbo_on_the_second_drop(seq):
+    start, card = start_of(seq, TitleCard)
+    assert start == pytest.approx(trailer.bar(14))
+    assert start + card.logo_at == pytest.approx(trailer.bar(14) + trailer.BEAT)
+    assert start + card.turbo_at == pytest.approx(trailer.bar(15) + trailer.BEAT)
     shout = next(c for c in seq.cues() if c.path == title.SHOUT)
     assert shout.t + title.SHOUT_FIRST / shout.tempo == pytest.approx(start + card.logo_at)
     assert shout.t + title.SHOUT_TURBO / shout.tempo == pytest.approx(start + card.turbo_at)
 
 
-def test_the_music_runs_the_whole_video_from_one_bar_before_the_first_blast(seq):
+def test_the_phones_tap_on_the_breakdown_bass_hit_and_fight_from_the_last_drop(seq):
+    start, pvp = start_of(seq, OnlinePvp)
+    assert start + pvp.tap == pytest.approx(trailer.bar(28))
+    assert start + pvp.fight_at == pytest.approx(trailer.bar(31))
+    assert start + pvp.duration == pytest.approx(trailer.bar(36))
+
+
+def test_the_music_starts_with_the_video(seq):
     (music,) = [c for c in seq.cues() if c.music]
-    assert music.t == 0 and music.skip == pytest.approx(trailer.FIRST_BLAST - trailer.BAR)
-    assert music.length == pytest.approx(seq.duration)
+    assert music.t == 0 and music.skip == 0 and music.path == trailer.SONG

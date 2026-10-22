@@ -1,41 +1,54 @@
-"""The launch video, cut to "Spooky Gabber at a Distance" by Nick Panek: every cut lands on one of the high blasts
-the song has on each bar's downbeat, from its first one until the kick drops.
+"""The launch video, cut to "wub hell" (tools/generate_music.py's hell-organ track): every scene lands on its bars.
 
-It opens on the storm one bar before the first blast. Then each killer gets a bar of their own (Ghostface gets the
-long two-bar blast), and the title card takes the last four blasts: the killers fly into place a few at a time, the
-logo slams down on the final blast as the announcer starts shouting the game's name, and TURBO lands on the drop.
+The song is 150 BPM, a bar every 1.6 s from 0.05 s in. Its organ-and-bells intro runs 7 bars, the first drop lands on
+bar 7, the second a beat after bar 15, a quiet breakdown sits at bars 25-27 with a lone bass hit on bar 28, the last
+drop lands on bar 31 and the final hit on bar 36.
+
+  bars 0-6    the CRT living room, pushing into the screen
+  bars 7-13   the seven killers, one a bar
+  bars 14-15  the title: the cast lands, the logo slams on the next beat, TURBO on the second drop
+  bars 16-18  raise & train your killer
+  bars 19-24  fight to evolve your skills
+  bars 25-35  online PvP: the phones meet in the breakdown, tap on the bass hit, fight through the last drop
+  bar 36-     the outro on the final hit
 """
 from __future__ import annotations
 
 from . import cast
+from .crt import CrtIntro
+from .evolve import FightToEvolve
 from .intro import CharacterIntro
+from .outro import Outro
+from .pvp import OnlinePvp
+from .raise_train import RaiseTrain
 from .render import Cue, Sequence
 from .title import TitleCard
 
-# Not in the repo: the track is licensed for use in the video, not for passing around on its own.
-SONG = cast.ROOT / "art-work/video/music/spooky-gabber.mp3"
-BPM = 170
+# Not in the repo: made with tools/generate_music.py (the hell-organ take kept as wub-hell-organ.mp3).
+SONG = cast.ROOT / "art-work/video/music/wub-hell-organ.mp3"
+BPM = 150
 BEAT = 60 / BPM
 BAR = 4 * BEAT
-FIRST_BLAST = 6.072  # seconds into the song; the blasts then fall on every bar's downbeat until the drop, 12 bars on
-START = FIRST_BLAST - BAR  # where in the song the video starts
+DOWNBEAT = 0.05  # where bar 0 starts in the song
+INTRO_BARS = 7
+ORDER = ["jason", "freddy", "pinhead", "ghostface", "chucky", "michael", "leatherface"]
+OUTRO = 5.0
 
-CUTS = [("jason", 1), ("freddy", 1), ("pinhead", 1), ("ghostface", 2), ("chucky", 1), ("michael", 1), ("leatherface", 1)]
-TITLE_BARS = 8  # four of blasts to bring the cast in, the drop, and four more to hold the logo
+
+def bar(n: float) -> float:
+    """Where bar [n] starts, in seconds into the song (and the video, which starts with it)."""
+    return DOWNBEAT + n * BAR
 
 
 def make() -> Sequence:
-    opening = TitleCard(BAR, fade_in=0.85 * BAR, lightning=(0.3 * BAR, 0.62 * BAR, 0.8 * BAR))
-    cuts = [CharacterIntro(cast.BY_ID[pet], bars * BAR, BEAT) for pet, bars in CUTS]
+    crt = CrtIntro(bar(INTRO_BARS), bolts=(bar(2), bar(4), bar(6)))
+    cuts = [CharacterIntro(cast.BY_ID[pet], BAR, BEAT) for pet in ORDER]
     title = TitleCard(
-        TITLE_BARS * BAR,
-        arrivals={"ghostface": 0, "pinhead": 0, "jason": BAR, "freddy": BAR, "michael": 1.5 * BAR,
-                  "leatherface": 1.5 * BAR, "chucky": 2 * BAR},
-        logo_at=3 * BAR,
-        turbo_at=4 * BAR,
-        fade_out=0.5 * BAR,
+        2 * BAR,
+        arrivals={"ghostface": 0, "pinhead": 0, "jason": 0, "freddy": 0, "michael": BEAT / 2, "leatherface": BEAT / 2,
+                  "chucky": BEAT / 2},
+        logo_at=BEAT,
+        turbo_at=bar(15) + BEAT - bar(14),
     )
-    scenes = [opening, *cuts, title]
-    length = sum(s.duration for s in scenes)
-    music = Cue(0, SONG, 0.8, skip=START, length=length, fade_in=0.02, fade_out=0.5 * BAR, music=True)
-    return Sequence(scenes, (music,))
+    scenes = [crt, *cuts, title, RaiseTrain(BAR), FightToEvolve(BAR, BEAT), OnlinePvp(BAR, BEAT), Outro(OUTRO)]
+    return Sequence(scenes, (Cue(0, SONG, 0.85, fade_in=0.02, music=True),))

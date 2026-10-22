@@ -39,3 +39,4 @@ dist/
 
 # The site functions' npm packages
 netlify/node_modules/
+tools/phones3d/node_modules/
