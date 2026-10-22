@@ -77,6 +77,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
@@ -583,7 +584,7 @@ private class Pose(val anim: Anim) {
  * recomposes the screen frame by frame.
  */
 @Stable
-private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook, combo: Int) {
+private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook, start: Fighter) {
     /** Its display scale (see `bodyScale`). */
     val body = look.body
 
@@ -611,9 +612,14 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     val meter = Animatable(meter)
     val hud = HudValues(hp = { this.hp.value }, trail = { trail.value }, meter = { this.meter.value })
 
-    /** Its combo as the HUD shows it: broken the moment it is hit or whiffs, built up as the turn ends. */
-    var combo by mutableIntStateOf(combo)
-    val status = HudStatus(combo = { this.combo })
+    /**
+     * Its lasting states as the HUD shows them: a combo broken the moment it is hit or whiffs and built up as the
+     * turn ends, a bleed or daze put on when the special lands and worn off as it plays out.
+     */
+    var combo by mutableIntStateOf(start.combo)
+    var bleed by mutableIntStateOf(start.bleed)
+    var dazed by mutableStateOf(start.dazed)
+    val status = HudStatus(combo = { combo }, bleed = { bleed }, dazed = { dazed })
 
     /** Where the bars are heading, ahead of their animations. */
     var hpTarget = hp
@@ -699,8 +705,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
         // recreated while a turn played) replays that turn, so it starts from the values before it.
         val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
         val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
-        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook, f.player.combo)
-        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook, f.cpu.combo)
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook, f.player)
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook, f.cpu)
     }
 
     val shake = Animatable(0f)
@@ -845,7 +851,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
         val beat = beats[i++]
         if (beat is Beat.Lunge) {
             val riders = mutableListOf<Beat>()
-            while (i < beats.size && beats[i] !is Beat.Lunge) riders += beats[i++]
+            while (i < beats.size && beats[i].ridesOnLunge) riders += beats[i++]
             // The same fighter must be back on its mark first, and a special's effect must have played
             // out; otherwise the other fighter may set off as the last one lands.
             if (tailSide == beat.attacker || special != null) tail?.join() else if (tail?.isActive == true) delay(140)
@@ -854,6 +860,9 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
         } else if (beat is Beat.Drink) {
             tail?.join()
             drink(this, beat, loader, sounds, play)
+        } else if (beat is Beat.Bleed) {
+            tail?.join()
+            bleed(this, beat, sounds, play)
         } else {
             rider(this, beat, landedOn = null)
             delay(450)
@@ -880,6 +889,8 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
                 launch { r.meter.animateTo(f.meter.toFloat(), tween(200)) }
             }
             r.combo = f.combo
+            r.bleed = f.bleed
+            r.dazed = f.dazed
         }
         shownTell = fight.cpuPlan?.tell
         menu.animateTo(1f, tween(MENU_MS))
@@ -993,7 +1004,9 @@ private fun FightStage.impactOf(
     when (event) {
         is FightEvent.Hit -> {
             val breaksGuard = event.move == Move.HEAVY && d.side in guarding
-            if (d.side in guarding && event.move != Move.STRIKE) {
+            // A dazed guard holds nothing: the strike goes straight through it.
+            val dazedGuard = d.side in guarding && d.dazed
+            if (d.side in guarding && (event.move != Move.STRIKE || dazedGuard)) {
                 guarding -= d.side
                 d.show(Anim.IDLE)
             }
@@ -1004,12 +1017,23 @@ private fun FightStage.impactOf(
                 if (event.crit) add("CRITICAL!")
                 if (event.counter) add("COUNTER")
                 if (breaksGuard) add("GUARD BREAK")
+                if (dazedGuard && !breaksGuard) add("DAZED")
                 if (interrupted) add("INTERRUPTED")
+                when (event.effect) {
+                    SpecialEffect.BLEED -> add("BLEEDING")
+                    SpecialEffect.DAZE -> add("DAZED")
+                    SpecialEffect.DRAIN, null -> Unit
+                }
             }
             val blow = {
                 float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "\u2212${event.damage}", labels, d.side)
                 hurt(scope, d, strength = 1f)
                 drain(scope, d, event.damage)
+                when (event.effect) {
+                    SpecialEffect.BLEED -> d.bleed = FightTuning.BLEED_TURNS
+                    SpecialEffect.DAZE -> d.dazed = true
+                    SpecialEffect.DRAIN, null -> Unit
+                }
                 when {
                     event.crit -> scope.launch {
                         shake.snapTo(1f)
@@ -1046,7 +1070,9 @@ private fun FightStage.impactOf(
 
         is FightEvent.Miss -> {
             a.combo = 0
-            float(FloatKind.MISS, "MISS", if (interrupted) listOf("INTERRUPTED") else emptyList(), d.side)
+            if (event.dazed) a.dazed = false
+            val labels = listOfNotNull("DAZED".takeIf { event.dazed }, "INTERRUPTED".takeIf { interrupted })
+            float(FloatKind.MISS, "MISS", labels, d.side)
             // The defender sways out of the way.
             scope.launch {
                 d.step.animateTo(-0.03f, tween(110, easing = FastOutSlowInEasing))
@@ -1072,8 +1098,33 @@ private fun FightStage.impactOf(
         else -> Unit
     }
     for (r in riders) rider(scope, r, landedOn = if (interrupted) d.side else null)
+    // A drain flows back to the attacker just after its blow lands.
+    for (r in riders.filterIsInstance<Beat.Drain>()) scope.launch {
+        delay(landMs + DRAIN_AFTER_MS)
+        play(sounds.of(FightEvent.Drain(r.side, r.amount)))
+        float(FloatKind.HEAL, "+${r.amount}", listOf("DRAIN"), r.side)
+        a.flash.snapTo(0.45f)
+        launch { a.flash.animateTo(0f, tween(450)) }
+        heal(scope, a, r.amount)
+    }
     return effect
 }
+
+/** A drain's +HP follows its special's blow by this much, so the two numbers read one after the other. */
+private const val DRAIN_AFTER_MS = 420L
+
+/** [beat]'s side bleeds at the end of the turn: a smaller red number with BLEED, a shudder, and its bar drains. */
+private suspend fun FightStage.bleed(scope: CoroutineScope, beat: Beat.Bleed, sounds: TurnSounds, play: (FightSounds) -> Unit) {
+    val r = rig(beat.side)
+    play(sounds.of(FightEvent.Bleed(beat.side, beat.damage)))
+    float(FloatKind.DAMAGE, "\u2212${beat.damage}", listOf("BLEED"), beat.side)
+    hurt(scope, r, strength = 0.45f)
+    drain(scope, r, beat.damage)
+    r.bleed = (r.bleed - 1).coerceAtLeast(0)
+    delay(BLEED_BEAT_MS)
+}
+
+private const val BLEED_BEAT_MS = 560L
 
 /** The beats that ride on a swing: an interrupt not already shown on a number, and a filled meter. */
 private fun FightStage.rider(scope: CoroutineScope, beat: Beat, landedOn: Side?) {
@@ -1086,7 +1137,7 @@ private fun FightStage.rider(scope: CoroutineScope, beat: Beat, landedOn: Side?)
             delay(380)
             float(FloatKind.READY, "SPECIAL READY", emptyList(), beat.side)
         }
-        is Beat.Lunge, is Beat.Drink -> Unit
+        is Beat.Lunge, is Beat.Drink, is Beat.Drain, is Beat.Bleed -> Unit
     }
 }
 

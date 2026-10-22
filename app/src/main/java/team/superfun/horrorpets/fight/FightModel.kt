@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.fight
 
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
 
 enum class Side { PLAYER, CPU }
 
@@ -13,7 +14,8 @@ fun Side.other(): Side = if (this == Side.PLAYER) Side.CPU else Side.PLAYER
 /**
  * One combatant. [strength] and [mood] are snapshots taken when the fight is built, [meter] is the
  * special meter (0..[FightTuning.METER_MAX]) and [hp] runs from [maxHp] down to 0. [combo] is how many
- * turns in a row it has landed a hit without being hit (see [resolveTurn]).
+ * turns in a row it has landed a hit without being hit, [bleed] how many more turns it bleeds, and [dazed]
+ * whether its next STRIKE, HEAVY or BLOCK fails (see [resolveTurn]).
  */
 data class Fighter(
     val id: PetId,
@@ -24,6 +26,8 @@ data class Fighter(
     val mood: Int,
     val meter: Int,
     val combo: Int = 0,
+    val bleed: Int = 0,
+    val dazed: Boolean = false,
 )
 
 /**
@@ -56,7 +60,8 @@ sealed interface FightEvent {
      * [attacker] landed [damage]. A counter (a BLOCK that met a STRIKE) is reported as
      * `Hit(blocker, Move.STRIKE, ..., counter = true)`; otherwise [move] is the move that was played.
      * [combo] is the attacker's [Fighter.combo] coming into the turn: from 1 on this hit is part of a combo
-     * (its `combo + 1`th clean hit in a row) and hit harder for it.
+     * (its `combo + 1`th clean hit in a row) and hit harder for it. A SPECIAL's [effect] is what it leaves
+     * behind (null for every other hit).
      */
     data class Hit(
         val attacker: Side,
@@ -65,10 +70,11 @@ sealed interface FightEvent {
         val crit: Boolean,
         val counter: Boolean = false,
         val combo: Int = 0,
+        val effect: SpecialEffect? = null,
     ) : FightEvent
 
-    /** [attacker]'s STRIKE or HEAVY whiffed. */
-    data class Miss(val attacker: Side, val move: Move) : FightEvent
+    /** [attacker]'s STRIKE or HEAVY whiffed: by the dice, or because [dazed] it stumbled. */
+    data class Miss(val attacker: Side, val move: Move, val dazed: Boolean = false) : FightEvent
 
     /** [blocker] blocked a STRIKE (and counters, see [Hit]). */
     data class Blocked(val blocker: Side) : FightEvent
@@ -81,6 +87,12 @@ sealed interface FightEvent {
 
     /** [side] drank a potion and got [amount] hit points back (what it actually restored, never past its max). */
     data class Heal(val side: Side, val amount: Int) : FightEvent
+
+    /** [side]'s draining special gave it [amount] hit points back (never past its max, never 0). */
+    data class Drain(val side: Side, val amount: Int) : FightEvent
+
+    /** [side] bled [damage] at the end of the turn. */
+    data class Bleed(val side: Side, val damage: Int) : FightEvent
 
     /** [loser] is out of hit points; the fight is over. */
     data class Ko(val loser: Side) : FightEvent

@@ -68,9 +68,10 @@ internal class HudValues(val hp: () -> Float, val trail: () -> Float, val meter:
 
 /**
  * The lasting states a side's HUD shows under its meter, as of the turn playback so far: its [combo] (shown from
- * 2 hits in a row). Read in composition: they change a few times a turn at most.
+ * 2 hits in a row), the turns it has left to [bleed], and whether it is [dazed]. Read in composition: they
+ * change a few times a turn at most.
  */
-internal class HudStatus(val combo: () -> Int)
+internal class HudStatus(val combo: () -> Int, val bleed: () -> Int, val dazed: () -> Boolean)
 
 /** The status row under the meter is this tall whether or not anything is in it, so the HUD never jumps. */
 private val StatusRowHeight = 22.dp
@@ -197,13 +198,18 @@ private fun SideHud(f: Fighter, values: HudValues, status: HudStatus, mirrored: 
 }
 
 private val ComboFill = Brush.verticalGradient(listOf(Color(0xFFFFE08A), Color(0xFFF5A623), Color(0xFFB8650F)))
+private val BleedFill = Brush.verticalGradient(listOf(Color(0xFFFF6A72), Color(0xFFC1121F), Color(0xFF6E0710)))
+private val DazedFill = Brush.verticalGradient(listOf(Color(0xFFE3C8FF), Color(0xFF9B5CFF), Color(0xFF4B1E9A)))
 
-/** A side's lasting states as small slanted chips, from the outer edge in: COMBO ×N. */
+/** A side's lasting states as small slanted chips, from the outer edge in: COMBO ×N, BLEED N, DAZED. */
 @Composable
 private fun StatusRow(status: HudStatus, mirrored: Boolean) {
     val chips = buildList {
         val combo = status.combo()
         if (combo >= 2) add(Triple("COMBO \u00d7$combo", ComboFill, Color(0xFF2A1405)))
+        val bleed = status.bleed()
+        if (bleed > 0) add(Triple("BLEED $bleed", BleedFill, Color.White))
+        if (status.dazed()) add(Triple("DAZED", DazedFill, Color.White))
     }
     Row(
         Modifier.height(StatusRowHeight),

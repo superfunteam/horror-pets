@@ -2,19 +2,32 @@ package team.superfun.horrorpets.model
 
 import team.superfun.horrorpets.fight.FightTuning
 
+/** What a special leaves behind once it lands, on top of its damage (see `resolveTurn`). */
+enum class SpecialEffect {
+    /** The target bleeds for a few turns. */
+    BLEED,
+
+    /** The attacker heals by part of the damage it dealt. */
+    DRAIN,
+
+    /** The target's next STRIKE, HEAVY or BLOCK fails. */
+    DAZE,
+}
+
 /**
- * A killer's signature special: its callout name and which effect the fight screen draws for it. Each
- * pet has its own; a future pet can reuse one (no new effect code) or add one. A [danced] special is
- * performed with the attacker's `dance` animation instead of its ATTACK swing, when its sprites ship one.
+ * A killer's signature special: its callout name, its lasting [effect], and which effect the fight screen
+ * draws for it. Each pet has its own; a future pet can reuse one (no new effect code) or add one. A [danced]
+ * special is performed with the attacker's `dance` animation instead of its ATTACK swing, when its sprites
+ * ship one.
  */
-enum class SpecialStyle(val displayName: String, val danced: Boolean = false) {
-    MACHETE_FRENZY("Machete Frenzy"),
-    DREAM_CLAWS("Dream Claws"),
-    CHAINS("Chains"),
-    KNIFE_FLURRY("Knife Flurry"),
-    VOODOO_STAB("Voodoo Stab"),
-    THE_SHAPE("The Shape"),
-    SAW_DANCE("Saw Dance", danced = true),
+enum class SpecialStyle(val displayName: String, val effect: SpecialEffect, val danced: Boolean = false) {
+    MACHETE_FRENZY("Machete Frenzy", SpecialEffect.BLEED),
+    DREAM_CLAWS("Dream Claws", SpecialEffect.DRAIN),
+    CHAINS("Chains", SpecialEffect.DAZE),
+    KNIFE_FLURRY("Knife Flurry", SpecialEffect.BLEED),
+    VOODOO_STAB("Voodoo Stab", SpecialEffect.DAZE),
+    THE_SHAPE("The Shape", SpecialEffect.DAZE),
+    SAW_DANCE("Saw Dance", SpecialEffect.BLEED, danced = true),
 }
 
 /**

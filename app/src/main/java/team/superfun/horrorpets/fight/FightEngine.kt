@@ -7,6 +7,7 @@ import team.superfun.horrorpets.game.clampStat
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.spec
 
 /** Hit points for a pet of [level] and [hunger] (0 = full, 100 = starving), times its passive's (Jason is built tougher). */
@@ -94,6 +95,19 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * without being hit. After each turn a side that was hit, or whose own swing missed, drops to 0; one that
  * landed a hit and was not hit goes up by 1; one that did neither (both blocked, a potion in peace) keeps it.
  *
+ * ## Special effects
+ * A landed SPECIAL leaves its pet's effect ([team.superfun.horrorpets.model.SpecialStyle.effect]):
+ * - BLEED: the target bleeds for the next 3 turns (a new bleed starts the count again, it never stacks): at
+ *   the end of each, after both moves have landed, it loses 6% of its max HP (at least 1, never below 0),
+ *   reported as [FightEvent.Bleed]. Bleeding is not being hit: it ends no combo.
+ * - DRAIN: the attacker heals half the damage it dealt (rounded, never past its max HP), as a potion's heal
+ *   does: before the other side's blow lands. Reported as [FightEvent.Drain] right after the hit (none if it
+ *   healed nothing).
+ * - DAZE: the target's next turn is spoiled: its STRIKE or HEAVY stumbles ([FightEvent.Miss] with
+ *   `dazed = true`: it draws no dice, interrupts nothing and is blocked by nothing), and its BLOCK guards
+ *   nothing (no [FightEvent.Blocked], no counter: a STRIKE against it lands). A dazed side's SPECIAL and
+ *   POTION work as ever. The daze is gone after that one turn.
+ *
  * ## Dice (the contract for tests and replays)
  * Only [Random.nextDouble] is used. Every attack that happens draws exactly three doubles, always,
  * even when one of them goes unused (a special or counter ignores its miss roll):
@@ -103,14 +117,15 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *    `critChance = 0.05 + mood / 100 * 0.15`, plus the attacker's passive bonus (0.08 for FREDDY).
  *
  * PLAYER's attack (if any) is rolled before the CPU's. An attack that does not happen (an absorbed
- * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing) draws nothing, and RUN draws nothing.
+ * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing, a dazed swing) draws nothing, and RUN draws
+ * nothing.
  * A POTION draws one double, the heal roll, in PLAYER's place (before the CPU's attack).
  *
  * ## Events and results
  * Events come in a fixed order: everything PLAYER's move caused, then everything the CPU's move
- * caused, then [FightEvent.Ko]. A potion's group is just its [FightEvent.Heal]. One side's group reads:
- * [FightEvent.Blocked] (blocking sides only),
- * the Hit or Miss, [FightEvent.Interrupted] (a STRIKE that cut off a HEAVY), then
+ * caused, then the bleeds (PLAYER's, then the CPU's), then [FightEvent.Ko]. A potion's group is just its
+ * [FightEvent.Heal]. One side's group reads: [FightEvent.Blocked] (blocking sides only),
+ * the Hit or Miss, [FightEvent.Drain], [FightEvent.Interrupted] (a STRIKE that cut off a HEAVY), then
  * [FightEvent.SpecialReady].
  *
  * Damage lands simultaneously and hit points floor at 0. The side at 0 loses; if both are at 0 the
@@ -138,9 +153,11 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
     val player = if (playerMove == Move.POTION) drink(s.player, rng) else act(Side.PLAYER, s.player, s.cpu, playerMove, cpuMove, rng)
     val cpu = act(Side.CPU, s.cpu, s.player, cpuMove, playerMove, rng)
 
-    // A potion's heal lands before the CPU's move does.
-    val playerHp = (s.player.hp + player.healed - cpu.damage).coerceAtLeast(0)
-    val cpuHp = (s.cpu.hp - player.damage).coerceAtLeast(0)
+    // A heal (a potion, a drain) lands before the other side's blow does; then whoever was bleeding bleeds.
+    val playerBleed = bleedTick(s.player, (s.player.hp + player.healed - cpu.damage).coerceAtLeast(0))
+    val cpuBleed = bleedTick(s.cpu, (s.cpu.hp + cpu.healed - player.damage).coerceAtLeast(0))
+    val playerHp = (s.player.hp + player.healed - cpu.damage - playerBleed).coerceAtLeast(0)
+    val cpuHp = (s.cpu.hp + cpu.healed - player.damage - cpuBleed).coerceAtLeast(0)
     val winner = when {
         playerHp > 0 && cpuHp > 0 -> null
         cpuHp == 0 && playerHp > 0 -> Side.PLAYER
@@ -149,10 +166,26 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         else -> Side.PLAYER
     }
 
-    val events = player.events + cpu.events + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
+    val bleeds = listOfNotNull(
+        FightEvent.Bleed(Side.PLAYER, playerBleed).takeIf { playerBleed > 0 },
+        FightEvent.Bleed(Side.CPU, cpuBleed).takeIf { cpuBleed > 0 },
+    )
+    val events = player.events + cpu.events + bleeds + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
     val next = s.copy(
-        player = s.player.copy(hp = playerHp, meter = player.meter, combo = comboAfter(s.player, player, hitBy = cpu)),
-        cpu = s.cpu.copy(hp = cpuHp, meter = cpu.meter, combo = comboAfter(s.cpu, cpu, hitBy = player)),
+        player = s.player.copy(
+            hp = playerHp,
+            meter = player.meter,
+            combo = comboAfter(s.player, player, hitBy = cpu),
+            bleed = bleedAfter(s.player, cpu),
+            dazed = cpu.inflicts == SpecialEffect.DAZE,
+        ),
+        cpu = s.cpu.copy(
+            hp = cpuHp,
+            meter = cpu.meter,
+            combo = comboAfter(s.cpu, cpu, hitBy = player),
+            bleed = bleedAfter(s.cpu, player),
+            dazed = player.inflicts == SpecialEffect.DAZE,
+        ),
         turn = s.turn + 1,
         playerHistory = s.playerHistory + playerMove,
         winner = winner,
@@ -168,10 +201,29 @@ private fun requireSpecialReady(side: Side, f: Fighter, move: Move) {
     }
 }
 
-/** What one side's move did this turn: its events, the damage it dealt, its meter afterwards, and what it healed. */
-private class Action(val events: List<FightEvent>, val damage: Int, val meter: Int, val healed: Int = 0) {
+/**
+ * What one side's move did this turn: its events, the damage it dealt, its meter afterwards, what it healed,
+ * and the lasting effect its special [inflicts] on the other side (a BLEED or a DAZE).
+ */
+private class Action(
+    val events: List<FightEvent>,
+    val damage: Int,
+    val meter: Int,
+    val healed: Int = 0,
+    val inflicts: SpecialEffect? = null,
+) {
     val missed: Boolean get() = events.any { it is FightEvent.Miss }
 }
+
+/** What [f] bleeds at the end of this turn, now at [hp]: 6% of its max HP if it was bleeding (and still up), else 0. */
+private fun bleedTick(f: Fighter, hp: Int): Int {
+    if (f.bleed <= 0 || hp <= 0) return 0
+    return (f.maxHp * FightTuning.BLEED_SHARE).roundToInt().coerceAtLeast(1).coerceAtMost(hp)
+}
+
+/** [f]'s bleed after this turn: restarted by the [other] side's bleeding special, else one turn less. */
+private fun bleedAfter(f: Fighter, other: Action): Int =
+    if (other.inflicts == SpecialEffect.BLEED) FightTuning.BLEED_TURNS else (f.bleed - 1).coerceAtLeast(0)
 
 /** [me]'s combo after a turn in which it played [mine] and was hit by [hitBy] (see [resolveTurn]). */
 private fun comboAfter(me: Fighter, mine: Action, hitBy: Action): Int = when {
@@ -188,14 +240,20 @@ private fun drink(me: Fighter, rng: Random): Action {
 }
 
 private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove: Move, rng: Random): Action {
+    // Dazed, a STRIKE or HEAVY stumbles: no dice, nothing cut off, nothing for a block to catch.
+    if (me.dazed && (myMove == Move.STRIKE || myMove == Move.HEAVY)) {
+        return Action(listOf(FightEvent.Miss(side, myMove, dazed = true)), damage = 0, meter = me.meter)
+    }
+    // The other side's STRIKE, HEAVY or BLOCK only counts if it is not dazed.
+    val otherActs = !other.dazed
     val events = mutableListOf<FightEvent>()
-    val counter = myMove == Move.BLOCK && otherMove == Move.STRIKE
+    val counter = myMove == Move.BLOCK && otherMove == Move.STRIKE && !me.dazed && otherActs
     if (counter) events += FightEvent.Blocked(side)
 
     // Does a swing of mine happen at all? Decided by the moves, never by the dice.
     val attacks = when (myMove) {
-        Move.STRIKE -> otherMove != Move.BLOCK // absorbed by a block
-        Move.HEAVY -> otherMove != Move.STRIKE // interrupted by a strike
+        Move.STRIKE -> !(otherMove == Move.BLOCK && otherActs) // absorbed by a block
+        Move.HEAVY -> !(otherMove == Move.STRIKE && otherActs) // interrupted by a strike
         Move.SPECIAL -> true
         Move.BLOCK -> counter
         Move.POTION, Move.RUN -> false
@@ -203,6 +261,8 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
 
     var damage = 0
     var landed = false
+    var healed = 0
+    var inflicts: SpecialEffect? = null
     if (attacks) {
         val missRoll = rng.nextDouble()
         val varianceRoll = rng.nextDouble()
@@ -213,12 +273,19 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
         } else {
             val crit = critRoll < critChance(me)
             damage = damageOf(me, other, moveMultiplier(me, myMove, counter) * comboMultiplier(me), varianceRoll, crit)
-            events += FightEvent.Hit(side, hitMove, damage, crit, counter, combo = me.combo)
+            val effect = if (myMove == Move.SPECIAL) me.id.spec.special.effect else null
+            events += FightEvent.Hit(side, hitMove, damage, crit, counter, combo = me.combo, effect = effect)
             landed = true
+            if (effect == SpecialEffect.DRAIN) {
+                healed = (damage * FightTuning.DRAIN_SHARE).roundToInt().coerceAtMost(me.maxHp - me.hp)
+                if (healed > 0) events += FightEvent.Drain(side, healed)
+            } else {
+                inflicts = effect
+            }
         }
     }
 
-    if (myMove == Move.STRIKE && otherMove == Move.HEAVY) events += FightEvent.Interrupted(side.other())
+    if (myMove == Move.STRIKE && otherMove == Move.HEAVY && otherActs) events += FightEvent.Interrupted(side.other())
 
     val meter = when {
         myMove == Move.SPECIAL -> 0
@@ -226,7 +293,7 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
         else -> me.meter
     }
     if (meter == FightTuning.METER_MAX && me.meter < FightTuning.METER_MAX) events += FightEvent.SpecialReady(side)
-    return Action(events, damage, meter)
+    return Action(events, damage, meter, healed, inflicts)
 }
 
 private fun missChance(move: Move, counter: Boolean, defender: Fighter): Double {

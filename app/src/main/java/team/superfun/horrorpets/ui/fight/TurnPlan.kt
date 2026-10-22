@@ -28,7 +28,16 @@ internal sealed interface Beat {
 
     /** A potion is tossed onto [side], who drinks it and gets [amount] hit points back. */
     data class Drink(val side: Side, val amount: Int) : Beat
+
+    /** [side]'s draining special just gave it [amount] hit points back (it rides on the special's swing). */
+    data class Drain(val side: Side, val amount: Int) : Beat
+
+    /** [side] bleeds [damage] at the end of the turn, once every swing has played. */
+    data class Bleed(val side: Side, val damage: Int) : Beat
 }
+
+/** Whether [this] beat rides on the swing before it (lands with or right after its impact) rather than playing on its own. */
+internal val Beat.ridesOnLunge: Boolean get() = this is Beat.Interrupt || this is Beat.Ready || this is Beat.Drain
 
 /**
  * The beats of one turn, from its [events] in engine order.
@@ -45,6 +54,8 @@ internal fun beatsOf(events: List<FightEvent>, winner: Side?): List<Beat> = even
         is FightEvent.Interrupted -> Beat.Interrupt(event.side)
         is FightEvent.SpecialReady -> if (winner == null) Beat.Ready(event.side) else null
         is FightEvent.Heal -> Beat.Drink(event.side, event.amount)
+        is FightEvent.Drain -> Beat.Drain(event.side, event.amount)
+        is FightEvent.Bleed -> Beat.Bleed(event.side, event.damage)
         is FightEvent.Ko -> null
     }
 }
@@ -57,8 +68,8 @@ private val Silent = FightSounds(emptyList(), emptyList())
 /**
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
  * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
- * instead; a miss is `miss`, a block `block`, a potion `potion`, and a KO is the `ko` boom with the announcer
- * saying `ko`.
+ * instead; a miss is `miss`, a block `block`, a potion or a drain `potion`, a bleed `hit`, and a KO is the `ko`
+ * boom with the announcer saying `ko`.
  * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
  * one from [events], is said with the event it reacts to.
  *
@@ -85,7 +96,8 @@ internal class TurnSounds(
             }
             is FightEvent.Miss -> "miss"
             is FightEvent.Blocked -> "block"
-            is FightEvent.Heal -> "potion"
+            is FightEvent.Heal, is FightEvent.Drain -> "potion"
+            is FightEvent.Bleed -> "hit"
             is FightEvent.Ko -> return FightSounds(listOf("ko"), listOf("ko"))
             is FightEvent.Interrupted, is FightEvent.SpecialReady -> return Silent
         }
@@ -157,7 +169,7 @@ internal data class HudStart(val hp: Int, val meter: Int)
 
 /**
  * A side's HP and meter before the turn whose [events] left it as [f], as near as the events tell: the
- * damage it took is given back and a potion's heal taken back out (always within 0..max HP), the special it
+ * damage it took (and bled) is given back and a potion's or a drain's heal taken back out (always within 0..max HP), the special it
  * used was a full meter, and each hit it landed (counters included) had not yet filled its cell. Only for a fight screen built in the middle of a
  * turn (the Activity was recreated while it played); otherwise the bars simply follow the turn.
  */
@@ -168,6 +180,8 @@ internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): Hu
     var usedSpecial = false
     for (e in events) {
         if (e is FightEvent.Heal && e.side == side) healed += e.amount
+        if (e is FightEvent.Drain && e.side == side) healed += e.amount
+        if (e is FightEvent.Bleed && e.side == side) taken += e.damage
         if (e !is FightEvent.Hit) continue
         when {
             e.attacker != side -> taken += e.damage

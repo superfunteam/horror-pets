@@ -8,10 +8,12 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
+import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.model.spec
 import kotlin.random.Random
@@ -137,6 +139,26 @@ class TurnPlanTest {
     }
 
     @Test
+    fun aDrainRidesOnItsSpecialAndBleedsPlayOnTheirOwnAtTheEnd() {
+        val special = FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false, effect = SpecialEffect.DRAIN)
+        val drain = FightEvent.Drain(Side.PLAYER, 20)
+        val hit = FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false)
+        val bleed = FightEvent.Bleed(Side.CPU, 6)
+        val beats = beatsOf(listOf(special, drain, hit, bleed), winner = null)
+        assertEquals(
+            listOf(Beat.Lunge(Side.PLAYER, special), Beat.Drain(Side.PLAYER, 20), Beat.Lunge(Side.CPU, hit), Beat.Bleed(Side.CPU, 6)),
+            beats,
+        )
+        assertEquals(listOf(false, true, false, false), beats.map { it.ridesOnLunge })
+    }
+
+    @Test
+    fun aBleedThatFinishesTheFightIsStillShown() {
+        val bleed = FightEvent.Bleed(Side.CPU, 4)
+        assertEquals(listOf(Beat.Bleed(Side.CPU, 4)), beatsOf(listOf(bleed, FightEvent.Ko(Side.CPU)), winner = Side.PLAYER))
+    }
+
+    @Test
     fun noEventsNoBeats() {
         assertTrue(beatsOf(emptyList(), winner = Side.CPU).isEmpty())
     }
@@ -232,6 +254,11 @@ class TurnSoundsTest {
         assertEquals(listOf("potion"), s.sfx)
         assertTrue(s.voice.isEmpty())
         assertEquals(null, momentOf(FightEvent.Heal(Side.PLAYER, 34)))
+    }
+
+    @Test
+    fun aDrainShimmersLikeAPotionAndABleedIsAPlainHit() {
+        assertEquals(FightSounds(listOf("potion", "hit"), emptyList()), sounds(FightEvent.Drain(Side.CPU, 20), FightEvent.Bleed(Side.PLAYER, 6)))
     }
 
     @Test
@@ -334,6 +361,18 @@ class HudBeforeTurnTest {
         // Jason drank 30 and was then hit for 12: before the turn he had 60 - 30 + 12.
         val events = listOf(FightEvent.Heal(Side.PLAYER, 30), FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false))
         assertEquals(HudStart(hp = 42, meter = 50), hudBeforeTurn(jason, Side.PLAYER, events))
+    }
+
+    @Test
+    fun aDrainIsTakenBackOutAndABleedGivenBack() {
+        // Jason's special drained 20, then he was hit for 12 and bled 6: before the turn he had 60 - 20 + 12 + 6.
+        val events = listOf(
+            FightEvent.Hit(Side.PLAYER, Move.SPECIAL, 40, crit = false, effect = SpecialEffect.DRAIN),
+            FightEvent.Drain(Side.PLAYER, 20),
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 12, crit = false),
+            FightEvent.Bleed(Side.PLAYER, 6),
+        )
+        assertEquals(HudStart(hp = 58, meter = FightTuning.METER_MAX), hudBeforeTurn(jason, Side.PLAYER, events))
     }
 
     @Test

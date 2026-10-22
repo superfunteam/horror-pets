@@ -16,6 +16,7 @@ import team.superfun.horrorpets.fight.FightEvent.SpecialReady
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.SpecialEffect
 
 /**
  * Numbers used throughout: strength 64 gives base damage 8 + 64/8 = 16, so with neutral variance
@@ -23,6 +24,9 @@ import team.superfun.horrorpets.model.PetState
  * SPECIAL 40. A crit STRIKE does 28.
  */
 class FightEngineTest {
+    /** What the default fighter's (Jason's) Machete Frenzy leaves behind. */
+    private val jasonsEffect = SpecialEffect.BLEED
+
     private fun resolve(
         s: FightState,
         player: Move,
@@ -231,7 +235,7 @@ class FightEngineTest {
         val rng = ScriptedRandom.attacks(Roll())
         val s = stateOf(player = fighter(meter = 100))
         val r = resolve(s, Move.SPECIAL, Move.BLOCK, rng)
-        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false)), r.events) // block does nothing
+        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false, effect = jasonsEffect)), r.events) // block does nothing
         assertEquals(60, r.state.cpu.hp)
         assertEquals(100, r.state.player.hp)
         assertEquals(0, r.state.player.meter)
@@ -242,14 +246,14 @@ class FightEngineTest {
     fun specialAlwaysLandsEvenOnAMissRoll() {
         val s = stateOf(player = fighter(meter = 100))
         val r = resolve(s, Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll(miss = 0.0)))
-        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false)), r.events)
+        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false, effect = jasonsEffect)), r.events)
     }
 
     @Test
     fun specialAlsoLandsAgainstGhostface() {
         val s = stateOf(player = fighter(meter = 100), cpu = fighter(id = PetId.GHOSTFACE))
         val r = resolve(s, Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll(miss = 0.0)))
-        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false)), r.events)
+        assertEquals(listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false, effect = jasonsEffect)), r.events)
     }
 
     @Test
@@ -264,12 +268,12 @@ class FightEngineTest {
         val s = stateOf(player = fighter(meter = 100))
         val vsStrike = resolve(s, Move.SPECIAL, Move.STRIKE, ScriptedRandom.attacks(Roll(), Roll()))
         assertEquals(
-            listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false), Hit(Side.CPU, Move.STRIKE, 16, false)),
+            listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false, effect = jasonsEffect), Hit(Side.CPU, Move.STRIKE, 16, false)),
             vsStrike.events,
         )
         val vsHeavy = resolve(s, Move.SPECIAL, Move.HEAVY, ScriptedRandom.attacks(Roll(), Roll()))
         assertEquals(
-            listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false), Hit(Side.CPU, Move.HEAVY, 29, false)),
+            listOf<FightEvent>(Hit(Side.PLAYER, Move.SPECIAL, 40, false, effect = jasonsEffect), Hit(Side.CPU, Move.HEAVY, 29, false)),
             vsHeavy.events,
         )
         assertEquals(71, vsHeavy.state.player.hp)
@@ -280,7 +284,7 @@ class FightEngineTest {
     fun cpuSpecialWorksTheSameAndResetsItsMeter() {
         val s = stateOf(cpu = fighter(meter = 100))
         val r = resolve(s, Move.BLOCK, Move.SPECIAL, ScriptedRandom.attacks(Roll()))
-        assertEquals(listOf<FightEvent>(Hit(Side.CPU, Move.SPECIAL, 40, false)), r.events)
+        assertEquals(listOf<FightEvent>(Hit(Side.CPU, Move.SPECIAL, 40, false, effect = jasonsEffect)), r.events)
         assertEquals(60, r.state.player.hp)
         assertEquals(0, r.state.cpu.meter)
     }
@@ -342,7 +346,7 @@ class FightEngineTest {
         val counter = resolve(stateOf(), Move.BLOCK, Move.STRIKE, ScriptedRandom.attacks(Roll(crit = 0.0)))
         assertEquals(Hit(Side.PLAYER, Move.STRIKE, 14, true, counter = true), counter.events.last()) // 8 * 1.75
         val special = resolve(stateOf(player = fighter(meter = 100)), Move.SPECIAL, Move.BLOCK, ScriptedRandom.attacks(Roll(crit = 0.0)))
-        assertEquals(Hit(Side.PLAYER, Move.SPECIAL, 70, true), special.events.single()) // 40 * 1.75
+        assertEquals(Hit(Side.PLAYER, Move.SPECIAL, 70, true, effect = jasonsEffect), special.events.single()) // 40 * 1.75
     }
 
     @Test

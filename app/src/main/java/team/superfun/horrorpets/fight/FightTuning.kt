@@ -44,6 +44,12 @@ object FightTuning {
     const val COMBO_STEP = 0.15
     const val COMBO_MAX_STEPS = 3
 
+    // Special effects: a BLEED lasts BLEED_TURNS turns, each costing BLEED_SHARE of max HP (at least 1); a
+    // DRAIN heals DRAIN_SHARE of the special's damage; a DAZE spoils the target's next turn.
+    const val BLEED_TURNS = 3
+    const val BLEED_SHARE = 0.06
+    const val DRAIN_SHARE = 0.5
+
     // Special meter: METER_PER_HIT per landed hit (counters included), SPECIAL needs METER_MAX.
     const val METER_PER_HIT = 25
     const val METER_MAX = 100

@@ -26,7 +26,8 @@ internal fun momentOf(event: FightEvent): Moment? = when (event) {
     }
     is FightEvent.Blocked -> Moment.BLOCK
     is FightEvent.Miss -> Moment.MISS
-    is FightEvent.Interrupted, is FightEvent.SpecialReady, is FightEvent.Heal, is FightEvent.Ko -> null
+    is FightEvent.Interrupted, is FightEvent.SpecialReady, is FightEvent.Heal, is FightEvent.Drain,
+    is FightEvent.Bleed, is FightEvent.Ko -> null
 }
 
 /** The announcer's call for one turn: [line] is said as [event] lands. */

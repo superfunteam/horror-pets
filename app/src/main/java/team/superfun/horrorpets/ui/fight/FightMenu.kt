@@ -60,7 +60,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
@@ -104,9 +107,16 @@ internal fun moveHint(move: Move, pet: PetId): String = when (move) {
     Move.STRIKE -> "Quick hit  ·  interrupts a Heavy"
     Move.HEAVY -> "Big hit  ·  breaks a Block, but a Strike cuts it off"
     Move.BLOCK -> "Stops a Strike and counters  ·  a Heavy breaks it"
-    Move.SPECIAL -> "${specialName(pet)}  ·  never misses"
+    Move.SPECIAL -> "${specialName(pet)}  ·  never misses, ${effectHint(pet.spec.special.effect)}"
     Move.POTION -> "Heals half to all your HP  ·  uses your turn"
     Move.RUN -> "Forfeit the fight  ·  costs a little mood"
+}
+
+/** What a special leaves behind, as its help says it. */
+internal fun effectHint(effect: SpecialEffect): String = when (effect) {
+    SpecialEffect.BLEED -> "they bleed for ${FightTuning.BLEED_TURNS} turns"
+    SpecialEffect.DRAIN -> "heals you half the damage"
+    SpecialEffect.DAZE -> "dazes them for a turn"
 }
 
 /** The help window's text for the potion when the player is already at full health: it would be wasted. */
