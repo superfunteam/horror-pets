@@ -178,7 +178,7 @@ private const val IDLE_STAGGER_MS = 230L
  *
  * It picks the starter of a new game ([SwitcherMode.ONBOARD]): any killer, each showing its special, since none
  * has stats yet. The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left
- * out: killers in the stable show their level and status, locked ones a LOCKED tag (beating one unlocks it), and
+ * out: killers in the stable show their level and status, locked ones a KILL TO UNLOCK tag (still pickable), and
  * a counter says how many are unlocked.
  *
  * The row starts on the first pet. While onboarding there is nothing to go back to, so Back leaves the app
@@ -448,7 +448,7 @@ private enum class LineupLabel {
     /** Its special: a starter candidate, which has no stats yet. */
     STARTER,
 
-    /** A LOCKED tag: a killer the player has not beaten yet. */
+    /** A KILL TO UNLOCK tag: a killer the player has not beaten yet. */
     LOCKED,
 }
 
@@ -467,7 +467,10 @@ private fun UnlockedCount(unlocked: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** A LOCKED tag: a padlock and the word, white on glossy blood red with clipped corners. */
+/**
+ * A KILL TO UNLOCK tag: a padlock and the words, white on glossy blood red with clipped corners. It says how to
+ * unlock the killer rather than just LOCKED, which read as "you can't pick this one".
+ */
 @Composable
 private fun LockedTag() {
     Row(
@@ -497,7 +500,13 @@ private fun LockedTag() {
             drawArc(Color.White, 180f, 180f, useCenter = false, topLeft = Offset(w * 0.18f, 0f), size = Size(w * 0.64f, h * 0.7f), style = Stroke(2.dp.toPx()))
             drawRoundRect(Color.White, topLeft = Offset(0f, h * 0.42f), size = Size(w, h * 0.58f), cornerRadius = CornerRadius(1.5.dp.toPx()))
         }
-        BasicText("LOCKED", style = displayStyle(16.sp, tracking = 0.14f))
+        BasicText(
+            "KILL TO UNLOCK",
+            style = displayStyle(16.sp, tracking = 0.1f),
+            maxLines = 1,
+            // Steps down only where the label column is narrow (4:3).
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 16.sp, stepSize = 1.sp),
+        )
     }
 }
 
