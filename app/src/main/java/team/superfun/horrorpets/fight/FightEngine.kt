@@ -79,15 +79,20 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *   save the player from a KO. Against it the CPU's STRIKE, HEAVY or SPECIAL attacks (nothing to interrupt
  *   or block), and its BLOCK does nothing. It costs a potion and leaves the meters alone.
  *
- * ## Damage, crits, misses, meter
+ * ## Damage, crits, misses, meter, combos
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
  * 1.15 for Chucky; HEAVY 1.8, times 1.2 for Leatherface; counter 0.5, or 1.0 for Pinhead; SPECIAL 2.5) times
+ * the combo bonus (`1 + 0.15 * min(combo, 3)`, see below) times
  * 1.75 on a crit, times 0.85 when the defender is Michael, rounded once at the end and never below 1. Specials and counters
  * can crit but never miss. Attacks against GHOSTFACE miss 0.07 more often (STRIKE and HEAVY only).
  * Every per-pet number comes from the pet's [Passive][team.superfun.horrorpets.model.Passive] in the roster.
  * Each landed hit (counters included, specials excluded) adds 25 to the attacker's meter, capped
  * at 100; [FightEvent.SpecialReady] is emitted on the hit that takes it from below 100 to 100. A
  * SPECIAL needs a full meter and resets it to 0.
+ *
+ * [Fighter.combo] counts the turns in a row a side has landed a hit (a counter or a special included)
+ * without being hit. After each turn a side that was hit, or whose own swing missed, drops to 0; one that
+ * landed a hit and was not hit goes up by 1; one that did neither (both blocked, a potion in peace) keeps it.
  *
  * ## Dice (the contract for tests and replays)
  * Only [Random.nextDouble] is used. Every attack that happens draws exactly three doubles, always,
@@ -146,8 +151,8 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
 
     val events = player.events + cpu.events + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
     val next = s.copy(
-        player = s.player.copy(hp = playerHp, meter = player.meter),
-        cpu = s.cpu.copy(hp = cpuHp, meter = cpu.meter),
+        player = s.player.copy(hp = playerHp, meter = player.meter, combo = comboAfter(s.player, player, hitBy = cpu)),
+        cpu = s.cpu.copy(hp = cpuHp, meter = cpu.meter, combo = comboAfter(s.cpu, cpu, hitBy = player)),
         turn = s.turn + 1,
         playerHistory = s.playerHistory + playerMove,
         winner = winner,
@@ -164,7 +169,16 @@ private fun requireSpecialReady(side: Side, f: Fighter, move: Move) {
 }
 
 /** What one side's move did this turn: its events, the damage it dealt, its meter afterwards, and what it healed. */
-private class Action(val events: List<FightEvent>, val damage: Int, val meter: Int, val healed: Int = 0)
+private class Action(val events: List<FightEvent>, val damage: Int, val meter: Int, val healed: Int = 0) {
+    val missed: Boolean get() = events.any { it is FightEvent.Miss }
+}
+
+/** [me]'s combo after a turn in which it played [mine] and was hit by [hitBy] (see [resolveTurn]). */
+private fun comboAfter(me: Fighter, mine: Action, hitBy: Action): Int = when {
+    hitBy.damage > 0 || mine.missed -> 0
+    mine.damage > 0 -> me.combo + 1
+    else -> me.combo
+}
 
 /** The player drinks a potion: one roll for how much of their max HP it gives back, capped at what is missing. */
 private fun drink(me: Fighter, rng: Random): Action {
@@ -198,8 +212,8 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
             events += FightEvent.Miss(side, myMove)
         } else {
             val crit = critRoll < critChance(me)
-            damage = damageOf(me, other, moveMultiplier(me, myMove, counter), varianceRoll, crit)
-            events += FightEvent.Hit(side, hitMove, damage, crit, counter)
+            damage = damageOf(me, other, moveMultiplier(me, myMove, counter) * comboMultiplier(me), varianceRoll, crit)
+            events += FightEvent.Hit(side, hitMove, damage, crit, counter, combo = me.combo)
             landed = true
         }
     }
@@ -236,6 +250,9 @@ private fun moveMultiplier(attacker: Fighter, move: Move, counter: Boolean): Dou
     move == Move.SPECIAL -> FightTuning.SPECIAL_MULT
     else -> FightTuning.STRIKE_MULT * attacker.id.spec.passive.strikeMult
 }
+
+private fun comboMultiplier(attacker: Fighter): Double =
+    1.0 + FightTuning.COMBO_STEP * attacker.combo.coerceAtMost(FightTuning.COMBO_MAX_STEPS)
 
 private fun damageOf(attacker: Fighter, defender: Fighter, multiplier: Double, varianceRoll: Double, crit: Boolean): Int {
     val base = FightTuning.BASE_DAMAGE + attacker.strength / FightTuning.STRENGTH_DIVISOR

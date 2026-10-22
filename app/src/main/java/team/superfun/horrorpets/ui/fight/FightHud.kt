@@ -67,16 +67,34 @@ private const val LOW_HP = 0.3f
 internal class HudValues(val hp: () -> Float, val trail: () -> Float, val meter: () -> Float)
 
 /**
+ * The lasting states a side's HUD shows under its meter, as of the turn playback so far: its [combo] (shown from
+ * 2 hits in a row). Read in composition: they change a few times a turn at most.
+ */
+internal class HudStatus(val combo: () -> Int)
+
+/** The status row under the meter is this tall whether or not anything is in it, so the HUD never jumps. */
+private val StatusRowHeight = 22.dp
+
+/**
  * The Street-Fighter-style top bar, inside the safe inset: the player's name, HP bar and special meter
  * on the left (filling from the left edge), the CPU's mirrored on the right (filling from the right
  * edge), and the turn number in a badge between them.
  */
 @Composable
-internal fun FightHud(player: Fighter, cpu: Fighter, turn: Int, playerValues: HudValues, cpuValues: HudValues, modifier: Modifier = Modifier) {
+internal fun FightHud(
+    player: Fighter,
+    cpu: Fighter,
+    turn: Int,
+    playerValues: HudValues,
+    cpuValues: HudValues,
+    playerStatus: HudStatus,
+    cpuStatus: HudStatus,
+    modifier: Modifier = Modifier,
+) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        SideHud(player, playerValues, mirrored = false, modifier = Modifier.weight(1f))
+        SideHud(player, playerValues, playerStatus, mirrored = false, modifier = Modifier.weight(1f))
         TurnBadge(turn, Modifier.padding(horizontal = 14.dp).padding(top = 22.dp))
-        SideHud(cpu, cpuValues, mirrored = true, modifier = Modifier.weight(1f))
+        SideHud(cpu, cpuValues, cpuStatus, mirrored = true, modifier = Modifier.weight(1f))
     }
 }
 
@@ -91,7 +109,7 @@ internal fun hpCountCandidates(maxHp: Int): List<String> {
 }
 
 @Composable
-private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: Modifier = Modifier) {
+private fun SideHud(f: Fighter, values: HudValues, status: HudStatus, mirrored: Boolean, modifier: Modifier = Modifier) {
     val hpShown by remember(values) { derivedStateOf { values.hp().roundToInt().coerceAtLeast(0) } }
     val full by remember(values) { derivedStateOf { values.meter() >= FightTuning.METER_MAX - 0.5f } }
     val pulse = rememberInfiniteTransition(label = "hudPulse").animateFloat(
@@ -173,6 +191,58 @@ private fun SideHud(f: Fighter, values: HudValues, mirrored: Boolean, modifier: 
                 tag()
             }
         }
+        Spacer(Modifier.height(6.dp))
+        StatusRow(status, mirrored)
+    }
+}
+
+private val ComboFill = Brush.verticalGradient(listOf(Color(0xFFFFE08A), Color(0xFFF5A623), Color(0xFFB8650F)))
+
+/** A side's lasting states as small slanted chips, from the outer edge in: COMBO ×N. */
+@Composable
+private fun StatusRow(status: HudStatus, mirrored: Boolean) {
+    val chips = buildList {
+        val combo = status.combo()
+        if (combo >= 2) add(Triple("COMBO \u00d7$combo", ComboFill, Color(0xFF2A1405)))
+    }
+    Row(
+        Modifier.height(StatusRowHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for ((text, fill, ink) in if (mirrored) chips.reversed() else chips) HudChip(text, fill, ink, mirrored)
+    }
+}
+
+/** One status chip: [text] in [ink] on a slanted [fill] (leaning like the bars), with a light rim. */
+@Composable
+private fun HudChip(text: String, fill: Brush, ink: Color, mirrored: Boolean) {
+    Box(
+        Modifier
+            .drawBehind {
+                val skew = size.height * 0.35f
+                val path = Path().apply {
+                    if (mirrored) {
+                        moveTo(0f, 0f)
+                        lineTo(size.width - skew, 0f)
+                        lineTo(size.width, size.height)
+                        lineTo(skew, size.height)
+                    } else {
+                        moveTo(skew, 0f)
+                        lineTo(size.width, 0f)
+                        lineTo(size.width - skew, size.height)
+                        lineTo(0f, size.height)
+                    }
+                    close()
+                }
+                softGlow(Color.Black, alpha = 0.5f, cornerRadius = 2.dp.toPx(), spread = 6.dp, offsetY = 2.dp.toPx())
+                drawPath(path, fill)
+                drawPath(path, Color.White.copy(alpha = 0.55f), style = Stroke(1.dp.toPx()))
+            }
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(text, style = displayStyle(15.sp, color = ink, tracking = 0.1f, lineHeight = 16.sp), maxLines = 1)
     }
 }
 

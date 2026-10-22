@@ -442,6 +442,8 @@ fun FightScreen(
                 turn = shownTurn(fight, turnActive),
                 playerValues = stage.player.hud,
                 cpuValues = stage.cpu.hud,
+                playerStatus = stage.player.status,
+                cpuStatus = stage.cpu.status,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop },
@@ -581,7 +583,7 @@ private class Pose(val anim: Anim) {
  * recomposes the screen frame by frame.
  */
 @Stable
-private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook) {
+private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook, combo: Int) {
     /** Its display scale (see `bodyScale`). */
     val body = look.body
 
@@ -608,6 +610,10 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     val trail = Animatable(hp)
     val meter = Animatable(meter)
     val hud = HudValues(hp = { this.hp.value }, trail = { trail.value }, meter = { this.meter.value })
+
+    /** Its combo as the HUD shows it: broken the moment it is hit or whiffs, built up as the turn ends. */
+    var combo by mutableIntStateOf(combo)
+    val status = HudStatus(combo = { this.combo })
 
     /** Where the bars are heading, ahead of their animations. */
     var hpTarget = hp
@@ -693,8 +699,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
         // recreated while a turn played) replays that turn, so it starts from the values before it.
         val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
         val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
-        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook)
-        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook)
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook, f.player.combo)
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook, f.cpu.combo)
     }
 
     val shake = Animatable(0f)
@@ -873,6 +879,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
                 r.meterTarget = f.meter.toFloat()
                 launch { r.meter.animateTo(f.meter.toFloat(), tween(200)) }
             }
+            r.combo = f.combo
         }
         shownTell = fight.cpuPlan?.tell
         menu.animateTo(1f, tween(MENU_MS))
@@ -990,7 +997,10 @@ private fun FightStage.impactOf(
                 guarding -= d.side
                 d.show(Anim.IDLE)
             }
+            // Being hit ends the defender's combo; the attacker's grows once the turn is over.
+            d.combo = 0
             val labels = buildList {
+                if (event.combo >= 1) add("COMBO \u00d7${event.combo + 1}")
                 if (event.crit) add("CRITICAL!")
                 if (event.counter) add("COUNTER")
                 if (breaksGuard) add("GUARD BREAK")
@@ -1035,6 +1045,7 @@ private fun FightStage.impactOf(
         }
 
         is FightEvent.Miss -> {
+            a.combo = 0
             float(FloatKind.MISS, "MISS", if (interrupted) listOf("INTERRUPTED") else emptyList(), d.side)
             // The defender sways out of the way.
             scope.launch {

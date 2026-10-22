@@ -890,7 +890,7 @@ class GameViewModelTest {
             rig.finishAnim()
             check(++turns < 20)
         }
-        assertEquals(3, turns)
+        assertEquals("the second HEAVY lands as a combo and finishes him", 2, turns)
         val results = rig.ui.screen as Screen.Results
         assertFalse(results.won)
         assertFalse(results.ran)

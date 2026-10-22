@@ -39,6 +39,11 @@ object FightTuning {
     const val MISS_HEAVY = 0.15
     const val GHOSTFACE_EVADE_BONUS = 0.07 // added to the miss chance of attacks against Ghostface
 
+    // Combos: a hit does COMBO_STEP more damage for each turn in a row its attacker has landed a hit
+    // without being hit, counting up to COMBO_MAX_STEPS of them (+45%).
+    const val COMBO_STEP = 0.15
+    const val COMBO_MAX_STEPS = 3
+
     // Special meter: METER_PER_HIT per landed hit (counters included), SPECIAL needs METER_MAX.
     const val METER_PER_HIT = 25
     const val METER_MAX = 100

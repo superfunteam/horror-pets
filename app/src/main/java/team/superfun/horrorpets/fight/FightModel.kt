@@ -12,7 +12,8 @@ fun Side.other(): Side = if (this == Side.PLAYER) Side.CPU else Side.PLAYER
 
 /**
  * One combatant. [strength] and [mood] are snapshots taken when the fight is built, [meter] is the
- * special meter (0..[FightTuning.METER_MAX]) and [hp] runs from [maxHp] down to 0.
+ * special meter (0..[FightTuning.METER_MAX]) and [hp] runs from [maxHp] down to 0. [combo] is how many
+ * turns in a row it has landed a hit without being hit (see [resolveTurn]).
  */
 data class Fighter(
     val id: PetId,
@@ -22,6 +23,7 @@ data class Fighter(
     val strength: Double,
     val mood: Int,
     val meter: Int,
+    val combo: Int = 0,
 )
 
 /**
@@ -53,6 +55,8 @@ sealed interface FightEvent {
     /**
      * [attacker] landed [damage]. A counter (a BLOCK that met a STRIKE) is reported as
      * `Hit(blocker, Move.STRIKE, ..., counter = true)`; otherwise [move] is the move that was played.
+     * [combo] is the attacker's [Fighter.combo] coming into the turn: from 1 on this hit is part of a combo
+     * (its `combo + 1`th clean hit in a row) and hit harder for it.
      */
     data class Hit(
         val attacker: Side,
@@ -60,6 +64,7 @@ sealed interface FightEvent {
         val damage: Int,
         val crit: Boolean,
         val counter: Boolean = false,
+        val combo: Int = 0,
     ) : FightEvent
 
     /** [attacker]'s STRIKE or HEAVY whiffed. */
