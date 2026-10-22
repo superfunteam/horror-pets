@@ -34,6 +34,7 @@ TRADES = [(84.7, 86.9), (92.6, 95.4), (108.6, 110.8)]
 # combo, Freddy whiffs) until K.O. lands, and the results.
 KO_EXCHANGE, KO_LANDS, RESULTS = (6.6, 11.3), 10.75, (13.3, 16.8)
 TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends!" (tools/generate_video_voice.py)
+TAP_KILL = 1.04  # "KILL" in the line, which lands on the tap
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
 START_YAW, START_GAP = 0.15, 40.0  # how the phones start: turned a little toward each other, this far out of place
 
@@ -180,5 +181,5 @@ class OnlinePvp:
 
     def cues(self) -> list[Cue]:
         fight = self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN
-        return [Cue(self.tap + 0.25, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1),
+        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1),
                 Cue(self.ko_hit, cast.voice("ko"), 1.1)]

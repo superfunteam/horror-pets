@@ -1,8 +1,8 @@
 """Raise & train your killer: the game's own sprites in their own scenes, splitting Brady Bunch style.
 
 Leatherface dances and swings his saw alone in his butcher room as the title slams in. On the next bar the frame splits
-and Jason gets a drumstick dropped at his feet on the dock; on the bar after, it splits again and Freddy slashes in the
-boiler room while Chucky jumps and stabs in the toy store. Then the others swap in a panel at a time, each with a
+and Jason gets a drumstick dropped at his feet on the dock; then, on every half bar after, it splits again (Freddy
+slashing in the boiler room, Chucky stabbing in the toy store) and the others swap in a panel at a time, each with a
 flash: Ghostface, Pinhead, Michael. Every panel's stage drifts a little behind its killer.
 """
 from __future__ import annotations
@@ -35,21 +35,22 @@ class Panel:
 
 
 class RaiseTrain:
-    """[bars] bars of [bar] seconds: one panel, then two, then four, each split on a downbeat; then the others swap in,
-    a panel every half bar."""
+    """[bars] bars of [bar] seconds: a bar of one panel under the title, then a change every half bar: the split into
+    two, the split into four, and the others swapping in a panel at a time."""
 
-    def __init__(self, bar: float, bars: int = 5):
+    def __init__(self, bar: float, bars: float = 3.5):
         self.bar = bar
         self.duration = bars * bar
         b = bar
+        self.split, self.quad = b, 1.5 * b  # when the frame splits in two, then in four
         self.panels = [
             Panel("leatherface", "butcher", 0, 0, ("dance", "attack")),
-            Panel("jason", "dock", 1, b, ("jump", "wave", "attack", "jump")),
-            Panel("freddy", "boiler", 2, 2 * b, ("attack",)),
-            Panel("chucky", "toystore", 3, 2 * b, ("jump", "attack", "wave")),
-            Panel("ghostface", "house", 1, 3 * b, ("attack", "jump")),
-            Panel("pinhead", "labyrinth", 2, 3.5 * b, ("attack", "wave")),
-            Panel("michael", "myershouse", 3, 4 * b, ("attack",)),
+            Panel("jason", "dock", 1, self.split, ("jump", "attack")),
+            Panel("freddy", "boiler", 2, self.quad, ("attack",)),
+            Panel("chucky", "toystore", 3, self.quad, ("jump", "attack")),
+            Panel("ghostface", "house", 1, 2 * b, ("attack", "jump")),
+            Panel("pinhead", "labyrinth", 2, 2.5 * b, ("attack", "wave")),
+            Panel("michael", "myershouse", 3, 3 * b, ("attack",)),
         ]
         self.panels = [p for p in self.panels if p.enter < self.duration]
         self.stages = {}
@@ -68,8 +69,8 @@ class RaiseTrain:
 
     def rect(self, i: int, t: float) -> tuple[float, float, float, float] | None:
         """Panel slot [i]'s rectangle at [t]: the splits sweep in over a quarter beat from each downbeat."""
-        split = ramp(t, self.bar, self.bar + 0.22, out_cubic)  # the vertical split
-        split2 = ramp(t, 2 * self.bar, 2 * self.bar + 0.22, out_cubic)  # the horizontal one
+        split = ramp(t, self.split, self.split + 0.22, out_cubic)  # the vertical split
+        split2 = ramp(t, self.quad, self.quad + 0.22, out_cubic)  # the horizontal one
         mid_x = lerp(W + GAP, W / 2, split)
         mid_y = lerp(H + GAP, H / 2, split2)
         left, right = (0, mid_x - GAP / 2), (mid_x + GAP / 2, W)
@@ -112,7 +113,7 @@ class RaiseTrain:
         cell = sprites.cell(p.pet, anim, k, cell_h)
         ax, by = sprites.anchor(p.pet, cell_h)
         # Alone, Leatherface stands right of the title; he slides to the middle of his panel as it splits.
-        sx = (lerp(0.68, p.x, ramp(t, self.bar, self.bar + 0.22, out_cubic)) if p.pet == "leatherface" else p.x) * w
+        sx = (lerp(0.68, p.x, ramp(t, self.split, self.split + 0.22, out_cubic)) if p.pet == "leatherface" else p.x) * w
         shadow = Image.new("RGBA", (round(cell_h * 0.42), round(cell_h * 0.07)), (0, 0, 0, 0))
         ImageDraw.Draw(shadow).ellipse([0, 0, shadow.width - 1, shadow.height - 1],
                                         fill=(0, 0, 0, round(255 * stage["shadowOpacity"])))

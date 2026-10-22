@@ -4,7 +4,7 @@ First, gameplay recorded off the TV emulator (driven by the app's puppet mode), 
 trading blows under the title, then from the song's drop a different killer landing a hit every beat (Chucky,
 Ghostface, Jason, Freddy, Leatherface), then specials one after another (Pinhead's chains, Chucky's voodoo,
 Ghostface's knives, Leatherface's saw dance) and a K.O. Then the game's learnable attacks recut as cards, as the
-announcer shouts that killing unlocks over sixty: two rows sliding opposite ways, each card a killer swinging their
+announcer shouts that killing unlocks over sixty (the line slams down over them as it's said, then zips off): two rows sliding opposite ways, each card a killer swinging their
 sprite on their stage while the attack's marks (AttackMarks.kt, see marks.py) rip across it, its name and its four lit
 tiers underneath.
 """
@@ -17,10 +17,11 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 from . import cast, fx, marks, sprites
 from .footage import Clip
 from .lettering import Slam
-from .motion import pulse
+from .motion import pulse, ramp
 from .render import H, W, Cue
 
 TITLE = cast.ROOT / "video/art/title-fight.webp"
+CARDS_TITLE = cast.ROOT / "video/art/title-attacks.webp"
 ATTACKS = cast.ROOT / "video/voice/attacks.wav"  # "Kill to unlock over sixty special attacks!" (generate_video_voice.py)
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
@@ -35,10 +36,10 @@ class Cut:
     at: float
     length: float
     clip: Clip
-    # Fights are cropped in on the fighters, past the game's health bars and meters (top), command menu (left) and help
-    # line (bottom), which a tighter crop would only clip.
-    zoom: float = 1.62
-    focus: tuple[float, float] = (0.5, 0.585)
+    # The fights are recorded with the HUD hidden (the puppet's `hud off`), so this only closes in on the fighters,
+    # keeping the callouts and numbers over the one getting hit (always on the right) in frame.
+    zoom: float = 1.35
+    focus: tuple[float, float] = (0.56, 0.6)
 
 
 @dataclass(frozen=True)
@@ -82,29 +83,34 @@ class FightToEvolve:
         self.bar, self.beat, self.drop = bar, beat, drop
         self.duration = bars * bar
         self.cards_at = montage_bars * bar
-        # (beats long, recording, from, to): the montage, cut on the beat.
+        # (beats long, recording, from, to, zoom): the montage, cut on the beat.
         montage = [
-            (round(drop / beat), "tv-fight-leatherface-michael.mp4", 7.0, 9.6),  # Leatherface vs Michael, under the title
-            (1, "tv-fight-chucky-ghostface.mp4", 7.1, 7.9),  # Chucky's crit
-            (1, "tv-fight-ghostface-freddy.mp4", 20.6, 21.5),  # Ghostface's combo crit
-            (1, "tv-fight-pinhead.mp4", 7.7, 8.6),  # Jason's crit on Pinhead
-            (1, "tv-fight-freddy.mp4", 28.6, 29.8),  # Freddy's claws draining Jason
-            (1, "tv-fight-leatherface-michael.mp4", 12.6, 13.5),  # Leatherface's saw, a crit
-            (2, "tv-fight-pinhead.mp4", 28.8, 30.3),  # specials: Pinhead's chains for 55,
-            (1, "tv-fight-chucky-ghostface.mp4", 22.6, 23.6),  # Chucky's voodoo for 103,
-            (1, "tv-fight-ghostface-freddy.mp4", 30.4, 31.6),  # Ghostface's knives,
-            (1, "tv-fight-leatherface-michael.mp4", 37.2, 38.6),  # Leatherface's saw dance
+            # Leatherface's chainsaw on Michael under the title, a crit landing as it zips off.
+            (round(drop / beat), "hud-leatherface-michael.mp4", 6.15, 7.75, 1.35),
+            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2),  # Chucky's combo, a guard break (wider for its callout)
+            (1, "hud-ghostface-freddy.mp4", 28.6, 29.5, 1.0),  # Ghostface's combo crit (its callout runs the width of the screen)
+            (1, "hud-jason-pinhead.mp4", 7.6, 8.5, 1.35),  # Jason's machete on Pinhead
+            (1, "hud-freddy-jason.mp4", 29.7, 30.7, 1.35),  # Freddy's claws draining Jason
+            (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35),  # Leatherface's saw, a crit
+            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1),  # specials: Pinhead's chains (wide, to fit them),
+            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35),  # Chucky's voodoo,
+            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35),  # Ghostface's knives,
+            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35),  # Leatherface's saw dance
         ]
         ko = montage_bars * 4 - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
-        montage.append((ko, "tv-fight-freddy.mp4", 42.3, 43.8))  # K.O.
+        montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35))  # Freddy's special draining Jason to a K.O.
         self.cuts, at = [], 0.0
-        for beats, file, start, end in montage:
-            self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat))))
+        for beats, file, start, end, zoom in montage:
+            self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat)), zoom))
             at += beats * beat
         self.specials_at = self.cuts[6].at
-        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.25,
+        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.5,
                           exit_dx=2400, glint_at=0.55)
+        # Over the cards for as long as the announcer takes to say it (the line starts 0.1 s in and runs 2.8 s).
+        self.cards_title = Slam(Image.open(CARDS_TITLE).convert("RGBA"), (W / 2, H * 0.5), 1060,
+                                land=self.cards_at + 0.14, leave=self.cards_at + 3.0, exit_dx=-2400,
+                                glint_at=self.cards_at + 1.3)
         storm = fx.cover(Image.open(STORM).convert("RGB"), W, H).filter(ImageFilter.GaussianBlur(4))
         self.storm = ImageEnhance.Brightness(storm).enhance(0.4).convert("RGBA")
         self.vignette = fx.vignette(W, H, 0.7)
@@ -187,6 +193,11 @@ class FightToEvolve:
                     im = self.card(c, local, seed=i + 10 * row)
                     fx.place(canvas, fx.transformed(im, 0.98 * bump, 0), x, y)
         canvas.alpha_composite(self.vignette)
+        # The cards dim under the line while it's up, so it reads over them.
+        up = ramp(t, self.cards_at, self.cards_at + 0.14) * (1 - ramp(t, self.cards_at + 3.0, self.cards_at + 3.25))
+        if up > 0:
+            canvas = Image.blend(canvas, Image.new("RGBA", canvas.size, (6, 2, 10, 255)), 0.4 * up)
+        self.cards_title.draw(canvas, t)
         out = canvas.convert("RGB")
         return fx.flash(out, (255, 255, 255), 0.6 * pulse(local, 0, 0.14))
 

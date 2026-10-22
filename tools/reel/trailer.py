@@ -3,18 +3,18 @@ its bars.
 
 The song is 150 BPM, a bar every 1.6 s from 0.04 s in. Its synth arpeggio plays alone for 4 bars and builds for 4
 more, the first drop lands on bar 8, the second on bar 16 after a bar of fills, the breakdown runs bars 24-31, the
-last drop lands on bar 32 and the song ends on bar 36. The video edits it (see EDIT) so its drops land where they should:
+last drop lands on bar 32 and the song ends on bar 36. The video edits it (see make) so its drops land where they should:
 
-  bars 0-3      the CRT TV in the basement: static, a channel change to the title screen, the rush in, PRESS START,
+  4 bars        the CRT TV in the basement: static, a channel change to the title screen, the rush in, PRESS START,
                 and the title in layers as the name is shouted
-  bars 4-8      raise & train your killer (a build bar repeated), CHOOSE YOUR KILLER as its title lands
-  bars 9-19     the seven killers from the first drop, each with their own line, Michael on the second drop
-  bars 20-26.5  fight to evolve your skills: a fight under the title over the fill bar, hits from the drop,
+  3.5 bars      raise & train your killer, CHOOSE YOUR KILLER as its title lands, a change every half bar
+  11 bars       the seven killers from the first drop, each with their own line, Michael on the second drop
+  6.5 bars      fight to evolve your skills: a fight under the title over the fill bar, hits from the drop,
                 specials, a K.O., then over sixty attacks as cards
-  bars 26.5-29  over 20 unique environments, flipping by on film (two drop bars repeated)
-  bars 29.5-39  online & local PvP: the phones fly in and tap as the breakdown starts, TAP TO KILL YOUR FRIENDS,
+  11 beats      over 25 unique environments, flipping by on film
+  12 bars       online & local PvP: the phones fly in and tap as the breakdown starts, TAP TO KILL YOUR FRIENDS,
                 VS, blows traded from the last drop, the K.O. and the results
-  bar 40-       the outro, over the last drop again, lingering on a pet being fed
+  9.5 s         the outro, over the last drop again, lingering on a pet being fed
 """
 from __future__ import annotations
 
@@ -46,21 +46,12 @@ def bar(n: float) -> float:
     return DOWNBEAT + n * BAR
 
 
-# The song as the video plays it: from each (video bar, song bar) on, until the next. A build bar is repeated so raise
-# & train can run five bars; the intros run past the first drop into the second, so the song goes back to its fill bar
-# (15) for the fights' title and drops again on their hits; two drop bars repeat under the environments, so the phones
-# tap as the breakdown starts; most of the breakdown is skipped so they fight on the last drop; and the outro gets the
-# last drop again, running out to the song's end.
-EDIT = [(0, 0), (7, 6), (20, 15), (28, 21), (33, 31), (40, 32)]
-
-
-def song_cues() -> tuple[Cue, ...]:
+def song_cues(edit: list[tuple[float, float]]) -> tuple[Cue, ...]:
+    """The song as the video plays it: from each (video seconds, song seconds) in [edit] on, until the next."""
     cues = []
-    for k, (video, song) in enumerate(EDIT):
-        # The first piece starts with the video, at the song's very start; the rest start on their bars.
-        start, skip = (0.0, 0.0) if k == 0 else (bar(video), bar(song))
-        last = k == len(EDIT) - 1
-        length = None if last else bar(EDIT[k + 1][0]) - start + 0.02
+    for k, (start, skip) in enumerate(edit):
+        last = k == len(edit) - 1
+        length = None if last else edit[k + 1][0] - start + 0.02
         cues.append(Cue(start, SONG, 0.85, skip=skip, length=length, fade_in=0.02, fade_out=0.0 if last else 0.03,
                         music=True))
     return tuple(cues)
@@ -68,9 +59,22 @@ def song_cues() -> tuple[Cue, ...]:
 
 def make() -> Sequence:
     crt = CrtIntro(bar(4), channel=bar(0) + 3 * BEAT, rush=(bar(1), bar(1) + 2 * BEAT), press=bar(2))
-    raise_train = RaiseTrain(BAR, bars=5)
+    raise_train = RaiseTrain(BAR, bars=3.5)
     cuts = [CharacterIntro(cast.BY_ID[pet], beats * BEAT, BEAT) for pet, beats in ORDER]
     fights = FightToEvolve(BAR, BEAT, drop=BAR, bars=6.5)
+    environments = Environments(11 * BEAT)
     pvp = OnlinePvp(BAR, BEAT, approach=1.5, vs=2, turns=2, results=2)
-    scenes = [crt, raise_train, *cuts, fights, Environments(3 * BAR), pvp, Outro(OUTRO)]
-    return Sequence(scenes, (*song_cues(), Cue(bar(4) + 0.25, cast.voice("choose_your_killer"), 1.1)))
+    scenes = [crt, raise_train, *cuts, fights, environments, pvp, Outro(OUTRO)]
+    seq = Sequence(scenes)
+    at: dict[str, float] = {}  # each kind of scene's first start
+    for scene, start in zip(scenes, seq.starts):
+        at.setdefault(type(scene).__name__, start)
+    tap = at["OnlinePvp"] + pvp.tap
+    # The song is cut to fit the scenes, always on its own bars (or the beat a cut lands on): the intros start on the
+    # first drop; the fights go back to the fill bar (15) and drop again on their hits; the environments go back a bar
+    # further, so the phones tap as the breakdown starts (a beat of the drop cut at the tap); most of the breakdown is
+    # skipped so they fight on the last drop; and the outro gets the last drop again, running out to the song's end.
+    edit = [(0.0, 0.0), (at["CharacterIntro"], bar(8)), (at["FightToEvolve"], bar(15)),
+            (at["Environments"], bar(15) + fights.duration - 2 * BAR), (tap, bar(24)), (tap + 2 * BAR, bar(31)),
+            (at["Outro"], bar(32))]
+    return Sequence(scenes, (*song_cues(edit), Cue(bar(4) + 0.25, cast.voice("choose_your_killer"), 1.1)))

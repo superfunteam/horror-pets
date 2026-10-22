@@ -62,12 +62,18 @@ def test_the_phones_tap_as_the_breakdown_starts_and_fight_from_the_last_drop(seq
     assert in_song(seq, start + pvp.duration) == pytest.approx(trailer.bar(32))  # the outro on the last drop, again
 
 
-def test_every_jump_in_the_song_is_on_a_bar(seq):
+def test_every_jump_in_the_song_lands_on_a_beat_of_it(seq):
     first, *rest = [c for c in seq.cues() if c.music]
     assert first.t == 0 and first.skip == 0  # the video starts with the song
     for c in rest:
-        assert round((c.t - trailer.DOWNBEAT) / trailer.BAR, 6) % 1 == 0
-        assert c.skip == 0 or round((c.skip - trailer.DOWNBEAT) / trailer.BAR, 6) % 1 == 0
+        assert round((c.skip - trailer.DOWNBEAT) / trailer.BEAT, 6) % 1 == 0
+
+
+def test_grid_changes_land_every_half_bar(seq):
+    from reel.raise_train import RaiseTrain
+    _, grid = start_of(seq, RaiseTrain)
+    changes = sorted({p.enter for p in grid.panels} - {0})
+    assert changes == pytest.approx([trailer.BAR * (1 + 0.5 * k) for k in range(len(changes))])
 
 
 def test_the_phones_never_pass_through_each_other(seq):

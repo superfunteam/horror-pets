@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # The landing page's picks (tools/finalize_site_art.py), but for Chucky a redo with his arms clear of his chin and a
 # whole knife (tools/generate_site_art.py): the full-size render when it is here, else the site's copy.
-POSE_PICKS = {"jason": 1, "freddy": 1, "pinhead": 2, "ghostface": 1, "chucky": 2, "michael": 1, "leatherface": 1}
+POSE_PICKS = {"jason": 1, "freddy": 7, "pinhead": 3, "ghostface": 3, "chucky": 2, "michael": 1, "leatherface": 1}
 
 
 @dataclass(frozen=True)
