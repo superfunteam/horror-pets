@@ -40,14 +40,17 @@ sealed interface Screen {
      * screen still plays the turn out and reports its `PetAnimRequest` finished, and only then does
      * the view model move on to [Results].
      *
-     * [playerMove] and [cpuMove] are the two moves just played, for the "both moves pop up" callouts.
-     * Both are null before turn 1; [cpuMove] is also null after a RUN, because the CPU never picked.
+     * [playerMove] and [cpuMove] are the two moves just played, for the "both moves pop up" callouts, and
+     * [cpuTell] is what the CPU showed before it (a feint when it differs from [cpuMove]). All are null before
+     * turn 1; [cpuMove] and [cpuTell] are also null after a RUN, because the CPU never played. The tell for the
+     * coming turn is `fight.cpuPlan`.
      */
     data class Fight(
         val fight: FightState,
         val lastEvents: List<FightEvent>,
         val playerMove: Move? = null,
         val cpuMove: Move? = null,
+        val cpuTell: Move? = null,
     ) : Screen
 
     data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean) : Screen

@@ -20,7 +20,8 @@ import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.applyFightResult
-import team.superfun.horrorpets.fight.cpuPick
+import team.superfun.horrorpets.fight.cpuPlan
+import team.superfun.horrorpets.fight.planCpu
 import team.superfun.horrorpets.fight.resolveTurn
 import team.superfun.horrorpets.fight.startFight
 import team.superfun.horrorpets.game.CareAction
@@ -319,7 +320,8 @@ class GameViewModel(
         val s = _state.value
         val versus = s.screen as? Screen.Versus ?: return
         val player = s.game.selected?.let { s.game.pets[it] } ?: return
-        _state.value = s.copy(screen = Screen.Fight(startFight(player, versus.opponent, rng), emptyList()))
+        // The CPU plans its first move (and its tell) before the player sees the menu.
+        _state.value = s.copy(screen = Screen.Fight(planCpu(startFight(player, versus.opponent, rng), rng), emptyList()))
     }
 
     /**
@@ -339,12 +341,12 @@ class GameViewModel(
         // A potion needs one left, and at full health it would be wasted.
         if (m == Move.POTION && (fight.playerPotions == 0 || fight.player.hp >= fight.player.maxHp)) return
 
-        // Running ends the fight before the CPU acts: it picks nothing, and the engine ignores the
-        // placeholder it is handed.
-        val cpuPicked = if (m == Move.RUN) null else cpuPick(fight, rng)
-        val turn = resolveTurn(fight, m, cpuPicked ?: Move.BLOCK, rng)
+        // The CPU plays the move it planned (and told, or feinted) before the player chose, then plans the
+        // next turn's. Running ends the fight before the CPU acts, and the engine ignores the plan it is handed.
+        val plan = if (m == Move.RUN) null else fight.cpuPlan ?: cpuPlan(fight, rng)
+        val turn = resolveTurn(fight, m, plan?.move ?: Move.BLOCK, rng)
         _state.value = s.copy(
-            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuPicked),
+            screen = Screen.Fight(planCpu(turn.state, rng), turn.events, playerMove = m, cpuMove = plan?.move, cpuTell = plan?.tell),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 

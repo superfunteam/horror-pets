@@ -111,8 +111,8 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * Damage lands simultaneously and hit points floor at 0. The side at 0 loses; if both are at 0 the
  * side that dealt more damage this turn wins (the dealt damage, not capped by remaining hit
  * points), and PLAYER wins a tie. Only the loser gets a [FightEvent.Ko], so the winner of a double
- * KO is left standing at 0 hp. The returned state has `turn + 1` and the player's move appended to
- * `playerHistory`.
+ * KO is left standing at 0 hp. The returned state has `turn + 1`, the player's move appended to
+ * `playerHistory`, and no [FightState.cpuPlan] (it has been played: plan the next with [planCpu]).
  *
  * @throws IllegalStateException if the fight already has a winner.
  * @throws IllegalArgumentException if the CPU plays RUN or POTION, the player plays POTION with none
@@ -152,6 +152,7 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         playerHistory = s.playerHistory + playerMove,
         winner = winner,
         playerPotions = s.playerPotions - if (playerMove == Move.POTION) 1 else 0,
+        cpuPlan = null,
     )
     return TurnResult(next, events)
 }

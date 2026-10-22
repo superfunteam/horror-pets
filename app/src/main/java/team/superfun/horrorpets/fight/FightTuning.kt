@@ -57,6 +57,8 @@ object FightTuning {
 
     // CPU brain
     const val CPU_SPECIAL_CHANCE = 0.7 // with a full meter
+    const val CPU_FEINT_CHANCE = 0.25 // a STRIKE, HEAVY or BLOCK shows a false tell, plus the pet's passive bonus
+    const val GHOSTFACE_FEINT_BONUS = 0.2
     const val CPU_COUNTER_CHANCE = 0.4 // against the player's most-used move
     const val CPU_WEIGHT_STRIKE = 40
     const val CPU_WEIGHT_HEAVY = 30

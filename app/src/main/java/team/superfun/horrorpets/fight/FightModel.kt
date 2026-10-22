@@ -25,10 +25,17 @@ data class Fighter(
 )
 
 /**
+ * What the CPU will play next turn ([move]), chosen before the player picks, and the [tell] it shows the
+ * player: the same move, unless it feints (see [cpuPlan]).
+ */
+data class CpuPlan(val move: Move, val tell: Move)
+
+/**
  * The fight so far. [turn] is the number of the turn about to be played (1 for a fresh fight),
  * [playerHistory] every move the player has chosen (the CPU reads it), [winner] is null while the
  * fight is on, and [playerRan] is true when the player forfeited. [playerPotions] is how many potions the
- * player has left ([FightTuning.POTIONS_PER_FIGHT] to start).
+ * player has left ([FightTuning.POTIONS_PER_FIGHT] to start). [cpuPlan] is the CPU's move for the coming
+ * turn and its tell, null until it is planned and once it has been played.
  */
 data class FightState(
     val player: Fighter,
@@ -38,6 +45,7 @@ data class FightState(
     val winner: Side? = null,
     val playerRan: Boolean = false,
     val playerPotions: Int = FightTuning.POTIONS_PER_FIGHT,
+    val cpuPlan: CpuPlan? = null,
 )
 
 /** What happened during a turn, in the order the fight screen should play it. */

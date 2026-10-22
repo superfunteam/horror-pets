@@ -124,6 +124,9 @@ private const val FLOAT_AT = 0.42f
 /** The bottom of a move callout sits just over the fighter's head, this far up its cell. */
 private const val CALLOUT_AT = 0.95f
 
+/** The tell's thought dots end about at the top of the CPU's head, this far up its cell. */
+private const val TELL_AT = 0.84f
+
 /** The body's centre, for the shield ring and the special effects, this far up the cell. */
 private const val BODY_AT = 0.45f
 
@@ -197,12 +200,13 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  * more on a narrow screen, see [playerHomeFraction]), the CPU's at 70%, both cells 38% of the height and
  * neither mirrored; Street-Fighter HP bars, names and special meters along the top; the moves in an RPG
  * command window down the left (`STRIKE HEAVY BLOCK [SPECIAL] | RUN`, see [CommandWindow]) with the
- * move's explanation in a help window under it.
+ * move's explanation in a help window under it. While the player picks, the CPU's tell for the coming turn
+ * (`fight.cpuPlan`) sits in a thought bubble over its head ([TellBubble]).
  *
  * **A turn.** When the view model resolves a move it hands over the turn's [Screen.Fight.lastEvents] and
  * a marker [PetAnimRequest]. This screen plays the turn out and then reports the marker finished, exactly
  * once, with [onAnimFinished] (the view model ignores moves until then):
- * 1. Both chosen moves pop up over the fighters (600ms).
+ * 1. Both chosen moves pop up over the fighters (600ms), with FEINT! over the CPU when its tell lied.
  * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK, or its
  *    DANCE for a danced special, see [swingAnim]) and hops back. At the impact the defender flashes white
  *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
@@ -414,6 +418,19 @@ fun FightScreen(
                         maxWidth = halfWidth,
                     )
                 }
+            }
+        }
+        // The CPU's tell for the coming turn, over its head while the player picks.
+        stage.shownTell?.let { tell ->
+            key(tell) {
+                TellBubble(
+                    tell = tell,
+                    visible = { stage.menu.value },
+                    x = { w * stage.homeFraction(Side.CPU) },
+                    y = { stage.floor - cellH * stage.cpu.body * TELL_AT },
+                    top = belowHud,
+                    inset = insetPx,
+                )
             }
         }
         FloatingNumbers(stage.floats, top = belowHud, inset = insetPx, onDone = { stage.floats.remove(it) })
@@ -696,6 +713,9 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     val specialT = Animatable(0f)
     val menu = Animatable(if (turnPending) 0f else 1f)
     var playing by mutableStateOf(turnPending)
+
+    /** The tell over the CPU while the menu is up: the plan's, swapped only while the menu is away. */
+    var shownTell by mutableStateOf(if (turnPending) null else screen.fight.cpuPlan?.tell)
     var front by mutableStateOf(Side.PLAYER)
 
     /** The announcer's reactions, for the whole fight so they never repeat back to back. */
@@ -775,6 +795,8 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     val fight = turn.fight
     val winner = fight.winner
     playing = true
+    // The tell has been acted on: it goes with the menu (the next turn's must not show yet).
+    shownTell = null
     launch { menu.animateTo(0f, tween(MENU_MS)) }
     // Every strip this turn shows decodes during the callouts (most are cached since the VS card), so
     // no decode ever holds up a swing and puts its impact out of step with the sprite.
@@ -795,6 +817,10 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     // 1. Both moves pop up over the fighters.
     callout(this, player, turn.playerMove)
     callout(this, cpu, turn.cpuMove)
+    // A tell that lied is called out as the real move pops up.
+    if (turn.cpuTell != null && turn.cpuMove != null && turn.cpuTell != turn.cpuMove) {
+        float(FloatKind.FEINT, "FEINT!", emptyList(), Side.CPU)
+    }
     delay(CALLOUT_LEAD_MS)
     withTimeoutOrNull(STRIPS_WAIT_MS) { strips.join() }
 
@@ -848,6 +874,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
                 launch { r.meter.animateTo(f.meter.toFloat(), tween(200)) }
             }
         }
+        shownTell = fight.cpuPlan?.tell
         menu.animateTo(1f, tween(MENU_MS))
     }
     playing = false
