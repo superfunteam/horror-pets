@@ -12,6 +12,8 @@ import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.canUse
 
 /** The save file format: [GameState] as JSON. Decoding never throws; an unusable save is reported as null or becomes a fresh game. */
 object SaveCodec {
@@ -110,7 +112,12 @@ object SaveCodec {
             wins = p.wins.coerceAtLeast(0),
             losses = p.losses.coerceAtLeast(0),
             sceneIndex = p.sceneIndex.coerceIn(0, Tuning.SCENE_COUNT - 1),
-        )
+        ).let { q ->
+            // Attacks it may not have: another killer's, one past its level, or an id this build does not know.
+            val known = q.known.filter { id -> attackById(id)?.let { it.pet == q.id && it.tier > 0 && it.level <= q.level } == true }.toSet()
+            val withKnown = q.copy(known = known)
+            withKnown.copy(equipped = q.equipped.filter { (slot, id) -> attackById(id)?.let { it.slot == slot && canUse(withKnown, it) } == true })
+        }
     }
 
     /** NaN has no sensible clamp, so it falls back to [default]; +/-Infinity clamp to the bounds. */
