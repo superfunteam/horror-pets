@@ -25,6 +25,8 @@ enum class PetId(val displayName: String) {
  * freshJoin marks a pet that has just joined the stable (unlocked by beating it), so time that passed before it
  * joined never decays it nor fakes its death. It is saved, so it survives a launch under a stale clock, and
  * cleared the first time the time away is actually applied (see `applyElapsed`).
+ * [equipped] is the attack it fights with in each slot, by id (a slot missing here uses its starting attack), and
+ * [known] every attack it has been offered as it levelled up, learned or not, so it can equip any of them later.
  */
 @Serializable
 data class PetState(
@@ -40,6 +42,8 @@ data class PetState(
     val sceneIndex: Int = 0,
     val fakeDeathPending: Boolean = false,
     val freshJoin: Boolean = false,
+    val equipped: Map<Slot, String> = emptyMap(),
+    val known: Set<String> = emptySet(),
 )
 
 /**

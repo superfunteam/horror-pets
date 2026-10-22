@@ -1,5 +1,7 @@
 package team.superfun.horrorpets.fight
 
+import team.superfun.horrorpets.model.Attack
+import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.SpecialEffect
 
@@ -17,8 +19,9 @@ fun Side.other(): Side = if (this == Side.PLAYER) Side.CPU else Side.PLAYER
 /**
  * One combatant. [strength] and [mood] are snapshots taken when the fight is built, [meter] is the
  * special meter (0..[FightTuning.METER_MAX]) and [hp] runs from [maxHp] down to 0. [combo] is how many
- * turns in a row it has landed a hit without being hit, [bleed] how many more turns it bleeds, and [dazed]
- * whether its next STRIKE, HEAVY or BLOCK fails (see [resolveTurn]).
+ * turns in a row it has landed a hit without being hit, [bleed] how many more turns it bleeds (and [bleedShare]
+ * of its max HP each), and [dazed] whether its next STRIKE, HEAVY or BLOCK fails (see [resolveTurn]). [kit] is the
+ * attack it fights with in each slot (the starting ones unless it has learned and equipped others).
  */
 data class Fighter(
     val id: PetId,
@@ -31,7 +34,17 @@ data class Fighter(
     val combo: Int = 0,
     val bleed: Int = 0,
     val dazed: Boolean = false,
+    val bleedShare: Double = FightTuning.BLEED_SHARE,
+    val kit: Kit = Kit.base(id),
 )
+
+/** The attack [this] kit plays for [move]: a STRIKE is its light, a HEAVY its heavy, a SPECIAL its special. */
+fun Kit.attackFor(move: Move): Attack? = when (move) {
+    Move.STRIKE -> light
+    Move.HEAVY -> heavy
+    Move.SPECIAL -> special
+    Move.BLOCK, Move.POTION, Move.RUN -> null
+}
 
 /**
  * How the player has fought so far, for the results screen and the battle rank: the damage it dealt (hits and
@@ -113,8 +126,9 @@ sealed interface FightEvent {
      * [attacker] landed [damage]. A counter (a BLOCK that met a STRIKE) is reported as
      * `Hit(blocker, Move.STRIKE, ..., counter = true)`; otherwise [move] is the move that was played.
      * [combo] is the attacker's [Fighter.combo] coming into the turn: from 1 on this hit is part of a combo
-     * (its `combo + 1`th clean hit in a row) and hit harder for it. A SPECIAL's [effect] is what it leaves
-     * behind (null for every other hit).
+     * (its `combo + 1`th clean hit in a row) and hit harder for it. [effect] is what its attack left behind (a
+     * bleed, a drain or a daze; null for none, and always for a counter), and [shattered] how much of the target's
+     * special meter it knocked off.
      */
     data class Hit(
         val attacker: Side,
@@ -124,6 +138,7 @@ sealed interface FightEvent {
         val counter: Boolean = false,
         val combo: Int = 0,
         val effect: SpecialEffect? = null,
+        val shattered: Int = 0,
     ) : FightEvent
 
     /** [attacker]'s STRIKE or HEAVY whiffed: by the dice, or because [dazed] it stumbled. */

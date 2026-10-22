@@ -33,6 +33,10 @@ import team.superfun.horrorpets.ui.fight.FightScreen
 import team.superfun.horrorpets.ui.fight.ResultsCard
 import team.superfun.horrorpets.ui.fight.VersusScreen
 import team.superfun.horrorpets.ui.pvp.PvpLobbyScreen
+import team.superfun.horrorpets.ui.attacks.LearnScreen
+import team.superfun.horrorpets.ui.attacks.MovesScreen
+import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.kitOf
 import team.superfun.horrorpets.ui.fight.arenaScene
 import team.superfun.horrorpets.ui.home.HomeScreen
 import team.superfun.horrorpets.ui.switcher.SwitcherScreen
@@ -133,6 +137,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onCare = vm::onCare,
                     onWalk = vm::onWalk,
                     onFight = vm::onFightPressed,
+                    onMoves = vm::onMovesPressed,
                     onOpenStable = vm::openStable,
                     onCloseStable = vm::closeStable,
                     onStablePick = vm::onStablePick,
@@ -152,6 +157,27 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onBack = vm::onVersusBack,
                     focusEntry = focusEntry,
                 )
+
+                is Screen.Learn -> {
+                    val pet = state.game.pets[screen.pet]
+                    val attack = attackById(screen.attack)
+                    if (pet != null && attack != null) {
+                        LearnScreen(
+                            pet = pet,
+                            attack = attack,
+                            current = kitOf(pet).of(attack.slot),
+                            onLearn = { vm.onLearn(learn = true) },
+                            onKeep = { vm.onLearn(learn = false) },
+                            onLater = vm::onLearnLater,
+                            focusEntry = focusEntry,
+                        )
+                    }
+                }
+
+                Screen.Moves -> {
+                    val pet = state.game.selected?.let { state.game.pets[it] }
+                    if (pet != null) MovesScreen(pet = pet, onEquip = vm::onEquip, onBack = vm::onMovesBack, focusEntry = focusEntry)
+                }
 
                 is Screen.PvpLobby -> PvpLobbyScreen(
                     phase = screen.phase,

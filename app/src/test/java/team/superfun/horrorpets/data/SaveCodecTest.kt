@@ -8,6 +8,7 @@ import org.junit.Test
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Slot
 
 class SaveCodecTest {
     private val defaults = GameState()
@@ -47,6 +48,35 @@ class SaveCodecTest {
             lastSeenMs = 1_760_000_000_000L,
         )
         assertEquals(state, SaveCodec.decode(SaveCodec.encode(state)))
+    }
+
+    @Test
+    fun attacksRoundTripAndWhatAPetMayNotHaveIsDropped() {
+        val jason = PetState(
+            PetId.JASON,
+            level = 7,
+            known = setOf("jason_light_1", "jason_heavy_2"),
+            equipped = mapOf(Slot.LIGHT to "jason_light_1", Slot.HEAVY to "jason_heavy_2"),
+        )
+        val state = GameState(pets = mapOf(PetId.JASON to jason), selected = PetId.JASON)
+        assertEquals(state, SaveCodec.decode(SaveCodec.encode(state)))
+
+        // Another killer's, past its level, unknown ids, and an equipped attack it never learned.
+        val messy = jason.copy(
+            known = setOf("jason_light_1", "freddy_light_1", "jason_light_3", "who_knows"),
+            equipped = mapOf(Slot.LIGHT to "jason_light_1", Slot.HEAVY to "jason_heavy_2", Slot.SPECIAL to "jason_light_1"),
+        )
+        val back = SaveCodec.decode(SaveCodec.encode(GameState(pets = mapOf(PetId.JASON to messy), selected = PetId.JASON)))!!
+        val pet = back.pets.getValue(PetId.JASON)
+        assertEquals(setOf("jason_light_1"), pet.known)
+        assertEquals(mapOf(Slot.LIGHT to "jason_light_1"), pet.equipped)
+    }
+
+    @Test
+    fun anOlderSaveLoadsWithTheStartingAttacks() {
+        val pet = SaveCodec.decode(v2("\"JASON\":{\"level\":5}", selected = "JASON"))!!.pets.getValue(PetId.JASON)
+        assertTrue(pet.known.isEmpty())
+        assertTrue(pet.equipped.isEmpty())
     }
 
     @Test

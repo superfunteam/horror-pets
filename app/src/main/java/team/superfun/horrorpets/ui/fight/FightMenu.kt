@@ -62,6 +62,11 @@ import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.model.PetId
+import kotlin.math.roundToInt
+import androidx.compose.foundation.text.TextAutoSize
+import team.superfun.horrorpets.ui.attacks.effectText
+import team.superfun.horrorpets.model.Kit
+import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.GameBackHandler
@@ -102,21 +107,26 @@ private val LitBand = Brush.horizontalGradient(
     1f to Color.Transparent,
 )
 
-/** Small print under-explaining each move: the rock-paper-scissors at a glance. */
-internal fun moveHint(move: Move, pet: PetId): String = when (move) {
-    Move.STRIKE -> "Quick hit  ·  interrupts a Heavy"
-    Move.HEAVY -> "Big hit  ·  breaks a Block, but a Strike cuts it off"
+/**
+ * Small print under-explaining each move: the attack in [kit] it swings (if any), the rock-paper-scissors at a
+ * glance, and what the attack adds (its crit bonus and what it leaves, see [perkHint]).
+ */
+internal fun moveHint(move: Move, kit: Kit): String = when (move) {
+    Move.STRIKE -> "${kit.light.name}  ·  quick hit, interrupts a Heavy${perkHint(kit.light)}"
+    Move.HEAVY -> "${kit.heavy.name}  ·  breaks a Block, a Strike cuts it off${perkHint(kit.heavy)}"
     Move.BLOCK -> "Stops a Strike and counters  ·  a Heavy breaks it"
-    Move.SPECIAL -> "${specialName(pet)}  ·  never misses, ${effectHint(pet.spec.special.effect)}"
+    Move.SPECIAL -> "${kit.special.name}  ·  never misses${perkHint(kit.special)}"
     Move.POTION -> "Heals half to all your HP  ·  uses your turn"
     Move.RUN -> "Forfeit the fight  ·  costs a little mood"
 }
 
-/** What a special leaves behind, as its help says it. */
-internal fun effectHint(effect: SpecialEffect): String = when (effect) {
-    SpecialEffect.BLEED -> "they bleed for ${FightTuning.BLEED_TURNS} turns"
-    SpecialEffect.DRAIN -> "heals you half the damage"
-    SpecialEffect.DAZE -> "dazes them for a turn"
+/** ", +8% crit, bleeds 2 turns": what an attack adds, for the help line, or nothing. */
+internal fun perkHint(a: Attack): String {
+    val parts = listOfNotNull(
+        "+${(a.critBonus * 100).roundToInt()}% crit".takeIf { a.critBonus > 0 },
+        effectText(a)?.lowercase(),
+    )
+    return if (parts.isEmpty()) "" else ", " + parts.joinToString(", ")
 }
 
 /** The help window's text for the potion when the player is already at full health: it would be wasted. */
@@ -368,10 +378,12 @@ internal fun HelpWindow(hint: String, modifier: Modifier = Modifier) {
             .padding(start = 14.dp, end = 24.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
+        // A long attack name and its perks step down to fit a narrow screen rather than run off it.
         BasicText(
             helpText(hint),
             style = displayStyle(16.sp, FontWeight.Bold, color = TextHi.copy(alpha = 0.9f), tracking = 0.06f),
             maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 16.sp, stepSize = 1.sp),
         )
     }
 }

@@ -50,8 +50,8 @@ import team.superfun.horrorpets.ui.common.leaning
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.TextHi
 
-/** The four action labels, left to right. */
-private val ActionLabels = listOf("Play", "Feed", "Train", "Fight")
+/** The five action labels, left to right. */
+private val ActionLabels = listOf("Play", "Feed", "Train", "Fight", "Moves")
 
 /** An action slab's label style; the bar lays the slabs out by their label widths, measured with it. */
 private fun slabLabelStyle(color: Color = TextHi): TextStyle = displayStyle(24.sp, tracking = 0.03f, color = color)
@@ -95,8 +95,8 @@ private val BarTiers = listOf(
 )
 
 /**
- * The home action row, bottom centre: `◀ PLAY FEED TRAIN FIGHT ▶` as slanted arcade slabs. The focused one grows
- * and fills glossy blood red with a white edge.
+ * The home action row, bottom centre: `◀ PLAY FEED TRAIN FIGHT MOVES ▶` as slanted arcade slabs. The focused one
+ * grows and fills glossy blood red with a white edge. MOVES ([onMoves]) opens the pet's attacks.
  *
  * The arrows walk to the previous / next scene; while one is focused, a caption above it names the
  * scene it leads to (not under a finger, where nothing is focused). Up from any slab goes to [upFocus] (the stable
@@ -114,6 +114,7 @@ fun ActionBar(
     onWalk: (dir: Int) -> Unit,
     onCare: (CareAction) -> Unit,
     onFight: () -> Unit,
+    onMoves: () -> Unit,
     playFocus: FocusRequester,
     upFocus: FocusRequester?,
     modifier: Modifier = Modifier,
@@ -151,6 +152,7 @@ fun ActionBar(
             ActionSlab(ActionLabels[1], { onCare(CareAction.FEED) }, m, upToCard)
             ActionSlab(ActionLabels[2], { onCare(CareAction.TRAIN) }, m, upToCard)
             ActionSlab(ActionLabels[3], onFight, m, upToCard)
+            ActionSlab(ActionLabels[4], onMoves, m, upToCard)
             ArrowSlab(left = false, onClick = { onWalk(1) }, interaction = nextInteraction, metrics = m, modifier = upToCard)
         }
 

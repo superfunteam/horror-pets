@@ -39,6 +39,8 @@ import androidx.compose.ui.util.lerp
 import kotlin.math.max
 import kotlin.math.roundToInt
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.fight.attackFor
+import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -229,12 +231,18 @@ internal fun OutlinedText(text: String, style: TextStyle, outline: Dp, modifier:
 /** The signature special of each pet, as its callout names it (from the roster). */
 fun specialName(pet: PetId): String = pet.spec.special.displayName
 
-/** The words a move pops up as over the fighter that chose it. */
-internal fun calloutText(move: Move, pet: PetId): String = when (move) {
-    Move.SPECIAL -> specialName(pet).uppercase() + "!"
+/** The words a move pops up as over the fighter that chose it: its attack's name, for an attack (see [kit]). */
+internal fun calloutText(move: Move, kit: Kit): String = when (move) {
     Move.RUN -> "RUN!"
     Move.POTION -> "POTION!"
-    else -> move.name
+    Move.BLOCK -> "BLOCK"
+    Move.STRIKE, Move.HEAVY, Move.SPECIAL -> kit.attackFor(move)!!.name.uppercase() + "!"
+}
+
+/** The small line over an attack's callout saying what kind of move it is, so its name never hides that; null otherwise. */
+internal fun calloutCaption(move: Move): String? = when (move) {
+    Move.STRIKE, Move.HEAVY, Move.SPECIAL -> move.name
+    Move.BLOCK, Move.POTION, Move.RUN -> null
 }
 
 /**
@@ -246,6 +254,7 @@ internal fun calloutText(move: Move, pet: PetId): String = when (move) {
 internal fun MoveCallout(
     text: String,
     move: Move,
+    caption: String? = null,
     progress: () -> Float,
     x: () -> Float,
     y: () -> Float,
@@ -303,12 +312,17 @@ internal fun MoveCallout(
             .padding(horizontal = 20.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
-        BasicText(
-            text = text,
-            style = displayStyle(calloutSize(text, maxWidth), color = if (move == Move.SPECIAL) Amber else TextHi, tracking = 0.08f, lineHeight = 34.sp),
-            maxLines = 1,
-            softWrap = false,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (caption != null) {
+                BasicText(caption, style = displayStyle(11.sp, color = accent, tracking = 0.24f, lineHeight = 12.sp), maxLines = 1)
+            }
+            BasicText(
+                text = text,
+                style = displayStyle(calloutSize(text, maxWidth), color = if (move == Move.SPECIAL) Amber else TextHi, tracking = 0.08f, lineHeight = 34.sp),
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
     }
 }
 
@@ -316,9 +330,12 @@ internal fun MoveCallout(
 private const val CALLOUT_POP = 1.12f
 private val CalloutRise = 12.dp
 
-/** Callouts are 32sp; a long special name steps down so its tag stays inside the fighter's half. */
-private fun calloutSize(text: String, maxWidth: Dp): TextUnit {
+/**
+ * Callouts are 32sp; a long attack name steps down so its tag stays inside the fighter's half, as far as 15sp for
+ * the longest on a 4:3 screen.
+ */
+internal fun calloutSize(text: String, maxWidth: Dp): TextUnit {
     // Barlow Condensed ExtraBold with 0.08em tracking averages about 0.56em per character.
     val fits = (maxWidth.value - 40f) / (text.length * 0.56f)
-    return fits.coerceIn(22f, 32f).sp
+    return fits.coerceIn(15f, 32f).sp
 }

@@ -12,6 +12,12 @@ import team.superfun.horrorpets.fight.forfeit
 import team.superfun.horrorpets.fight.mirroredEvents
 import team.superfun.horrorpets.fight.resolveTurn
 import team.superfun.horrorpets.fight.startPvp
+import team.superfun.horrorpets.model.Attack
+import team.superfun.horrorpets.model.Kit
+import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.Slot
+import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.baseAttack
 
 /**
  * A PvP room both players are in, from this player's side ([role]): the relay's [room] and this player's
@@ -34,8 +40,8 @@ data class PvpMatch(
     /** The other player's role. */
     val them: Role get() = if (role == Role.HOST) Role.GUEST else Role.HOST
 
-    /** The fight both apps start from. */
-    fun start(): FightState = startPvp(host, guest)
+    /** The fight both apps start from, each fighter as [pvpFighter] takes it. */
+    fun start(): FightState = startPvp(pvpFighter(host), pvpFighter(guest))
 
     /** The canonical fight as this player sees it: as is for the host, mirrored for the guest. */
     fun view(canonical: FightState): FightState = if (role == Role.HOST) canonical else canonical.mirrored()
@@ -43,6 +49,29 @@ data class PvpMatch(
     /** A canonical turn's events as this player sees them. */
     fun viewEvents(events: List<FightEvent>): List<FightEvent> = if (role == Role.HOST) events else mirroredEvents(events)
 }
+
+/**
+ * [pet]'s kit from the attack [ids] (light, heavy, special) another app sent: each one only if it is [pet]'s, for
+ * that slot, and unlocked by [level]; otherwise that slot's starting attack.
+ */
+fun kitFromIds(pet: PetId, level: Int, ids: List<String>?): Kit {
+    fun slot(s: Slot): Attack =
+        ids?.getOrNull(s.ordinal)?.let(::attackById)?.takeIf { it.pet == pet && it.slot == s && it.level <= level } ?: baseAttack(pet, s)
+    return Kit(slot(Slot.LIGHT), slot(Slot.HEAVY), slot(Slot.SPECIAL))
+}
+
+/**
+ * [f] as a PvP fight takes it, the same on both apps: at full health with an empty meter, and with only attacks its
+ * level allows (see [kitFromIds]). Both players' fighters go through this, the local one and the one off the relay.
+ */
+fun pvpFighter(f: Fighter): Fighter = f.copy(
+    hp = f.maxHp,
+    meter = 0,
+    combo = 0,
+    bleed = 0,
+    dazed = false,
+    kit = kitFromIds(f.id, f.level, listOf(f.kit.light.id, f.kit.heavy.id, f.kit.special.id)),
+)
 
 /** The dice for turn [turn] of the room seeded [seed]: the same on both apps, and fresh each turn. */
 fun pvpRandom(seed: Int, turn: Int): Random = Random((seed.toLong() shl 20) xor turn.toLong())

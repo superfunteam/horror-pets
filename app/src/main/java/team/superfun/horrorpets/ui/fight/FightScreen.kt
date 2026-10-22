@@ -76,7 +76,9 @@ import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
+import team.superfun.horrorpets.fight.attackFor
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
@@ -392,6 +394,8 @@ fun FightScreen(
                     }
                 }
                 SpecialVfx(stage.special, progress = { stage.specialT.value })
+                // Learned attacks' marks on whoever they land on.
+                for (m in stage.markings) key(m) { AttackMarks(m.fx, progress = { m.t.value }) }
                 PotionLayer(stage.toss, potionImage, sizePx = cellH * POTION_SIZE)
             }
         }
@@ -416,8 +420,9 @@ fun FightScreen(
             if (move != null) {
                 key(side, rig.calloutKey) {
                     MoveCallout(
-                        text = calloutText(move, rig.pet),
+                        text = calloutText(move, rig.kit),
                         move = move,
+                        caption = calloutCaption(move),
                         progress = { rig.callout.value },
                         x = { w * stage.homeFraction(side) },
                         y = { stage.floor - cellH * rig.body * CALLOUT_AT },
@@ -502,7 +507,7 @@ fun FightScreen(
                     .padding(bottom = HelpHeight + HelpGap)
                     .then(menuIn),
             )
-            val hint = if (focusedMove == Move.POTION && !potionUsable) POTION_FULL_HINT else moveHint(focusedMove, playerId)
+            val hint = if (focusedMove == Move.POTION && !potionUsable) POTION_FULL_HINT else moveHint(focusedMove, fight.player.kit)
             HelpWindow(hint, Modifier.align(Alignment.BottomStart).then(menuIn))
         }
 
@@ -514,6 +519,8 @@ fun FightScreen(
         }
 
         KoSlam(visible = stage.koShown, progress = { stage.ko.value }, lift = { stage.koLift.value }, liftPx = h * KO_LIFT)
+        // A tier 3 special's cut-in, over everything but the run dialog.
+        SuperCutIn(stage.superFx, progress = { stage.superT.value }, loader = loader)
 
         AnimatedVisibility(
             visible = askRun,
@@ -618,6 +625,9 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
 
     /** Whether it performs its special with its DANCE (see [swingAnim]). */
     val dancesSpecial = look.dancesSpecial
+
+    /** The attacks it fights with (see [Fighter.kit]): what its callouts name, its marks and its meter fills. */
+    val kit = start.kit
 
     /** +1 when stepping toward the other fighter moves right (the player), -1 for the CPU. */
     val dir = if (side == Side.PLAYER) 1f else -1f
@@ -750,6 +760,13 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
 
     /** The potion in the air or bursting, while a Drink beat plays. */
     var toss by mutableStateOf<PotionToss?>(null)
+
+    /** Learned attacks' marks still showing, each on its own clock. */
+    val markings = mutableStateListOf<Marking>()
+
+    /** A tier 3 special's cut-in while it plays, and its clock. */
+    var superFx by mutableStateOf<SuperFx?>(null)
+    val superT = Animatable(0f)
     val specialT = Animatable(0f)
     val menu = Animatable(if (turnPending) 0f else 1f)
     var playing by mutableStateOf(turnPending)
@@ -967,6 +984,18 @@ private suspend fun FightStage.lunge(
     val special = event is FightEvent.Hit && event.move == Move.SPECIAL
     front = beat.attacker
     guarding -= beat.attacker
+    // A tier 3 special is a super: its cut-in plays before the attacker sets off.
+    if (special && a.kit.special.tier == 3) {
+        superFx = SuperFx(a.pet, a.kit.special.name, fromLeft = a.side == Side.PLAYER)
+        scope.launch {
+            delay((SUPER_MS * 0.26f).toLong())
+            play(FightSounds(listOf("crit"), emptyList()))
+        }
+        superT.snapTo(0f)
+        superT.animateTo(1f, tween(SUPER_MS, easing = LinearEasing))
+        superFx = null
+        superT.snapTo(0f)
+    }
     if (special) {
         // The meter is spent the moment the special starts.
         a.meterTarget = 0f
@@ -985,7 +1014,7 @@ private suspend fun FightStage.lunge(
     withTimeoutOrNull(SWING_START_WAIT_MS) { swingPose.started.await() }
     if (special) scope.launch {
         delay(max(0L, impact - 220L))
-        darken.animateTo(0.5f, tween(220))
+        darken.animateTo(0.5f + 0.08f * a.kit.special.tier, tween(220))
     }
     delay(impact)
     val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play)
@@ -1040,6 +1069,8 @@ private fun FightStage.impactOf(
     var effect: Job? = null
     when (event) {
         is FightEvent.Hit -> {
+            // The attack that hit (none for a counter, the same for every kit).
+            val attack = if (event.counter) null else a.kit.attackFor(event.move)
             val breaksGuard = event.move == Move.HEAVY && d.side in guarding
             // A dazed guard holds nothing: the strike goes straight through it.
             val dazedGuard = d.side in guarding && d.dazed
@@ -1067,10 +1098,12 @@ private fun FightStage.impactOf(
                 hurt(scope, d, strength = 1f)
                 drain(scope, d, event.damage)
                 when (event.effect) {
-                    SpecialEffect.BLEED -> d.bleed = FightTuning.BLEED_TURNS
+                    SpecialEffect.BLEED -> d.bleed = maxOf(d.bleed, attack?.bleed?.turns ?: FightTuning.BLEED_TURNS)
                     SpecialEffect.DAZE -> d.dazed = true
                     SpecialEffect.DRAIN, null -> Unit
                 }
+                if (event.shattered > 0) shatter(scope, d, event.shattered)
+                if (attack != null) mark(scope, a, d, attack)
                 when {
                     event.crit -> scope.launch {
                         shake.snapTo(1f)
@@ -1087,7 +1120,7 @@ private fun FightStage.impactOf(
                     blow()
                 }
             }
-            if (event.move != Move.SPECIAL) charge(scope, a)
+            if (event.move != Move.SPECIAL) charge(scope, a, if (event.counter) FightTuning.METER_PER_HIT else attack?.meterGain ?: FightTuning.METER_PER_HIT)
             if (event.move == Move.SPECIAL) {
                 special = specialOn(a.pet, d.side)
                 effect = scope.launch {
@@ -1243,8 +1276,33 @@ private fun drain(scope: CoroutineScope, d: FighterRig, damage: Int) {
     }
 }
 
-private fun charge(scope: CoroutineScope, a: FighterRig) {
-    val target = min(FightTuning.METER_MAX.toFloat(), a.meterTarget + FightTuning.METER_PER_HIT)
+/** One showing of a learned attack's marks: its [fx] and its clock. */
+@Stable
+private class Marking(val fx: MarkFx) {
+    val t = Animatable(0f)
+}
+
+/** [attack]'s marks on [d] as it lands, if it leaves any (see [markPlan]): they play out and clear. */
+private fun FightStage.mark(scope: CoroutineScope, a: FighterRig, d: FighterRig, attack: Attack) {
+    val plan = markPlan(attack.slot, attack.tier) ?: return
+    val c = bodyCenter(d.side)
+    val m = Marking(MarkFx(a.pet, attack.slot, attack.tier, c.x, c.y, cellHeight() * d.body, seed = Random.nextInt(1_000)))
+    markings += m
+    scope.launch {
+        m.t.animateTo(1f, tween(plan.ms, easing = LinearEasing))
+        markings.remove(m)
+    }
+}
+
+/** [d]'s special meter loses [amount] to a shatter. */
+private fun shatter(scope: CoroutineScope, d: FighterRig, amount: Int) {
+    val target = max(0f, d.meterTarget - amount)
+    d.meterTarget = target
+    scope.launch { d.meter.animateTo(target, tween(METER_MS, easing = FastOutSlowInEasing)) }
+}
+
+private fun charge(scope: CoroutineScope, a: FighterRig, gain: Int) {
+    val target = min(FightTuning.METER_MAX.toFloat(), a.meterTarget + gain)
     a.meterTarget = target
     scope.launch { a.meter.animateTo(target, tween(METER_MS, easing = FastOutSlowInEasing)) }
 }

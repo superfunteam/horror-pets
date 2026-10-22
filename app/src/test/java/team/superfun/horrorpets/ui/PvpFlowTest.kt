@@ -21,6 +21,7 @@ import team.superfun.horrorpets.fight.mirroredEvents
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Slot
 import team.superfun.horrorpets.pvp.Hosted
 import team.superfun.horrorpets.pvp.Joined
 import team.superfun.horrorpets.pvp.PvpException
@@ -162,7 +163,9 @@ private class App(pet: PetState, relay: PvpRelay?) {
 
 class PvpFlowTest {
     private val hub = RelayHub()
-    private fun jasonApp(relay: PvpRelay = hub.app()) = App(PetState(PetId.JASON, strength = 100.0, level = 3), relay)
+    /** A strong level-3 Jason who has already been offered the attacks he unlocked (so no learn screen comes up). */
+    private fun jasonApp(relay: PvpRelay = hub.app()) =
+        App(PetState(PetId.JASON, strength = 100.0, level = 3, known = setOf("jason_light_1", "jason_heavy_1")), relay)
     private fun freddyApp(relay: PvpRelay = hub.app()) = App(PetState(PetId.FREDDY, strength = 30.0), relay)
 
     /** Pumps both apps in step, so neither runs ahead of the other's requests. */
@@ -255,6 +258,21 @@ class PvpFlowTest {
         assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
         host.pump(0)
         assertEquals("the room is left once the fight is over", Role.HOST, hub.rooms.single().left)
+    }
+
+    @Test
+    fun eachPlayerFightsWithTheirOwnAttacksOnBothApps() {
+        val host = App(
+            PetState(PetId.JASON, level = 3, known = setOf("jason_light_1", "jason_heavy_1"), equipped = mapOf(Slot.HEAVY to "jason_heavy_1")),
+            hub.app(),
+        )
+        val guest = freddyApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        assertEquals("Sleeping Bag Slam", host.fight.fight.player.kit.heavy.name)
+        assertEquals("the guest sees the host's attacks too", "Sleeping Bag Slam", guest.fight.fight.cpu.kit.heavy.name)
+        assertEquals(host.fight.fight.mirrored(), guest.fight.fight)
     }
 
     @Test

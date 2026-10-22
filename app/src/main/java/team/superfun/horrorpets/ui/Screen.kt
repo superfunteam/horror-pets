@@ -71,6 +71,12 @@ sealed interface Screen {
     /** PvP: open a room and share its 4-digit code, or join one by its code (or, on a phone, by a tap). */
     data class PvpLobby(val phase: LobbyPhase) : Screen
 
+    /** [pet] has unlocked [attack] (an attack's id) by its level: learn it into its slot, or keep the one it has. */
+    data class Learn(val pet: PetId, val attack: String) : Screen
+
+    /** The selected pet's attacks, slot by slot: equip any it has unlocked. */
+    data object Moves : Screen
+
     /**
      * [lastEvents] are the events of the turn just resolved, in the order to animate them (empty before
      * turn 1, and after a RUN). The turn's result is already in [fight]: when `fight.winner` is set the

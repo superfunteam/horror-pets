@@ -10,7 +10,9 @@ import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.fighter
 import team.superfun.horrorpets.fight.mirroredEvents
 import team.superfun.horrorpets.fight.startPvp
+import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.attackById
 
 /** Lockstep: both apps play each PvP turn the same way from the same moves and seed. */
 class PvpMatchTest {
@@ -61,6 +63,32 @@ class PvpMatchTest {
         // And the turn never fails on one: an illegal special plays as a block.
         val r = resolvePvpTurn(s, Move.SPECIAL, Move.STRIKE, seed = 5)
         assertTrue(r.events.any { it is team.superfun.horrorpets.fight.FightEvent.Blocked })
+    }
+
+    @Test
+    fun aKitFromAnotherAppKeepsOnlyWhatItsLevelAllows() {
+        val kit = kitFromIds(PetId.JASON, 7, listOf("jason_light_2", "jason_heavy_2", "jason_special_1"))
+        assertEquals(listOf("Lakeside Hack", "Crystal Lake Crush", "Crimson Frenzy"), listOf(kit.light.name, kit.heavy.name, kit.special.name))
+        // Past its level, another killer's, the wrong slot, nonsense, or nothing at all: the starting attack.
+        val bad = kitFromIds(PetId.JASON, 7, listOf("jason_light_3", "freddy_heavy_1", "jason_light_1"))
+        assertEquals(Kit.base(PetId.JASON), bad)
+        assertEquals(Kit.base(PetId.JASON), kitFromIds(PetId.JASON, 7, listOf("x")))
+        assertEquals(Kit.base(PetId.JASON), kitFromIds(PetId.JASON, 7, null))
+    }
+
+    @Test
+    fun bothFightersStartFreshWithTheirAllowedAttacks() {
+        val armed = fighter(id = PetId.JASON, hp = 40, maxHp = 100, meter = 50).copy(
+            level = 3,
+            kit = Kit(attackById("jason_light_3")!!, attackById("jason_heavy_1")!!, attackById("jason_special_0")!!),
+        )
+        val f = pvpFighter(armed)
+        assertEquals(100, f.hp)
+        assertEquals(0, f.meter)
+        assertEquals("level 3 cannot have a level-10 light", "Machete Jab", f.kit.light.name)
+        assertEquals("Sleeping Bag Slam", f.kit.heavy.name)
+        val match = PvpMatch(Role.HOST, "r", "h", 9, armed, guest)
+        assertEquals(f, match.start().player)
     }
 
     @Test

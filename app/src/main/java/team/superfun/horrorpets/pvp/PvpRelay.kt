@@ -72,7 +72,14 @@ class HttpPvpRelay(private val base: String, private val version: Int) : PvpRela
     private val json = Json { ignoreUnknownKeys = true }
 
     @Serializable
-    private data class WireFighter(val id: String, val level: Int, val maxHp: Int, val strength: Double, val mood: Int)
+    private data class WireFighter(
+        val id: String,
+        val level: Int,
+        val maxHp: Int,
+        val strength: Double,
+        val mood: Int,
+        val attacks: List<String>? = null,
+    )
 
     @Serializable
     private data class Opening(val v: Int, val fighter: WireFighter)
@@ -126,11 +133,12 @@ class HttpPvpRelay(private val base: String, private val version: Int) : PvpRela
         call("POST", "/rooms/$room/leave", json.encodeToString(Token(token)))
     }
 
-    private fun wire(f: Fighter) = WireFighter(f.id.name, f.level, f.maxHp, f.strength, f.mood)
+    private fun wire(f: Fighter) =
+        WireFighter(f.id.name, f.level, f.maxHp, f.strength, f.mood, attacks = listOf(f.kit.light.id, f.kit.heavy.id, f.kit.special.id))
 
     private fun fighterOf(w: WireFighter): Fighter {
         val id = PetId.entries.firstOrNull { it.name == w.id } ?: throw PvpException.Offline()
-        return Fighter(id, w.level, w.maxHp, w.maxHp, w.strength, w.mood, meter = 0)
+        return pvpFighter(Fighter(id, w.level, w.maxHp, w.maxHp, w.strength, w.mood, meter = 0, kit = kitFromIds(id, w.level, w.attacks)))
     }
 
     private fun moveOf(name: String): Move = Move.entries.firstOrNull { it.name == name } ?: throw PvpException.Offline()
