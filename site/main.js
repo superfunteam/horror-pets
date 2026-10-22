@@ -16,6 +16,20 @@
     })
     .catch(function () {});
 
+  // The trailer waits behind its poster with the game's own button on it; pressing that plays it, with sound, and
+  // hands over to the player's controls. Without this script the player's controls are there from the start.
+  var trailer = document.querySelector("[data-trailer]");
+  var play = document.querySelector("[data-play]");
+  if (trailer && play) {
+    trailer.controls = false;
+    play.hidden = false;
+    play.addEventListener("click", function () {
+      play.hidden = true;
+      trailer.controls = true;
+      trailer.play();
+    });
+  }
+
   // The cast leans with the pointer, the farther ones less, so the hero has some depth. Never with reduced motion,
   // and not on touch screens, where there is no pointer to follow.
   var cast = document.querySelector(".cast");

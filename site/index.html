@@ -43,6 +43,21 @@
 </header>
 
 <main>
+  <!-- trailer.mp4 is the launch video's web encode (tools/render_video.py, then a 3 Mbps H.264 pass); re-rendering
+       the video doesn't touch it, so copy the new one here and redeploy. trailer.jpg is its first look at the TV. -->
+  <section class="trailer" aria-labelledby="trailer-title">
+    <h2 id="trailer-title">Watch the trailer</h2>
+    <div class="window">
+      <div class="window-inner">
+        <video src="trailer.mp4" poster="trailer.jpg" width="1920" height="1080" preload="none" playsinline controls data-trailer></video>
+        <button class="download play" type="button" hidden data-play>
+          <svg class="droid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg>
+          <span>Play the trailer</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
   <section class="stable" aria-labelledby="stable-title">
     <h2 id="stable-title">Start with one.<br>Beat the rest.</h2>
     <p class="lede">Pick one killer to raise. Every killer you beat in a fight joins your stable, until all seven live on your TV.</p>

@@ -179,6 +179,24 @@ h2 {
 
 main { width: min(100% - 32px, 1120px); margin: 0 auto; }
 
+/* ---- the trailer: the game's window around it, and the download slab to start it ---- */
+
+.trailer { padding-top: clamp(40px, 7vw, 90px); text-align: center; }
+.trailer .window-inner { position: relative; }
+.trailer video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  border: 0;
+  padding: 0.55em 1.3em 0.55em 1.05em;
+  font-size: clamp(1rem, 3.4vw, 1.9rem);
+  cursor: pointer;
+  translate: -50% -50%;
+}
+.play[hidden] { display: none; }
+
 /* ---- the stable ---- */
 
 .stable { padding: clamp(48px, 9vw, 110px) 0 clamp(40px, 6vw, 80px); text-align: center; }
