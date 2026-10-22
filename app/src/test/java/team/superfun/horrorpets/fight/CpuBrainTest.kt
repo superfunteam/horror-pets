@@ -3,6 +3,7 @@ package team.superfun.horrorpets.fight
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.model.PetId
@@ -141,6 +142,57 @@ class CpuBrainTest {
         assertTrue("strike $strike", strike in 3_700..4_300)
         assertTrue("heavy $heavy", heavy in 2_700..3_300)
         assertTrue("block $block", block in 2_700..3_300)
+    }
+
+    // ---- plans and tells ----
+
+    @Test
+    fun aPlanShowsItsMoveUnlessItFeints() {
+        // No habit, empty meter: the weighted pick (0 is STRIKE), then the feint roll against 0.25.
+        assertEquals(CpuPlan(Move.STRIKE, Move.STRIKE), cpuPlan(stateOf(), ScriptedRandom(doubles = listOf(0.25), ints = listOf(0))))
+        assertEquals(CpuPlan(Move.STRIKE, Move.BLOCK), cpuPlan(stateOf(), ScriptedRandom(doubles = listOf(0.24), ints = listOf(0))))
+    }
+
+    @Test
+    fun aFeintShowsTheMoveThatAnswersTheRealOne() {
+        // Each feint baits the answer the real move beats: BLOCK baits a HEAVY (a STRIKE interrupts it), STRIKE
+        // baits a BLOCK (a HEAVY breaks it), HEAVY baits a STRIKE (a BLOCK counters it).
+        val weightRolls = mapOf(Move.STRIKE to 0, Move.HEAVY to 40, Move.BLOCK to 70)
+        val shown = mapOf(Move.STRIKE to Move.BLOCK, Move.HEAVY to Move.STRIKE, Move.BLOCK to Move.HEAVY)
+        for ((move, roll) in weightRolls) {
+            assertEquals(CpuPlan(move, shown.getValue(move)), cpuPlan(stateOf(), ScriptedRandom(doubles = listOf(0.0), ints = listOf(roll))))
+        }
+    }
+
+    @Test
+    fun aSpecialIsNeverAFeintAndRollsNoFeint() {
+        val rng = ScriptedRandom(doubles = listOf(0.0))
+        assertEquals(CpuPlan(Move.SPECIAL, Move.SPECIAL), cpuPlan(stateOf(cpu = full), rng))
+        assertEquals(0, rng.remainingDoubles)
+    }
+
+    @Test
+    fun ghostfaceFeintsMoreOften() {
+        val roll = 0.3 // over everyone's 0.25, under Ghostface's 0.45
+        assertEquals(Move.STRIKE, cpuPlan(stateOf(cpu = fighter(id = PetId.JASON)), ScriptedRandom(doubles = listOf(roll), ints = listOf(0))).tell)
+        assertEquals(Move.BLOCK, cpuPlan(stateOf(cpu = fighter(id = PetId.GHOSTFACE)), ScriptedRandom(doubles = listOf(roll), ints = listOf(0))).tell)
+    }
+
+    @Test
+    fun mostTellsAreTrue() {
+        for ((id, range) in listOf(PetId.JASON to 2_200..2_800, PetId.GHOSTFACE to 4_200..4_800)) {
+            val rng = Random(11)
+            val s = stateOf(cpu = fighter(id = id))
+            val feints = List(10_000) { cpuPlan(s, rng) }.count { it.tell != it.move }
+            assertTrue("$id feinted $feints / 10000", feints in range)
+        }
+    }
+
+    @Test
+    fun theCpuPlansOnlyWhileTheFightIsOn() {
+        assertEquals(CpuPlan(Move.STRIKE, Move.STRIKE), planCpu(stateOf(), ScriptedRandom(doubles = listOf(0.9), ints = listOf(0))).cpuPlan)
+        val over = stateOf(winner = Side.PLAYER).copy(cpuPlan = CpuPlan(Move.HEAVY, Move.HEAVY))
+        assertNull(planCpu(over, ScriptedRandom()).cpuPlan)
     }
 
     @Test

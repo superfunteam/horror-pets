@@ -41,6 +41,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -178,7 +184,7 @@ private const val IDLE_STAGGER_MS = 230L
  *
  * It picks the starter of a new game ([SwitcherMode.ONBOARD]): any killer, each showing its special, since none
  * has stats yet. The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left
- * out: killers in the stable show their level and status, locked ones a LOCKED tag (beating one unlocks it), and
+ * out: killers in the stable show their level and status, locked ones a KILL TO UNLOCK tag (still pickable), and
  * a counter says how many are unlocked.
  *
  * The row starts on the first pet. While onboarding there is nothing to go back to, so Back leaves the app
@@ -201,13 +207,18 @@ fun SwitcherScreen(
     onBack: () -> Unit,
     onExit: () -> Unit,
     focusEntry: Any? = Unit,
+    pvp: Boolean = false,
+    onPvp: () -> Unit = {},
 ) {
     val sounds = LocalSoundSink.current
     val scope = rememberCoroutineScope()
     val pets = remember(mode, game.selected) {
         PetId.entries.filter { mode != SwitcherMode.OPPONENT || it != game.selected }
     }
-    val bodies = remember(loader, pets) { pets.map { loader.manifest(it).bodyScale } }
+    // Picking an opponent, PvP Battle is one more stop at the end of the row.
+    val pvpSlot = pvp && mode == SwitcherMode.OPPONENT
+    val count = pets.size + if (pvpSlot) 1 else 0
+    val bodies = remember(loader, pets, pvpSlot) { pets.map { loader.manifest(it).bodyScale } + if (pvpSlot) listOf(1f) else emptyList() }
     val initial = 0
     var index by remember(mode) { mutableIntStateOf(initial) }
     // Where the row is: the pet index under the spotlight, fractional while it slides.
@@ -221,7 +232,11 @@ fun SwitcherScreen(
     // For the touch handler, which outlives a composition: always the current values.
     val latestEntered by rememberUpdatedState(entered)
     val latestPets by rememberUpdatedState(pets)
+    val latestCount by rememberUpdatedState(count)
     val latestOnPick by rememberUpdatedState(onPick)
+    val latestOnPvp by rememberUpdatedState(onPvp)
+    // The pet at [i] is picked, or past the last pet, PvP Battle.
+    val pickAt = { i: Int -> if (i < latestPets.size) latestOnPick(latestPets[i]) else latestOnPvp() }
     val gestureEdges by rememberUpdatedState(systemGestureEdges())
     val pickTick = rememberTouchTick("ui_select")
 
@@ -248,7 +263,7 @@ fun SwitcherScreen(
     }
 
     fun move(delta: Int) {
-        val next = carouselStep(index, delta, pets.size)
+        val next = carouselStep(index, delta, count)
         if (next == index) {
             // The end of the row: nudge toward the pet that isn't there, and settle back.
             scope.launch {
@@ -289,7 +304,7 @@ fun SwitcherScreen(
             }
             // OK (or Enter) picks on key up, like every other button in the game.
             .clickable(interactionSource = interaction, indication = null) {
-                if (entered) onPick(pets[index])
+                if (entered) pickAt(index)
             },
     ) {
         val w = constraints.maxWidth.toFloat()
@@ -314,7 +329,7 @@ fun SwitcherScreen(
                     down.consume()
                     // A swipe in from the edge is the system's (see GestureEdges); and so is a tap there.
                     if (!latestEntered || gestureEdges.contain(down.position, size)) return@awaitEachGesture
-                    val count = latestPets.size
+                    val count = latestCount
                     val tracker = VelocityTracker()
                     tracker.addPointerInputChange(down)
                     val start = scroll.value
@@ -338,7 +353,7 @@ fun SwitcherScreen(
                                     null -> Unit
                                     index -> {
                                         pickTick()
-                                        latestOnPick(latestPets[target])
+                                        pickAt(target)
                                     }
                                     else -> {
                                         index = target
@@ -366,13 +381,13 @@ fun SwitcherScreen(
             },
         )
 
-        Stage(count = pets.size, bodies = bodies, pitch = pitch, cellH = cellH, row = row)
+        Stage(count = count, bodies = bodies, pitch = pitch, cellH = cellH, row = row)
         Dust(pitch = pitch, time = { clock.longValue })
 
         // Only the pets near the spotlight are on stage: composed, their idle strips decoded. The bounds follow
         // the row but change only when it crosses a pet, so a slide recomposes this a couple of times at most.
-        val first by remember(row, pets.size, reach) { derivedStateOf { carouselFirstInView(row(), pets.size, reach) } }
-        val last by remember(row, pets.size, reach) { derivedStateOf { carouselLastInView(row(), pets.size, reach) } }
+        val first by remember(row, count, reach) { derivedStateOf { carouselFirstInView(row(), count, reach) } }
+        val last by remember(row, count, reach) { derivedStateOf { carouselLastInView(row(), count, reach) } }
         // The next pet beyond each end is decoded ahead (not composed), so it draws from its first frame on
         // stage instead of popping in a frame or two late at the screen's edge.
         LaunchedEffect(loader, pets, first, last) {
@@ -401,6 +416,20 @@ fun SwitcherScreen(
                     idleOffsetMs = i * IDLE_STAGGER_MS,
                 )
             }
+        }
+        if (pvpSlot && pets.size in first..last) {
+            PvpCard(
+                loader = loader,
+                you = game.selected,
+                i = pets.size,
+                row = row,
+                centerX = w / 2f,
+                pitch = pitch,
+                floorY = h * FLOOR,
+                labelY = h * LABEL_TOP,
+                cellH = cellH,
+                labelWidth = labelWidth,
+            )
         }
 
         Column(
@@ -448,7 +477,7 @@ private enum class LineupLabel {
     /** Its special: a starter candidate, which has no stats yet. */
     STARTER,
 
-    /** A LOCKED tag: a killer the player has not beaten yet. */
+    /** A KILL TO UNLOCK tag: a killer the player has not beaten yet. */
     LOCKED,
 }
 
@@ -467,7 +496,10 @@ private fun UnlockedCount(unlocked: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** A LOCKED tag: a padlock and the word, white on glossy blood red with clipped corners. */
+/**
+ * A KILL TO UNLOCK tag: a padlock and the words, white on glossy blood red with clipped corners. It says how to
+ * unlock the killer rather than just LOCKED, which read as "you can't pick this one".
+ */
 @Composable
 private fun LockedTag() {
     Row(
@@ -497,7 +529,13 @@ private fun LockedTag() {
             drawArc(Color.White, 180f, 180f, useCenter = false, topLeft = Offset(w * 0.18f, 0f), size = Size(w * 0.64f, h * 0.7f), style = Stroke(2.dp.toPx()))
             drawRoundRect(Color.White, topLeft = Offset(0f, h * 0.42f), size = Size(w, h * 0.58f), cornerRadius = CornerRadius(1.5.dp.toPx()))
         }
-        BasicText("LOCKED", style = displayStyle(16.sp, tracking = 0.14f))
+        BasicText(
+            "KILL TO UNLOCK",
+            style = displayStyle(16.sp, tracking = 0.1f),
+            maxLines = 1,
+            // Steps down only where the label column is narrow (4:3).
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 16.sp, stepSize = 1.sp),
+        )
     }
 }
 
@@ -613,6 +651,109 @@ private fun LineupPet(
             }
         }
     }
+}
+
+/**
+ * PvP Battle, the stop after the last pet when picking an opponent: a framed card standing on the floor at its
+ * place in the row, with [you] (the selected pet's head) over VS over a mystery challenger, and PVP BATTLE /
+ * PLAY A FRIEND under it. It grows, lights and labels itself under the spotlight like a pet.
+ */
+@Composable
+private fun PvpCard(
+    loader: AssetLoader,
+    you: PetId?,
+    i: Int,
+    row: () -> Float,
+    centerX: Float,
+    pitch: Float,
+    floorY: Float,
+    labelY: Float,
+    cellH: Float,
+    labelWidth: Dp,
+) {
+    val lit by remember(i, row) { derivedStateOf { quantize(carouselLit(i - row()), LIT_STEPS) } }
+    val head = remember(loader, you) { you?.let(loader::head) }
+    val density = LocalDensity.current
+    val cardW = with(density) { (cellH * 0.62f).toDp() }
+    val cardH = with(density) { (cellH * 0.8f).toDp() }
+    Column(
+        Modifier
+            .placeAt(x = { carouselX(i, row(), centerX, pitch) }, y = { floorY })
+            .graphicsLayer {
+                val s = carouselScale(i - row())
+                scaleX = s
+                scaleY = s
+                transformOrigin = TransformOrigin(0.5f, 1f)
+                alpha = lerp(1f - OFF_DIM * 0.7f, 1f, lit)
+            }
+            .size(cardW, cardH)
+            .gameFrame(topEnd = 14.dp, bottomStart = 14.dp, lit = { lit })
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Medallion { if (head != null) Image(head, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        Text(
+            "VS",
+            style = displayStyle(34.sp, tracking = 0.04f, lineHeight = 34.sp).copy(brush = VsFill, shadow = TitleGlow),
+            maxLines = 1,
+        )
+        Medallion {
+            Text("?", style = displayStyle(36.sp, color = Gold, lineHeight = 36.sp), maxLines = 1)
+        }
+    }
+    Column(
+        Modifier
+            .placeAt(x = { carouselX(i, row(), centerX, pitch) }, y = { labelY }, pivotY = 0f)
+            .width(labelWidth)
+            .graphicsLayer {
+                val d = i - row()
+                alpha = carouselLabelAlpha(d)
+                val s = lerp(OFF_LABEL_SCALE, 1f, carouselLit(d))
+                scaleX = s
+                scaleY = s
+                transformOrigin = TransformOrigin(0.5f, 0f)
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.height(with(density) { NAME_SIZE.toDp() }), contentAlignment = Alignment.Center) {
+            BasicText(
+                text = "PVP BATTLE",
+                style = displayStyle(NAME_SIZE, tracking = 0.06f, lineHeight = NAME_SIZE).copy(textAlign = TextAlign.Center),
+                maxLines = 1,
+                autoSize = TextAutoSize.StepBased(minFontSize = NAME_MIN_SIZE, maxFontSize = NAME_SIZE, stepSize = 1.sp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        BasicText(
+            "PLAY A FRIEND",
+            style = displayStyle(17.sp, FontWeight.Bold, color = Gold, tracking = 0.14f).copy(textAlign = TextAlign.Center),
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 17.sp, stepSize = 1.sp),
+        )
+        Spacer(Modifier.height(4.dp))
+        BasicText(
+            "4-DIGIT ROOM CODE",
+            style = displayStyle(13.sp, FontWeight.Bold, color = TextLo, tracking = 0.14f).copy(textAlign = TextAlign.Center),
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 13.sp, stepSize = 1.sp),
+        )
+    }
+}
+
+private val VsFill = Brush.verticalGradient(listOf(Color(0xFFFFE9A8), Color(0xFFF5C543), Blood))
+
+/** A round, gold-rimmed medallion for the PvP card's faces. */
+@Composable
+private fun Medallion(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(58.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF1B1215))
+            .border(2.dp, Gold, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 // ---- the stage: back wall, floor, beams, pools, dust ----

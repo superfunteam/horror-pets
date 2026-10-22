@@ -61,7 +61,8 @@ fun fighter(
     strength: Double = 64.0,
     mood: Int = 0,
     meter: Int = 0,
-) = Fighter(id, level, maxHp, hp, strength, mood, meter)
+    combo: Int = 0,
+) = Fighter(id, level, maxHp, hp, strength, mood, meter, combo)
 
 fun stateOf(
     player: Fighter = fighter(),

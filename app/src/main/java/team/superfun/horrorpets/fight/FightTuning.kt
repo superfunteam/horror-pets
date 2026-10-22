@@ -39,6 +39,17 @@ object FightTuning {
     const val MISS_HEAVY = 0.15
     const val GHOSTFACE_EVADE_BONUS = 0.07 // added to the miss chance of attacks against Ghostface
 
+    // Combos: a hit does COMBO_STEP more damage for each turn in a row its attacker has landed a hit
+    // without being hit, counting up to COMBO_MAX_STEPS of them (+45%).
+    const val COMBO_STEP = 0.15
+    const val COMBO_MAX_STEPS = 3
+
+    // Special effects: a BLEED lasts BLEED_TURNS turns, each costing BLEED_SHARE of max HP (at least 1); a
+    // DRAIN heals DRAIN_SHARE of the special's damage; a DAZE spoils the target's next turn.
+    const val BLEED_TURNS = 3
+    const val BLEED_SHARE = 0.06
+    const val DRAIN_SHARE = 0.5
+
     // Special meter: METER_PER_HIT per landed hit (counters included), SPECIAL needs METER_MAX.
     const val METER_PER_HIT = 25
     const val METER_MAX = 100
@@ -57,10 +68,23 @@ object FightTuning {
 
     // CPU brain
     const val CPU_SPECIAL_CHANCE = 0.7 // with a full meter
+    const val CPU_FEINT_CHANCE = 0.25 // a STRIKE, HEAVY or BLOCK shows a false tell, plus the pet's passive bonus
+    const val GHOSTFACE_FEINT_BONUS = 0.2
     const val CPU_COUNTER_CHANCE = 0.4 // against the player's most-used move
     const val CPU_WEIGHT_STRIKE = 40
     const val CPU_WEIGHT_HEAVY = 30
     const val CPU_WEIGHT_BLOCK = 30
+
+    // Battle rank (wins only): points for HP left (RANK_HP_POINTS at full), for the best combo (RANK_COMBO_POINTS
+    // per hit past the first, counting up to RANK_COMBO_MAX hits), for speed (RANK_SPEED_POINTS within
+    // RANK_PAR_TURNS turns, RANK_SLOW_TURN fewer for each turn over), RANK_POTION for each potion drunk.
+    const val RANK_HP_POINTS = 50
+    const val RANK_COMBO_POINTS = 10
+    const val RANK_COMBO_MAX = 4
+    const val RANK_SPEED_POINTS = 20
+    const val RANK_PAR_TURNS = 5
+    const val RANK_SLOW_TURN = 4
+    const val RANK_POTION = -10
 
     // Rewards (applied on top of the pet's stats, then clamped)
     const val FIGHT_HUNGER = 15.0 // win or loss, not run

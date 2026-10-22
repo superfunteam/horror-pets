@@ -32,6 +32,7 @@ import team.superfun.horrorpets.ui.title.TitleScreen
 import team.superfun.horrorpets.ui.fight.FightScreen
 import team.superfun.horrorpets.ui.fight.ResultsCard
 import team.superfun.horrorpets.ui.fight.VersusScreen
+import team.superfun.horrorpets.ui.pvp.PvpLobbyScreen
 import team.superfun.horrorpets.ui.fight.arenaScene
 import team.superfun.horrorpets.ui.home.HomeScreen
 import team.superfun.horrorpets.ui.switcher.SwitcherScreen
@@ -114,6 +115,8 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onBack = vm::onSwitcherBack,
                     onExit = exitFromOnboarding,
                     focusEntry = focusEntry,
+                    pvp = vm.pvpAvailable,
+                    onPvp = vm::onPvpPicked,
                 )
 
                 is Screen.FakeDeath -> FakeDeathScreen(
@@ -147,6 +150,17 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     arenaRoll = arenaRoll,
                     onDone = vm::onVersusDone,
                     onBack = vm::onVersusBack,
+                    focusEntry = focusEntry,
+                )
+
+                is Screen.PvpLobby -> PvpLobbyScreen(
+                    phase = screen.phase,
+                    onHost = vm::onLobbyHost,
+                    onJoin = vm::onLobbyJoin,
+                    onDigit = vm::onLobbyDigit,
+                    onErase = vm::onLobbyErase,
+                    onTapCode = vm::onTapCode,
+                    onBack = vm::onLobbyBack,
                     focusEntry = focusEntry,
                 )
 

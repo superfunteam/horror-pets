@@ -60,7 +60,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
@@ -104,9 +107,16 @@ internal fun moveHint(move: Move, pet: PetId): String = when (move) {
     Move.STRIKE -> "Quick hit  ·  interrupts a Heavy"
     Move.HEAVY -> "Big hit  ·  breaks a Block, but a Strike cuts it off"
     Move.BLOCK -> "Stops a Strike and counters  ·  a Heavy breaks it"
-    Move.SPECIAL -> "${specialName(pet)}  ·  never misses"
+    Move.SPECIAL -> "${specialName(pet)}  ·  never misses, ${effectHint(pet.spec.special.effect)}"
     Move.POTION -> "Heals half to all your HP  ·  uses your turn"
     Move.RUN -> "Forfeit the fight  ·  costs a little mood"
+}
+
+/** What a special leaves behind, as its help says it. */
+internal fun effectHint(effect: SpecialEffect): String = when (effect) {
+    SpecialEffect.BLEED -> "they bleed for ${FightTuning.BLEED_TURNS} turns"
+    SpecialEffect.DRAIN -> "heals you half the damage"
+    SpecialEffect.DAZE -> "dazes them for a turn"
 }
 
 /** The help window's text for the potion when the player is already at full health: it would be wasted. */
@@ -418,3 +428,35 @@ internal fun RunDialog(onYes: () -> Unit, onNo: () -> Unit, modifier: Modifier =
 
 private fun choiceStyle(lit: Boolean) =
     displayStyle(26.sp, color = if (lit) TextHi else TextHi.copy(alpha = 0.6f), tracking = 0.04f)
+
+// ---- PvP ----
+
+/** PvP: this player has locked in; "WAITING FOR <their killer>..." until the other player has too. */
+@Composable
+internal fun WaitingBanner(opponent: String) {
+    val t = rememberInfiniteTransition(label = "waiting").animateFloat(
+        initialValue = 0f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(1600)),
+        label = "waitingDots",
+    )
+    Row(
+        Modifier
+            .gameFrame(topEnd = 10.dp, bottomStart = 10.dp)
+            .padding(horizontal = 26.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicText(
+            "LOCKED IN  ·  WAITING FOR ${opponent.uppercase()}",
+            style = displayStyle(20.sp, color = TextHi, tracking = 0.1f, lineHeight = 22.sp),
+            maxLines = 1,
+        )
+        Box(Modifier.width(28.dp)) {
+            Row {
+                for (i in 0 until 3) {
+                    BasicText(".", style = displayStyle(20.sp, color = TextHi, lineHeight = 22.sp), maxLines = 1, modifier = Modifier.graphicsLayer { alpha = if (t.value > i + 1) 1f else 0f })
+                }
+            }
+        }
+    }
+}

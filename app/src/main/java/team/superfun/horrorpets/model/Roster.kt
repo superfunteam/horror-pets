@@ -2,19 +2,32 @@ package team.superfun.horrorpets.model
 
 import team.superfun.horrorpets.fight.FightTuning
 
+/** What a special leaves behind once it lands, on top of its damage (see `resolveTurn`). */
+enum class SpecialEffect {
+    /** The target bleeds for a few turns. */
+    BLEED,
+
+    /** The attacker heals by part of the damage it dealt. */
+    DRAIN,
+
+    /** The target's next STRIKE, HEAVY or BLOCK fails. */
+    DAZE,
+}
+
 /**
- * A killer's signature special: its callout name and which effect the fight screen draws for it. Each
- * pet has its own; a future pet can reuse one (no new effect code) or add one. A [danced] special is
- * performed with the attacker's `dance` animation instead of its ATTACK swing, when its sprites ship one.
+ * A killer's signature special: its callout name, its lasting [effect], and which effect the fight screen
+ * draws for it. Each pet has its own; a future pet can reuse one (no new effect code) or add one. A [danced]
+ * special is performed with the attacker's `dance` animation instead of its ATTACK swing, when its sprites
+ * ship one.
  */
-enum class SpecialStyle(val displayName: String, val danced: Boolean = false) {
-    MACHETE_FRENZY("Machete Frenzy"),
-    DREAM_CLAWS("Dream Claws"),
-    CHAINS("Chains"),
-    KNIFE_FLURRY("Knife Flurry"),
-    VOODOO_STAB("Voodoo Stab"),
-    THE_SHAPE("The Shape"),
-    SAW_DANCE("Saw Dance", danced = true),
+enum class SpecialStyle(val displayName: String, val effect: SpecialEffect, val danced: Boolean = false) {
+    MACHETE_FRENZY("Machete Frenzy", SpecialEffect.BLEED),
+    DREAM_CLAWS("Dream Claws", SpecialEffect.DRAIN),
+    CHAINS("Chains", SpecialEffect.DAZE),
+    KNIFE_FLURRY("Knife Flurry", SpecialEffect.BLEED),
+    VOODOO_STAB("Voodoo Stab", SpecialEffect.DAZE),
+    THE_SHAPE("The Shape", SpecialEffect.DAZE),
+    SAW_DANCE("Saw Dance", SpecialEffect.BLEED, danced = true),
 }
 
 /**
@@ -28,6 +41,7 @@ enum class SpecialStyle(val displayName: String, val danced: Boolean = false) {
  * - [strikeMult] multiplies its STRIKE damage (not counters, heavies or specials).
  * - [heavyMult] multiplies its HEAVY damage (not strikes, counters or specials).
  * - [damageTakenMult] multiplies all damage it takes, after crits (the hit still does at least 1).
+ * - [feintBonus] is added to its chance of showing a false tell as the CPU (see `cpuPlan`).
  */
 data class Passive(
     val name: String,
@@ -38,6 +52,7 @@ data class Passive(
     val strikeMult: Double = 1.0,
     val heavyMult: Double = 1.0,
     val damageTakenMult: Double = 1.0,
+    val feintBonus: Double = 0.0,
 )
 
 /**
@@ -65,7 +80,7 @@ val Roster: Map<PetId, PetSpec> = listOf(
     PetSpec(PetId.JASON, Passive("Unstoppable", hpMult = FightTuning.JASON_HP_MULT), SpecialStyle.MACHETE_FRENZY, specialHitMs = 500),
     PetSpec(PetId.FREDDY, Passive("Lucid", critBonus = FightTuning.FREDDY_CRIT_BONUS), SpecialStyle.DREAM_CLAWS, specialHitMs = 0),
     PetSpec(PetId.PINHEAD, Passive("Retribution", counterMult = FightTuning.PINHEAD_COUNTER_MULT), SpecialStyle.CHAINS, specialHitMs = 750),
-    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS), SpecialStyle.KNIFE_FLURRY, specialHitMs = 650),
+    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS, feintBonus = FightTuning.GHOSTFACE_FEINT_BONUS), SpecialStyle.KNIFE_FLURRY, specialHitMs = 650),
     PetSpec(PetId.CHUCKY, Passive("Scrappy", strikeMult = FightTuning.CHUCKY_STRIKE_MULT), SpecialStyle.VOODOO_STAB, specialHitMs = 710),
     PetSpec(
         PetId.MICHAEL,

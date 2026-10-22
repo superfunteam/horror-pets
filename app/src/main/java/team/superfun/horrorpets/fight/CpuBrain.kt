@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.fight
 
 import kotlin.random.Random
+import team.superfun.horrorpets.model.spec
 
 /**
  * Picks the CPU's move. Never RUN, and never SPECIAL unless the CPU's meter is full.
@@ -25,6 +26,27 @@ fun cpuPick(s: FightState, rng: Random): Move {
     }
     return weightedPick(rng)
 }
+
+/**
+ * The CPU's move for the coming turn, picked by [cpuPick] before the player chooses, and the tell it shows.
+ * A SPECIAL is always shown for what it is. A STRIKE, HEAVY or BLOCK is shown truthfully unless the CPU feints,
+ * with probability 0.25 plus its passive's `feintBonus` (Ghostface's 0.2). A feint shows the move that answers
+ * the real one, so the player who trusts it walks into what beats them: a STRIKE shows BLOCK (baiting a HEAVY,
+ * which the STRIKE interrupts), a HEAVY shows STRIKE (baiting a BLOCK, which the HEAVY breaks), a BLOCK shows
+ * HEAVY (baiting a STRIKE, which the BLOCK counters).
+ *
+ * Dice: [cpuPick]'s, then one double for the feint (none for a SPECIAL).
+ */
+fun cpuPlan(s: FightState, rng: Random): CpuPlan {
+    val move = cpuPick(s, rng)
+    if (move == Move.SPECIAL) return CpuPlan(move, move)
+    val feints = rng.nextDouble() < FightTuning.CPU_FEINT_CHANCE + s.cpu.id.spec.passive.feintBonus
+    return CpuPlan(move, if (feints) answerTo(move) else move)
+}
+
+/** [s] with the CPU's plan for its next turn ([cpuPlan]), or with none once the fight is over. */
+fun planCpu(s: FightState, rng: Random): FightState =
+    s.copy(cpuPlan = if (s.winner == null) cpuPlan(s, rng) else null)
 
 private fun mostUsedMove(history: List<Move>): Move? {
     val counts = history.filter { it == Move.STRIKE || it == Move.HEAVY || it == Move.BLOCK }

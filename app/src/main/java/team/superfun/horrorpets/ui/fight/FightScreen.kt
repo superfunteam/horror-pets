@@ -77,6 +77,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
@@ -93,6 +94,7 @@ import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.TextHi
 
 // ---- staging, as fractions of the screen ----
 
@@ -123,6 +125,9 @@ private const val FLOAT_AT = 0.42f
 
 /** The bottom of a move callout sits just over the fighter's head, this far up its cell. */
 private const val CALLOUT_AT = 0.95f
+
+/** The tell's thought dots end about at the top of the CPU's head, this far up its cell. */
+private const val TELL_AT = 0.84f
 
 /** The body's centre, for the shield ring and the special effects, this far up the cell. */
 private const val BODY_AT = 0.45f
@@ -197,12 +202,13 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  * more on a narrow screen, see [playerHomeFraction]), the CPU's at 70%, both cells 38% of the height and
  * neither mirrored; Street-Fighter HP bars, names and special meters along the top; the moves in an RPG
  * command window down the left (`STRIKE HEAVY BLOCK [SPECIAL] | RUN`, see [CommandWindow]) with the
- * move's explanation in a help window under it.
+ * move's explanation in a help window under it. While the player picks, the CPU's tell for the coming turn
+ * (`fight.cpuPlan`) sits in a thought bubble over its head ([TellBubble]).
  *
  * **A turn.** When the view model resolves a move it hands over the turn's [Screen.Fight.lastEvents] and
  * a marker [PetAnimRequest]. This screen plays the turn out and then reports the marker finished, exactly
  * once, with [onAnimFinished] (the view model ignores moves until then):
- * 1. Both chosen moves pop up over the fighters (600ms).
+ * 1. Both chosen moves pop up over the fighters (600ms), with FEINT! over the CPU when its tell lied.
  * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK, or its
  *    DANCE for a danced special, see [swingAnim]) and hops back. At the impact the defender flashes white
  *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
@@ -265,7 +271,7 @@ fun FightScreen(
     val turnActive = petAnim != null || stage.playing
     // Keys are handled between frames, so a Back right behind OK can arrive before the recomposition that
     // shows the new turn: ask the view model itself whether a move is still being played.
-    val canAct = { !isBusy() && !stage.playing && fight.winner == null }
+    val canAct = { !isBusy() && !stage.playing && fight.winner == null && screen.pvp?.waiting != true }
     // Read from the meter as shown, which only moves while a turn plays: SPECIAL comes and goes while
     // the menu is hidden, never under the player's eyes. Not cleared when the fight ends either: the menu
     // is fading out then, and a row vanishing mid-fade flickers.
@@ -308,6 +314,12 @@ fun FightScreen(
 
     LaunchedEffect(refocus) {
         refocus?.let { focusMenu(it.move) }
+    }
+
+    // PvP: the menu steps aside once this player has locked in, until the turn plays (which brings it back).
+    val waiting = screen.pvp?.waiting == true
+    LaunchedEffect(waiting) {
+        if (waiting) stage.menu.animateTo(0f, tween(MENU_MS))
     }
 
     // One turn's playback per marker token, reported once when it has played out.
@@ -416,6 +428,33 @@ fun FightScreen(
                 }
             }
         }
+        // PvP: the other player has locked in their move (which stays hidden until both have).
+        if (screen.pvp?.opponentIn == true && !turnActive && fight.winner == null) {
+            ThoughtBubble(
+                caption = "READY",
+                text = "LOCKED IN!",
+                accent = PotionGreen,
+                ink = TextHi,
+                visible = { stage.menu.value.coerceAtLeast(if (screen.pvp.waiting) 1f else 0f) },
+                x = { w * stage.homeFraction(Side.CPU) },
+                y = { stage.floor - cellH * stage.cpu.body * TELL_AT },
+                top = belowHud,
+                inset = insetPx,
+            )
+        }
+        // The CPU's tell for the coming turn, over its head while the player picks.
+        stage.shownTell?.let { tell ->
+            key(tell) {
+                TellBubble(
+                    tell = tell,
+                    visible = { stage.menu.value },
+                    x = { w * stage.homeFraction(Side.CPU) },
+                    y = { stage.floor - cellH * stage.cpu.body * TELL_AT },
+                    top = belowHud,
+                    inset = insetPx,
+                )
+            }
+        }
         FloatingNumbers(stage.floats, top = belowHud, inset = insetPx, onDone = { stage.floats.remove(it) })
 
         Box(Modifier.fillMaxSize().padding(horizontal = safe.horizontal, vertical = safe.vertical)) {
@@ -425,6 +464,8 @@ fun FightScreen(
                 turn = shownTurn(fight, turnActive),
                 playerValues = stage.player.hud,
                 cpuValues = stage.cpu.hud,
+                playerStatus = stage.player.status,
+                cpuStatus = stage.cpu.status,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .onGloballyPositioned { stage.hudBottom = it.boundsInRoot().bottom - stage.screenTop },
@@ -463,6 +504,13 @@ fun FightScreen(
             )
             val hint = if (focusedMove == Move.POTION && !potionUsable) POTION_FULL_HINT else moveHint(focusedMove, playerId)
             HelpWindow(hint, Modifier.align(Alignment.BottomStart).then(menuIn))
+        }
+
+        // PvP: this player has locked in and the other has not yet.
+        if (screen.pvp?.waiting == true && !turnActive) {
+            Box(Modifier.fillMaxSize().padding(bottom = safe.vertical + 18.dp), contentAlignment = Alignment.BottomCenter) {
+                WaitingBanner(fight.cpu.id.displayName)
+            }
         }
 
         KoSlam(visible = stage.koShown, progress = { stage.ko.value }, lift = { stage.koLift.value }, liftPx = h * KO_LIFT)
@@ -505,7 +553,7 @@ internal fun playerHomeFraction(widthDp: Float, menuRightDp: Float): Float =
  * fight is over, never the next. Running away plays no turn (the engine leaves `turn` as it was).
  */
 private fun shownTurn(fight: FightState, turnActive: Boolean): Int {
-    val played = (turnActive || fight.winner != null) && !fight.playerRan
+    val played = (turnActive || fight.winner != null) && !fight.playerRan && !fight.cpuRan
     return if (played) (fight.turn - 1).coerceAtLeast(1) else fight.turn
 }
 
@@ -564,7 +612,7 @@ private class Pose(val anim: Anim) {
  * recomposes the screen frame by frame.
  */
 @Stable
-private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook) {
+private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float, look: FighterLook, start: Fighter) {
     /** Its display scale (see `bodyScale`). */
     val body = look.body
 
@@ -591,6 +639,15 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     val trail = Animatable(hp)
     val meter = Animatable(meter)
     val hud = HudValues(hp = { this.hp.value }, trail = { trail.value }, meter = { this.meter.value })
+
+    /**
+     * Its lasting states as the HUD shows them: a combo broken the moment it is hit or whiffs and built up as the
+     * turn ends, a bleed or daze put on when the special lands and worn off as it plays out.
+     */
+    var combo by mutableIntStateOf(start.combo)
+    var bleed by mutableIntStateOf(start.bleed)
+    var dazed by mutableStateOf(start.dazed)
+    val status = HudStatus(combo = { combo }, bleed = { bleed }, dazed = { dazed })
 
     /** Where the bars are heading, ahead of their animations. */
     var hpTarget = hp
@@ -676,8 +733,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
         // recreated while a turn played) replays that turn, so it starts from the values before it.
         val p = if (turnPending) hudBeforeTurn(f.player, Side.PLAYER, screen.lastEvents) else HudStart(f.player.hp, f.player.meter)
         val c = if (turnPending) hudBeforeTurn(f.cpu, Side.CPU, screen.lastEvents) else HudStart(f.cpu.hp, f.cpu.meter)
-        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook)
-        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook)
+        player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook, f.player)
+        cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook, f.cpu)
     }
 
     val shake = Animatable(0f)
@@ -696,6 +753,9 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     val specialT = Animatable(0f)
     val menu = Animatable(if (turnPending) 0f else 1f)
     var playing by mutableStateOf(turnPending)
+
+    /** The tell over the CPU while the menu is up: the plan's, swapped only while the menu is away. */
+    var shownTell by mutableStateOf(if (turnPending) null else screen.fight.cpuPlan?.tell)
     var front by mutableStateOf(Side.PLAYER)
 
     /** The announcer's reactions, for the whole fight so they never repeat back to back. */
@@ -762,6 +822,10 @@ private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> =
             add(player.pet to Anim.RUN_LEFT)
             add(cpu.pet to Anim.WAVE)
         }
+        fight.cpuRan -> {
+            add(cpu.pet to Anim.RUN_RIGHT)
+            add(player.pet to Anim.WAVE)
+        }
         winner != null -> {
             add(rig(winner.other()).pet to Anim.FAIL)
             add(rig(winner).pet to Anim.JUMP)
@@ -775,6 +839,8 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     val fight = turn.fight
     val winner = fight.winner
     playing = true
+    // The tell has been acted on: it goes with the menu (the next turn's must not show yet).
+    shownTell = null
     launch { menu.animateTo(0f, tween(MENU_MS)) }
     // Every strip this turn shows decodes during the callouts (most are cached since the VS card), so
     // no decode ever holds up a swing and puts its impact out of step with the sprite.
@@ -795,11 +861,20 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     // 1. Both moves pop up over the fighters.
     callout(this, player, turn.playerMove)
     callout(this, cpu, turn.cpuMove)
+    // A tell that lied is called out as the real move pops up.
+    if (turn.cpuTell != null && turn.cpuMove != null && turn.cpuTell != turn.cpuMove) {
+        float(FloatKind.FEINT, "FEINT!", emptyList(), Side.CPU)
+    }
     delay(CALLOUT_LEAD_MS)
     withTimeoutOrNull(STRIPS_WAIT_MS) { strips.join() }
 
     if (turn.playerMove == Move.RUN) {
         runAway(this, loader)
+        playing = false
+        return@coroutineScope
+    }
+    if (turn.cpuMove == Move.RUN) {
+        opponentRunsAway(this, loader)
         playing = false
         return@coroutineScope
     }
@@ -813,7 +888,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
         val beat = beats[i++]
         if (beat is Beat.Lunge) {
             val riders = mutableListOf<Beat>()
-            while (i < beats.size && beats[i] !is Beat.Lunge) riders += beats[i++]
+            while (i < beats.size && beats[i].ridesOnLunge) riders += beats[i++]
             // The same fighter must be back on its mark first, and a special's effect must have played
             // out; otherwise the other fighter may set off as the last one lands.
             if (tailSide == beat.attacker || special != null) tail?.join() else if (tail?.isActive == true) delay(140)
@@ -822,6 +897,9 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
         } else if (beat is Beat.Drink) {
             tail?.join()
             drink(this, beat, loader, sounds, play)
+        } else if (beat is Beat.Bleed) {
+            tail?.join()
+            bleed(this, beat, sounds, play)
         } else {
             rider(this, beat, landedOn = null)
             delay(450)
@@ -847,7 +925,11 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
                 r.meterTarget = f.meter.toFloat()
                 launch { r.meter.animateTo(f.meter.toFloat(), tween(200)) }
             }
+            r.combo = f.combo
+            r.bleed = f.bleed
+            r.dazed = f.dazed
         }
+        shownTell = fight.cpuPlan?.tell
         menu.animateTo(1f, tween(MENU_MS))
     }
     playing = false
@@ -959,20 +1041,36 @@ private fun FightStage.impactOf(
     when (event) {
         is FightEvent.Hit -> {
             val breaksGuard = event.move == Move.HEAVY && d.side in guarding
-            if (d.side in guarding && event.move != Move.STRIKE) {
+            // A dazed guard holds nothing: the strike goes straight through it.
+            val dazedGuard = d.side in guarding && d.dazed
+            if (d.side in guarding && (event.move != Move.STRIKE || dazedGuard)) {
                 guarding -= d.side
                 d.show(Anim.IDLE)
             }
+            // Being hit ends the defender's combo; the attacker's grows once the turn is over.
+            d.combo = 0
             val labels = buildList {
+                if (event.combo >= 1) add("COMBO \u00d7${event.combo + 1}")
                 if (event.crit) add("CRITICAL!")
                 if (event.counter) add("COUNTER")
                 if (breaksGuard) add("GUARD BREAK")
+                if (dazedGuard && !breaksGuard) add("DAZED")
                 if (interrupted) add("INTERRUPTED")
+                when (event.effect) {
+                    SpecialEffect.BLEED -> add("BLEEDING")
+                    SpecialEffect.DAZE -> add("DAZED")
+                    SpecialEffect.DRAIN, null -> Unit
+                }
             }
             val blow = {
                 float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "\u2212${event.damage}", labels, d.side)
                 hurt(scope, d, strength = 1f)
                 drain(scope, d, event.damage)
+                when (event.effect) {
+                    SpecialEffect.BLEED -> d.bleed = FightTuning.BLEED_TURNS
+                    SpecialEffect.DAZE -> d.dazed = true
+                    SpecialEffect.DRAIN, null -> Unit
+                }
                 when {
                     event.crit -> scope.launch {
                         shake.snapTo(1f)
@@ -1008,7 +1106,10 @@ private fun FightStage.impactOf(
         }
 
         is FightEvent.Miss -> {
-            float(FloatKind.MISS, "MISS", if (interrupted) listOf("INTERRUPTED") else emptyList(), d.side)
+            a.combo = 0
+            if (event.dazed) a.dazed = false
+            val labels = listOfNotNull("DAZED".takeIf { event.dazed }, "INTERRUPTED".takeIf { interrupted })
+            float(FloatKind.MISS, "MISS", labels, d.side)
             // The defender sways out of the way.
             scope.launch {
                 d.step.animateTo(-0.03f, tween(110, easing = FastOutSlowInEasing))
@@ -1034,8 +1135,33 @@ private fun FightStage.impactOf(
         else -> Unit
     }
     for (r in riders) rider(scope, r, landedOn = if (interrupted) d.side else null)
+    // A drain flows back to the attacker just after its blow lands.
+    for (r in riders.filterIsInstance<Beat.Drain>()) scope.launch {
+        delay(landMs + DRAIN_AFTER_MS)
+        play(sounds.of(FightEvent.Drain(r.side, r.amount)))
+        float(FloatKind.HEAL, "+${r.amount}", listOf("DRAIN"), r.side)
+        a.flash.snapTo(0.45f)
+        launch { a.flash.animateTo(0f, tween(450)) }
+        heal(scope, a, r.amount)
+    }
     return effect
 }
+
+/** A drain's +HP follows its special's blow by this much, so the two numbers read one after the other. */
+private const val DRAIN_AFTER_MS = 420L
+
+/** [beat]'s side bleeds at the end of the turn: a smaller red number with BLEED, a shudder, and its bar drains. */
+private suspend fun FightStage.bleed(scope: CoroutineScope, beat: Beat.Bleed, sounds: TurnSounds, play: (FightSounds) -> Unit) {
+    val r = rig(beat.side)
+    play(sounds.of(FightEvent.Bleed(beat.side, beat.damage)))
+    float(FloatKind.DAMAGE, "\u2212${beat.damage}", listOf("BLEED"), beat.side)
+    hurt(scope, r, strength = 0.45f)
+    drain(scope, r, beat.damage)
+    r.bleed = (r.bleed - 1).coerceAtLeast(0)
+    delay(BLEED_BEAT_MS)
+}
+
+private const val BLEED_BEAT_MS = 560L
 
 /** The beats that ride on a swing: an interrupt not already shown on a number, and a filled meter. */
 private fun FightStage.rider(scope: CoroutineScope, beat: Beat, landedOn: Side?) {
@@ -1048,7 +1174,7 @@ private fun FightStage.rider(scope: CoroutineScope, beat: Beat, landedOn: Side?)
             delay(380)
             float(FloatKind.READY, "SPECIAL READY", emptyList(), beat.side)
         }
-        is Beat.Lunge, is Beat.Drink -> Unit
+        is Beat.Lunge, is Beat.Drink, is Beat.Drain, is Beat.Bleed -> Unit
     }
 }
 
@@ -1142,6 +1268,20 @@ private suspend fun FightStage.runAway(scope: CoroutineScope, loader: AssetLoade
     }
     scope.launch { player.alpha.animateTo(0f, tween(500, delayMillis = 250)) }
     player.step.animateTo(-0.4f, tween(800, easing = FastOutLinearInEasing))
+}
+
+/** PvP: the other player turns tail: it runs off to the right and fades, and the player waves it goodbye. */
+private suspend fun FightStage.opponentRunsAway(scope: CoroutineScope, loader: AssetLoader) {
+    front = Side.CPU
+    cpu.show(Anim.RUN_RIGHT)
+    scope.launch {
+        delay(200)
+        player.play(Anim.WAVE, timeoutFor(loader, player, Anim.WAVE))
+        player.show(Anim.IDLE)
+    }
+    scope.launch { cpu.alpha.animateTo(0f, tween(500, delayMillis = 250)) }
+    // Its "step" runs toward the player; negative is away, off the right edge.
+    cpu.step.animateTo(-0.4f, tween(800, easing = FastOutLinearInEasing))
 }
 
 /** The K.O.: the loser plays FAIL and greys out as K.O. slams in, then the winner jumps and waves. */
