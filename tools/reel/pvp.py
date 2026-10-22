@@ -32,6 +32,7 @@ FIGHT_SLAM = 1.13 + 1.89  # FIGHT! lands this long after the VS card starts, in 
 KO_JASON, KO_FREDDY = (10.5, 17.0), (11.5, 18.0)
 TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to fight your friends!" (tools/generate_video_voice.py)
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
+FLY, TURN = 0.8, 0.5  # the phones fly in over FLY seconds, and start turning to meet TURN seconds in
 
 
 def clear_x(yaw: float, gap: float) -> float:
@@ -53,11 +54,11 @@ def feed(file: str, at: float, length: float, start: float, end: float) -> Feed:
 
 
 class OnlinePvp:
-    """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones flying in and turning to meet, the tap on the
-    next bar's downbeat, [vs] bars of VS after that bar, [turns] bars of fighting and [ko_bars] of the K.O. and the
+    """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones flying in and turning to meet in one move, the
+    tap on the next downbeat, [vs] bars of VS after that bar, [turns] bars of fighting and [ko_bars] of the K.O. and the
     results."""
 
-    def __init__(self, bar: float, beat: float, approach: int = 3, vs: int = 2, turns: int = 3, ko_bars: int = 1):
+    def __init__(self, bar: float, beat: float, approach: float = 3, vs: int = 2, turns: int = 3, ko_bars: int = 1):
         self.bar, self.beat = bar, beat
         b = bar
         self.tap = approach * b
@@ -83,7 +84,7 @@ class OnlinePvp:
         self.storm = ImageEnhance.Brightness(storm.filter(ImageFilter.GaussianBlur(3))).enhance(0.38)
         self.vignette = fx.vignette(W, H, 0.75)
         self.embers = fx.Embers(50, 17, [RIM, (255, 170, 80), (255, 235, 200)], W, H)
-        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.2), 640, land=self.vs_at + 0.12,
+        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.21), 800, land=self.vs_at + 0.12,
                           leave=self.fight_at - 0.25, exit_dx=0, glint_at=self.vs_at + 0.9)
         self._shots: dict[int, phones.Shot] | None = None
 
@@ -97,19 +98,14 @@ class OnlinePvp:
         """Where the phones and camera are at [t], and what each screen shows. The phones never pass through each
         other: while they turn, each keeps as far from the middle as its turn needs (clear_x), so they meet back to
         back, and part the same way."""
-        b = self.bar
         hold_x, hold_yaw = 9.9, 0.3
-        turn_at = self.tap - b  # the last bar before the tap: turning to meet
-        if t < turn_at:  # flying in, then hanging side by side
-            fly = ramp(t, 0, 1.0, out_cubic)
-            x, yaw = lerp(48, 10.5, fly) - 0.6 * ramp(t, 1.0, turn_at), lerp(2.4, hold_yaw, fly)
-            z, still = lerp(-8, 0, fly), 0.0
-            orbit, dist, lift = 0.0, 44.0, 0.0
-        elif t < self.tap:  # turning edge-on and closing until their backs touch
-            swing = ramp(t, turn_at, self.tap, in_out_sine)
-            yaw = lerp(hold_yaw, math.pi / 2, swing)
-            gap = (hold_x - clear_x(hold_yaw, 0)) * (1 - ramp(t, turn_at, self.tap, in_cubic))
-            x, z, still = clear_x(yaw, gap), 0.0, swing
+        if t < self.tap:  # flying in and, before they settle, turning edge-on and closing until their backs touch
+            fly = ramp(t, 0, FLY, out_cubic)
+            swing = ramp(t, TURN, self.tap, in_out_sine)
+            yaw = lerp(lerp(2.4, hold_yaw, fly), math.pi / 2, swing)
+            close = ramp(t, TURN, self.tap, in_cubic)
+            x = max(clear_x(yaw, 0), lerp(lerp(48, hold_x, fly), clear_x(yaw, 0), close))
+            z, still = lerp(-8, 0, fly), swing
             orbit, dist, lift = 0.75 * swing, lerp(44, 36, swing), 5 * swing
         elif t < self.vs_at:  # a little recoil from the tap, then parting and spinning back to face us
             out = ramp(t, self.tap + 0.1, self.vs_at - 0.2, out_cubic)

@@ -1,27 +1,27 @@
-"""The outro, as the song ends: a TV and a phone running the game rise out of the storm, the line "Slashing on Android
-phones & Android TV this Halloween" slams down over them as the announcer shouts it, the site's address fades up, and
-it all goes dark.
+"""The outro, as the song ends: the line "Slashing onto Android phones and Android TV this Halloween" slams down big in
+the middle as the announcer shouts it, then moves up as a TV and a phone running the game rise out of the storm under
+it, and it all goes dark.
 """
 from __future__ import annotations
 
 import math
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageEnhance, ImageFilter
 
 from . import cast, fx, phones
 from .footage import Clip
 from .lettering import Slam
-from .motion import in_out_sine, lerp, out_back, out_cubic, pulse, ramp
+from .motion import in_out_sine, lerp, out_back, pulse, ramp
 from .render import FPS, H, W, Cue
 
-TITLE = cast.ROOT / "video/art/title-outro.webp"
+TITLE = cast.ROOT / "video/art/title-outro-onto.webp"
 TV = cast.ROOT / "video/art/tv.webp"
 STORM = cast.ROOT / "site/art/backdrop.webp"
-FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
-URL = "PETS.SUPERFUN.GAMES"
 LINE = cast.ROOT / "video/voice/outro.wav"  # the line, shouted (tools/generate_video_voice.py)
 RIM = (255, 60, 110)
+SETTLE = (1.7, 2.3)  # when the line moves up out of the middle
+RISE = 1.9  # when the TV and the phone start to rise
 
 
 class Outro:
@@ -41,16 +41,16 @@ class Outro:
         self.tv_box = self.tv_screen.getbbox()
         self.tv_feed = Clip("tv-fight-freddy.mp4", 50.0, 56.0)
         self.phone_feed = Clip("home-freddy-phone.mp4", 2.0, 8.0)
-        self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.2), 1420, land=0.14, glint_at=1.4)
-        font = ImageFont.truetype(FONT, 56)
-        self.url = Image.new("RGBA", (W, 90), (0, 0, 0, 0))
-        ImageDraw.Draw(self.url).text((W / 2, 45), URL, font=font, fill=(255, 255, 255), anchor="mm", stroke_width=3,
-                                      stroke_fill=(20, 8, 26))
+        line = Image.open(TITLE).convert("RGBA")
+        big = min(1640, 0.74 * H * line.width / line.height)  # as big as the middle of the frame takes
+        small = 0.28 * H * line.width / line.height  # up top, over the TV and the phone
+        self.title = Slam(line, (W / 2, H * 0.47), big, land=0.14, glint_at=0.75,
+                          settle=(*SETTLE, (W / 2, H * 0.17), small / big))
         self._shots: dict[int, phones.Shot] | None = None
 
     def shot(self, t: float) -> phones.Shot:
-        rise = ramp(t, 0.05, 0.55, out_back)
-        y = lerp(-14, -3.4, rise)
+        rise = ramp(t, RISE + 0.05, RISE + 0.55, out_back)
+        y = lerp(-26, -3.4, rise)  # out of sight below the frame until it rises
         yaw = -0.32 + 0.05 * math.sin(t * 1.2)
         phone = phones.Phone((11.5, y, 0), (0.06, yaw, -0.03), str(self.phone_feed.path(t)))
         return phones.Shot((phone,), camera=(0, 0, 46), rim=RIM)
@@ -66,14 +66,14 @@ class Outro:
         phones.render_all(list(self.shots().values()))
 
     def draw_tv(self, canvas: Image.Image, t: float) -> None:
-        rise = ramp(t, 0.0, 0.5, out_back)
+        rise = ramp(t, RISE, RISE + 0.5, out_back)
         tv = self.tv.copy()
         x0, y0, x1, y1 = self.tv_box
         pic = fx.cover(self.tv_feed.frame(t), x1 - x0, y1 - y0)
         layer = Image.new("RGB", tv.size)
         layer.paste(pic, (x0, y0))
         tv.paste(layer, (0, 0), self.tv_screen)
-        fx.place(canvas, fx.shadowed(tv, 16, 14, 0.6), W * 0.36, lerp(H + 400, H * 0.63, rise))
+        fx.place(canvas, fx.shadowed(tv, 16, 14, 0.6), W * 0.36, lerp(H + 400, H * 0.66, rise))
 
     def frame(self, t: float) -> Image.Image:
         z = 1 + 0.04 * t / self.duration
@@ -86,9 +86,6 @@ class Outro:
         shot = self.shots()[min(round(t * FPS), len(self.shots()) - 1)]
         fx.place(canvas, phones.load(shot), W / 2, H / 2)
         self.title.draw(canvas, t)
-        url = ramp(t, 0.7, 1.1, out_cubic)
-        if url > 0.01:
-            canvas.alpha_composite(fx.faded(self.url, url), (0, round(H - 104 + 20 * (1 - url))))
         self.embers.draw(canvas, t, True)
         canvas.alpha_composite(self.vignette)
         out = fx.flash(canvas.convert("RGB"), (255, 255, 255), 0.7 * pulse(t, 0, 0.16))

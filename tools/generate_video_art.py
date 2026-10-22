@@ -42,8 +42,9 @@ TITLES = {
            "pink-to-yellow brush script.",
     "pvp-local": "\"ONLINE & LOCAL\" on the first line in the chrome block capitals, and \"PvP\" under it, huge, in "
                  "the pink-to-yellow brush script.",
-    "outro": "\"SLASHING ON ANDROID PHONES & ANDROID TV\" on the first line in the chrome block capitals, and "
-             "\"this Halloween\" under it, big, in the pink-to-yellow brush script.",
+    "outro-onto": "\"SLASHING ONTO ANDROID PHONES\" on the first line and \"AND ANDROID TV\" on the second line, both "
+                  "in the chrome block capitals, and \"this Halloween\" under them, big, in the pink-to-yellow brush "
+                  "script.",
 }
 GREEN = "a flat, perfectly uniform pure chroma-key green (#00FF00) with no reflections, glare, text or image on it"
 PROPS = {  # (prompt, size, transparent background)

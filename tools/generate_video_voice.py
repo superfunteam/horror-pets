@@ -24,7 +24,7 @@ LINES = {
     "title": "[shouting] VIRTUAL PET SLASHER 2 TURBO!!!",
     "attacks": "[shouting] KILL TO UNLOCK OVER SIXTY SPECIAL ATTACKS!!!",
     "tap": "[shouting] TAP TO FIGHT YOUR FRIENDS!!!",
-    "outro": "[shouting] SLASHING ON ANDROID PHONES AND ANDROID TV THIS HALLOWEEN!!!",
+    "outro": "[shouting] SLASHING ONTO ANDROID PHONES AND ANDROID TV THIS HALLOWEEN!!!",
 }
 
 

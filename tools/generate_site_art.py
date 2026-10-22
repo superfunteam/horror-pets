@@ -44,7 +44,9 @@ POSES = {
     "freddy": "lunging forward and slashing at the viewer with his bladed glove, fingers spread, cackling.",
     "pinhead": "floating upright with arms spread wide, pale hands open, long chains with hooks flying out around him.",
     "ghostface": "diving forward in mid-air with his knife drawn back to stab, black robe billowing behind him.",
-    "chucky": "jumping at the viewer with a big kitchen knife held overhead in both hands, grinning madly.",
+    "chucky": "leaping at the viewer with a big kitchen knife raised high overhead in his right hand and his left arm "
+              "flung out to the side, both arms well clear of his face and chin, grinning madly; the knife whole and "
+              "solid, one straight steel blade set firmly in a single unbroken dark handle in his fist.",
     "michael": "striding toward the viewer with his kitchen knife raised high in one fist, head tilted.",
     "leatherface": "charging forward revving his chainsaw over his head, apron flapping, mid-swing.",
 }

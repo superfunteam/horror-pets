@@ -2,7 +2,7 @@
 
 Titles are cropped to their visible pixels plus a margin and saved WIDTH wide as WebP with alpha. The basement with
 the CRT TV is saved with its chroma-key screen cut out as a mask (basement-screen.png, white where the screen is), and
-the green light the key threw on the room turned into a cold TV glow, so a scene can lay anything into the screen. The TV keeps its green
+the green light the key threw on the room turned neutral, so a scene can lay anything into the screen. The TV keeps its green
 screen (scenes key it).
 
 Usage: tools/.venv/bin/python -I tools/finalize_video_art.py
@@ -22,7 +22,7 @@ from finalize_food import ALPHA_FLOOR, MARGIN  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "art-work/video/art"
 OUT = ROOT / "video/art"
-TITLES = {"raise": 1, "fight": 1, "pvp-local": 2, "outro": 2}
+TITLES = {"raise": 1, "fight": 1, "pvp-local": 2, "outro-onto": 3}
 ROOM, TV = ("basement", 2), 1
 WIDTH = 1600
 
@@ -51,12 +51,11 @@ def room(name: str, k: int) -> list[Path]:
     sizes = ndimage.sum(np.ones_like(labels), labels, range(1, n + 1))
     screen = ndimage.binary_fill_holes(labels == 1 + int(np.argmax(sizes)))
     screen = ndimage.binary_dilation(screen, iterations=2)  # cover the key's soft edge
-    # The rest of the room: whatever green the key cast becomes a cold blue TV glow.
-    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    # The rest of the room: whatever green the key cast (the tube's inner lip most of all) becomes plain, neutral light,
+    # as if from whatever is on the screen.
+    r, g, b = a[..., 0].copy(), a[..., 1].copy(), a[..., 2].copy()
     spill = np.clip(g - np.maximum(r, b), 0, None) * ~screen
-    a[..., 1] = g - spill
-    a[..., 2] = b + spill * 0.55
-    a[..., 0] = r + spill * 0.2
+    a[..., 0], a[..., 1], a[..., 2] = r + spill * 0.25, g - spill * 0.75, b + spill * 0.25
     a[screen] = 0
     room_path, mask_path = OUT / f"{name}.webp", OUT / f"{name}-screen.png"
     Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(room_path, "WEBP", quality=90, method=6)

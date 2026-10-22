@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from . import fx
-from .motion import in_cubic, lerp, pulse, ramp
+from .motion import in_cubic, in_out_sine, lerp, pulse, ramp
 
 SLAM = 0.14  # how long the lettering takes to come down
 GHOSTS = [(0.018, 0.5), (0.036, 0.3)]
@@ -16,7 +16,8 @@ GHOSTS = [(0.018, 0.5), (0.036, 0.3)]
 
 @dataclass
 class Slam:
-    """[image] centered at [at], [width] wide, landing at [land] and zipping off toward [exit_dx] (px) from [leave]."""
+    """[image] centered at [at], [width] wide, landing at [land] and zipping off toward [exit_dx] (px) from [leave],
+    or settling: moving to the place and scale [settle] gives (from, to, center, scale)."""
     image: Image.Image
     at: tuple[float, float]
     width: float
@@ -24,6 +25,7 @@ class Slam:
     leave: float | None = None
     exit_dx: float = -2200
     glint_at: float | None = None
+    settle: tuple[float, float, tuple[float, float], float] | None = None
 
     def __post_init__(self):
         self.src = self.image
@@ -37,10 +39,14 @@ class Slam:
     def pose(self, t: float) -> tuple[float, float, float, float]:
         u = ramp(t, self.land - SLAM, self.land, in_cubic)
         scale = lerp(3.0, 1, u) * (1 + 0.07 * pulse(t, self.land, 0.2))
-        x = self.at[0]
+        x, y = self.at
         if self.leave is not None:
             x += self.exit_dx * ramp(t, self.leave, self.leave + 0.22, in_cubic)
-        return x, self.at[1], scale, lerp(-8, 0, u)
+        if self.settle is not None:
+            start, end, (sx, sy), to = self.settle
+            v = ramp(t, start, end, in_out_sine)
+            x, y, scale = lerp(x, sx, v), lerp(y, sy, v), scale * lerp(1, to, v)
+        return x, y, scale, lerp(-8, 0, u)
 
     def image_at(self, scale: float, angle: float) -> Image.Image:
         if scale > 1.05:  # from the full-size art, so it stays sharp while it is big

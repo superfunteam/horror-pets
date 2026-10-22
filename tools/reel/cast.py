@@ -14,8 +14,9 @@ from . import fx
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# The landing page's picks (tools/finalize_site_art.py): the full-size render when it is here, else the site's copy.
-POSE_PICKS = {"jason": 1, "freddy": 1, "pinhead": 2, "ghostface": 1, "chucky": 1, "michael": 1, "leatherface": 1}
+# The landing page's picks (tools/finalize_site_art.py), but for Chucky a redo with his arms clear of his chin and a
+# whole knife (tools/generate_site_art.py): the full-size render when it is here, else the site's copy.
+POSE_PICKS = {"jason": 1, "freddy": 1, "pinhead": 2, "ghostface": 1, "chucky": 2, "michael": 1, "leatherface": 1}
 
 
 @dataclass(frozen=True)
@@ -82,10 +83,10 @@ def sfx(name: str) -> Path:
 
 # The killers' sounds in their intros: the trailer's own clips in audio/trailer/<pet>.mp3 (supplied for the trailer;
 # not in the repo, not in the game): a line or a sound bite each, their leading silence trimmed, the second half of
-# Pinhead's ("has a face") 50% louder, and all matched in loudness. Michael has none; he is silent.
+# Pinhead's ("has a face") twice as loud, and all matched in loudness. Michael has none; he is silent.
 TRAILER_AUDIO = ROOT / "audio/trailer"
 INTRO_LUFS = -14.0
-INTRO_BOOST = {"pinhead": (1.3, 1.5)}  # from this many seconds into the clip, this many times louder
+INTRO_BOOST = {"pinhead": (1.3, 2.0)}  # from this many seconds into the clip, this many times louder
 # Freddy's and Chucky's lines start under room tone (so trimming silence takes nothing) and run a little long for six
 # beats: their lead-in is cut and they are played a touch faster, pitch kept.
 INTRO_FIT = {"freddy": (0.25, 1.06), "chucky": (0.4, 1.06)}  # (seconds cut from the start, tempo)

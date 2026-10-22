@@ -4,7 +4,7 @@ its bars.
 The song is 150 BPM, a bar every 1.6 s from 0.04 s in. Its synth arpeggio plays alone for 4 bars and builds for 4
 more, the first drop lands on bar 8, the second on bar 16 after a bar of fills, the breakdown runs bars 24-31, the
 last drop lands on bar 32 and the song ends on bar 36. The video plays the song through bar 18, goes back to its fill bar
-15 (so the fights drop again), plays on to bar 26 and jumps to bar 31, cutting most of the breakdown (see EDIT):
+15 (so the fights drop again), skips bar 23 and most of the breakdown (see EDIT):
 
   bars 0-3    the CRT TV in the basement: static, a channel change to the title screen, the rush in, PRESS START,
               and the title in layers as the name is shouted
@@ -12,9 +12,9 @@ last drop lands on bar 32 and the song ends on bar 36. The video plays the song 
   bars 8-18   the seven killers from the first drop, each with their own line, Michael on the second drop
   bars 19-25  fight to evolve your skills: a fight under the title over the fill (song bar 15), hits from the drop,
               specials, a K.O., then over sixty attacks as cards
-  bars 26-34  online & local PvP: the phones fly in and tap as the breakdown starts, TAP TO FIGHT YOUR FRIENDS, VS,
-              a fight from the last drop, the K.O. and the results
-  bar 35-     the outro as the song ends, the announcer shouting its line
+  bars 25-33  online & local PvP: the phones fly in and tap as the breakdown starts (bar 27), TAP TO FIGHT YOUR
+              FRIENDS, VS, a fight from the last drop, the K.O. and the results
+  bar 34-     the outro as the song ends, the announcer shouting its line
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ DOWNBEAT = 0.04  # where bar 0 starts in the song
 # Michael's short and silent, landing on the second drop.
 ORDER = [("jason", 6), ("freddy", 6), ("ghostface", 8), ("chucky", 6), ("pinhead", 6), ("michael", 4),
          ("leatherface", 8)]
-OUTRO = 5.0
+OUTRO = 5.5
 
 
 def bar(n: float) -> float:
@@ -46,9 +46,10 @@ def bar(n: float) -> float:
 
 
 # The song as the video plays it: from each (video bar, song bar) on, until the next. The intros run past the first
-# drop into the second, so the song goes back to its fill bar (15) for the fights' title and drops again on their hits,
-# and later skips most of the breakdown so the phones fight on the last drop.
-EDIT = [(0, 0), (19, 15), (30, 31)]
+# drop into the second, so the song goes back to its fill bar (15) for the fights' title and drops again on their hits;
+# it skips the drop's last bar so the phones tap as the breakdown starts, and most of the breakdown so they fight on
+# the last drop.
+EDIT = [(0, 0), (19, 15), (27, 24), (29, 31)]
 
 
 def song_cues() -> tuple[Cue, ...]:
@@ -67,7 +68,7 @@ def make() -> Sequence:
     crt = CrtIntro(bar(4), channel=bar(0) + 3 * BEAT, rush=(bar(1), bar(1) + 2 * BEAT), press=bar(2))
     raise_train = RaiseTrain(BAR, bars=4)
     cuts = [CharacterIntro(cast.BY_ID[pet], beats * BEAT, BEAT) for pet, beats in ORDER]
-    fights = FightToEvolve(BAR, BEAT, drop=BAR)
-    pvp = OnlinePvp(BAR, BEAT, approach=2, vs=2, turns=2, ko_bars=2)
+    fights = FightToEvolve(BAR, BEAT, drop=BAR, bars=6.5)
+    pvp = OnlinePvp(BAR, BEAT, approach=1.5, vs=2, turns=2, ko_bars=2)
     scenes = [crt, raise_train, *cuts, fights, pvp, Outro(OUTRO)]
     return Sequence(scenes, (*song_cues(), Cue(bar(4) + 0.25, cast.voice("choose_your_killer"), 1.1)))
