@@ -73,12 +73,12 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * - BLOCK vs BLOCK, BLOCK vs HEAVY/SPECIAL: a block that does not meet a STRIKE does nothing.
  * - SPECIAL always attacks and always lands; the other side's STRIKE or HEAVY also attacks (no
  *   interrupt), and a BLOCK against it does nothing (no [FightEvent.Blocked], no counter).
- * - RUN (player only): the fight ends at once with `winner = CPU` and `playerRan = true`. No
- *   events, no dice, and `turn` and `playerHistory` are left as they were.
- * - POTION (player only, while [FightState.playerPotions] lasts): no attack. The player heals
- *   `round(maxHp * (0.5 + 0.5 * roll))` (never past max HP) before the CPU's move lands, so a potion can
- *   save the player from a KO. Against it the CPU's STRIKE, HEAVY or SPECIAL attacks (nothing to interrupt
- *   or block), and its BLOCK does nothing. It costs a potion and leaves the meters alone.
+ * - RUN (player only; see [forfeit] for either side's): the fight ends at once with `winner = CPU` and
+ *   `playerRan = true`. No events, no dice, and `turn` and `playerHistory` are left as they were.
+ * - POTION (while the side's potions last: [FightState.playerPotions], [FightState.cpuPotions]): no attack.
+ *   The drinker heals `round(maxHp * (0.5 + 0.5 * roll))` (never past max HP) before the other side's move
+ *   lands, so a potion can save it from a KO. Against it a STRIKE, HEAVY or SPECIAL attacks (nothing to
+ *   interrupt or block), and a BLOCK does nothing. It costs a potion and leaves the meters alone.
  *
  * ## Damage, crits, misses, meter, combos
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
@@ -119,7 +119,7 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * PLAYER's attack (if any) is rolled before the CPU's. An attack that does not happen (an absorbed
  * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing, a dazed swing) draws nothing, and RUN draws
  * nothing.
- * A POTION draws one double, the heal roll, in PLAYER's place (before the CPU's attack).
+ * A POTION draws one double, the heal roll, in its side's place (PLAYER's before the CPU's).
  *
  * ## Events and results
  * Events come in a fixed order: everything PLAYER's move caused, then everything the CPU's move
@@ -132,18 +132,18 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * side that dealt more damage this turn wins (the dealt damage, not capped by remaining hit
  * points), and PLAYER wins a tie. Only the loser gets a [FightEvent.Ko], so the winner of a double
  * KO is left standing at 0 hp. The returned state has `turn + 1`, the player's move appended to
- * `playerHistory`, the turn tallied into [FightState.stats], and no [FightState.cpuPlan] (it has been played:
- * plan the next with [planCpu]).
+ * `playerHistory`, the turn tallied into [FightState.stats] and [FightState.cpuStats], and no
+ * [FightState.cpuPlan] (it has been played: plan the next with [planCpu]).
  *
  * @throws IllegalStateException if the fight already has a winner.
- * @throws IllegalArgumentException if the CPU plays RUN or POTION, the player plays POTION with none
- *   left, or either side plays SPECIAL with a meter below 100.
+ * @throws IllegalArgumentException if the CPU plays RUN, either side plays POTION with none left, or
+ *   SPECIAL with a meter below 100.
  */
 fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): TurnResult {
     check(s.winner == null) { "The fight is already over: ${s.winner} won" }
-    require(cpuMove != Move.RUN) { "Only the player can run" }
-    require(cpuMove != Move.POTION) { "Only the player drinks potions" }
+    require(cpuMove != Move.RUN) { "The CPU's side forfeits through forfeit(), not RUN" }
     require(playerMove != Move.POTION || s.playerPotions > 0) { "No potions left" }
+    require(cpuMove != Move.POTION || s.cpuPotions > 0) { "The CPU's side has no potions left" }
     requireSpecialReady(Side.PLAYER, s.player, playerMove)
     requireSpecialReady(Side.CPU, s.cpu, cpuMove)
 
@@ -151,8 +151,8 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         return TurnResult(s.copy(winner = Side.CPU, playerRan = true), emptyList())
     }
 
-    val player = if (playerMove == Move.POTION) drink(s.player, rng) else act(Side.PLAYER, s.player, s.cpu, playerMove, cpuMove, rng)
-    val cpu = act(Side.CPU, s.cpu, s.player, cpuMove, playerMove, rng)
+    val player = if (playerMove == Move.POTION) drink(Side.PLAYER, s.player, rng) else act(Side.PLAYER, s.player, s.cpu, playerMove, cpuMove, rng)
+    val cpu = if (cpuMove == Move.POTION) drink(Side.CPU, s.cpu, rng) else act(Side.CPU, s.cpu, s.player, cpuMove, playerMove, rng)
 
     // A heal (a potion, a drain) lands before the other side's blow does; then whoever was bleeding bleeds.
     val playerBleed = bleedTick(s.player, (s.player.hp + player.healed - cpu.damage).coerceAtLeast(0))
@@ -192,18 +192,34 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         playerHistory = s.playerHistory + playerMove,
         winner = winner,
         playerPotions = s.playerPotions - if (playerMove == Move.POTION) 1 else 0,
+        cpuPotions = s.cpuPotions - if (cpuMove == Move.POTION) 1 else 0,
         cpuPlan = null,
-        stats = tally(s.stats, events),
+        stats = tally(s.stats, events, Side.PLAYER),
+        cpuStats = tally(s.cpuStats, events, Side.CPU),
     )
     return TurnResult(next, events)
 }
 
-/** [stats] with one more turn's [events] counted in. */
-private fun tally(stats: FightStats, events: List<FightEvent>): FightStats {
+/**
+ * A PvP fight between two players' fighters: the host as PLAYER and the guest as CPU (the guest's app
+ * [mirrors][FightState.mirrored] it), each with its potions, and no CPU plan.
+ */
+fun startPvp(host: Fighter, guest: Fighter): FightState =
+    FightState(player = host, cpu = guest, playerPotions = FightTuning.POTIONS_PER_FIGHT, cpuPotions = FightTuning.POTIONS_PER_FIGHT)
+
+/** [s] with [side] forfeiting: the other side wins at once, nothing else changes. */
+fun forfeit(s: FightState, side: Side): FightState {
+    check(s.winner == null) { "The fight is already over: ${s.winner} won" }
+    return s.copy(winner = side.other(), playerRan = side == Side.PLAYER, cpuRan = side == Side.CPU, cpuPlan = null)
+}
+
+/** [stats], [me]'s, with one more turn's [events] counted in. */
+private fun tally(stats: FightStats, events: List<FightEvent>, me: Side): FightStats {
+    val them = me.other()
     var t = stats
     for (e in events) {
         t = when (e) {
-            is FightEvent.Hit -> if (e.attacker == Side.PLAYER) {
+            is FightEvent.Hit -> if (e.attacker == me) {
                 t.copy(
                     damageDealt = t.damageDealt + e.damage,
                     hits = t.hits + 1,
@@ -215,12 +231,12 @@ private fun tally(stats: FightStats, events: List<FightEvent>): FightStats {
             } else {
                 t.copy(damageTaken = t.damageTaken + e.damage)
             }
-            is FightEvent.Miss -> if (e.attacker == Side.PLAYER) t.copy(misses = t.misses + 1) else t
-            is FightEvent.Bleed -> if (e.side == Side.CPU) t.copy(damageDealt = t.damageDealt + e.damage) else t.copy(damageTaken = t.damageTaken + e.damage)
-            is FightEvent.Heal -> if (e.side == Side.PLAYER) t.copy(healed = t.healed + e.amount) else t
-            is FightEvent.Drain -> if (e.side == Side.PLAYER) t.copy(healed = t.healed + e.amount) else t
-            is FightEvent.Blocked -> if (e.blocker == Side.CPU) t.copy(stopped = t.stopped + 1) else t
-            is FightEvent.Interrupted -> if (e.side == Side.PLAYER) t.copy(stopped = t.stopped + 1) else t
+            is FightEvent.Miss -> if (e.attacker == me) t.copy(misses = t.misses + 1) else t
+            is FightEvent.Bleed -> if (e.side == them) t.copy(damageDealt = t.damageDealt + e.damage) else t.copy(damageTaken = t.damageTaken + e.damage)
+            is FightEvent.Heal -> if (e.side == me) t.copy(healed = t.healed + e.amount) else t
+            is FightEvent.Drain -> if (e.side == me) t.copy(healed = t.healed + e.amount) else t
+            is FightEvent.Blocked -> if (e.blocker == them) t.copy(stopped = t.stopped + 1) else t
+            is FightEvent.Interrupted -> if (e.side == me) t.copy(stopped = t.stopped + 1) else t
             is FightEvent.SpecialReady, is FightEvent.Ko -> t
         }
     }
@@ -264,11 +280,11 @@ private fun comboAfter(me: Fighter, mine: Action, hitBy: Action): Int = when {
     else -> me.combo
 }
 
-/** The player drinks a potion: one roll for how much of their max HP it gives back, capped at what is missing. */
-private fun drink(me: Fighter, rng: Random): Action {
+/** [side] drinks a potion: one roll for how much of its max HP it gives back, capped at what is missing. */
+private fun drink(side: Side, me: Fighter, rng: Random): Action {
     val share = FightTuning.POTION_HEAL_MIN + (FightTuning.POTION_HEAL_MAX - FightTuning.POTION_HEAL_MIN) * rng.nextDouble()
     val healed = (me.maxHp * share).roundToInt().coerceAtMost(me.maxHp - me.hp).coerceAtLeast(0)
-    return Action(listOf(FightEvent.Heal(Side.PLAYER, healed)), damage = 0, meter = me.meter, healed = healed)
+    return Action(listOf(FightEvent.Heal(side, healed)), damage = 0, meter = me.meter, healed = healed)
 }
 
 private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove: Move, rng: Random): Action {

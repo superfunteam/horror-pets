@@ -27,9 +27,9 @@ data class RankScore(val hpPercent: Int, val hpPoints: Int, val comboPoints: Int
     val rank: Rank get() = Rank.entries.first { total >= it.minScore }
 }
 
-/** How the player's win in [s] scores (see [RankScore]); null unless the player won it. */
+/** How the player's win in [s] scores (see [RankScore]); null unless the player won it by fighting (not by a forfeit). */
 fun rankScore(s: FightState): RankScore? {
-    if (s.winner != Side.PLAYER || s.playerRan) return null
+    if (s.winner != Side.PLAYER || s.playerRan || s.cpuRan) return null
     val hpPercent = (100.0 * s.player.hp / s.player.maxHp.coerceAtLeast(1)).roundToInt().coerceIn(0, 100)
     val comboHits = s.stats.bestCombo.coerceAtMost(FightTuning.RANK_COMBO_MAX)
     val overPar = (s.turnsPlayed - FightTuning.RANK_PAR_TURNS).coerceAtLeast(0)

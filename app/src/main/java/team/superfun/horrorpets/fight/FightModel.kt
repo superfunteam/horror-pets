@@ -5,7 +5,10 @@ import team.superfun.horrorpets.model.SpecialEffect
 
 enum class Side { PLAYER, CPU }
 
-/** The moves. POTION and RUN are the player's only: a potion heals (see [FightState.playerPotions]), RUN forfeits. */
+/**
+ * The moves. A potion heals (see [FightState.playerPotions]); against the CPU only the player has any. RUN
+ * forfeits: the player's through [resolveTurn], either side's in a PvP fight through [forfeit].
+ */
 enum class Move { STRIKE, HEAVY, BLOCK, SPECIAL, POTION, RUN }
 
 /** The other side of the fight. */
@@ -58,10 +61,11 @@ data class CpuPlan(val move: Move, val tell: Move)
 /**
  * The fight so far. [turn] is the number of the turn about to be played (1 for a fresh fight),
  * [playerHistory] every move the player has chosen (the CPU reads it), [winner] is null while the
- * fight is on, and [playerRan] is true when the player forfeited. [playerPotions] is how many potions the
- * player has left ([FightTuning.POTIONS_PER_FIGHT] to start). [cpuPlan] is the CPU's move for the coming
- * turn and its tell, null until it is planned and once it has been played. [stats] tallies how the player has
- * fought.
+ * fight is on, and [playerRan] is true when the player forfeited ([cpuRan] when the other side did, which only a
+ * PvP opponent can). [playerPotions] is how many potions the player has left ([FightTuning.POTIONS_PER_FIGHT]
+ * to start) and [cpuPotions] the other side's (none for the CPU; a PvP opponent's own). [cpuPlan] is the CPU's
+ * move for the coming turn and its tell, null until it is planned and once it has been played (never in PvP).
+ * [stats] tallies how the player has fought, and [cpuStats] the other side.
  */
 data class FightState(
     val player: Fighter,
@@ -73,12 +77,34 @@ data class FightState(
     val playerPotions: Int = FightTuning.POTIONS_PER_FIGHT,
     val cpuPlan: CpuPlan? = null,
     val stats: FightStats = FightStats(),
+    val cpuRan: Boolean = false,
+    val cpuPotions: Int = 0,
+    val cpuStats: FightStats = FightStats(),
 ) {
     /** How many turns have been played. */
     val turnsPlayed: Int get() = turn - 1
 
     /** How many potions the player has drunk. */
     val potionsUsed: Int get() = FightTuning.POTIONS_PER_FIGHT - playerPotions
+
+    /**
+     * The same fight from the other side: the fighters, their potions, forfeits and stats swapped, the winner
+     * flipped. A PvP guest sees the host's fight this way, with itself on the left as the player. No plan and no
+     * move history come along (they are the CPU's).
+     */
+    fun mirrored(): FightState = copy(
+        player = cpu,
+        cpu = player,
+        playerHistory = emptyList(),
+        winner = winner?.other(),
+        playerRan = cpuRan,
+        cpuRan = playerRan,
+        playerPotions = cpuPotions,
+        cpuPotions = playerPotions,
+        cpuPlan = null,
+        stats = cpuStats,
+        cpuStats = stats,
+    )
 }
 
 /** What happened during a turn, in the order the fight screen should play it. */
@@ -126,3 +152,44 @@ sealed interface FightEvent {
 }
 
 data class TurnResult(val state: FightState, val events: List<FightEvent>)
+
+/** The same event seen from the other side (see [FightState.mirrored]). */
+fun FightEvent.mirrored(): FightEvent = when (this) {
+    is FightEvent.Hit -> copy(attacker = attacker.other())
+    is FightEvent.Miss -> copy(attacker = attacker.other())
+    is FightEvent.Blocked -> copy(blocker = blocker.other())
+    is FightEvent.Interrupted -> copy(side = side.other())
+    is FightEvent.SpecialReady -> copy(side = side.other())
+    is FightEvent.Heal -> copy(side = side.other())
+    is FightEvent.Drain -> copy(side = side.other())
+    is FightEvent.Bleed -> copy(side = side.other())
+    is FightEvent.Ko -> copy(loser = loser.other())
+}
+
+/**
+ * A turn's [events] seen from the other side, in the order [resolveTurn] would have given them had that side
+ * been the player: each event [mirrored], then the new player's group (everything its move caused), the
+ * other's, the bleeds (the player's first) and the KO.
+ */
+fun mirroredEvents(events: List<FightEvent>): List<FightEvent> {
+    val flipped = events.map { it.mirrored() }
+    fun rank(e: FightEvent): Int = when (e) {
+        is FightEvent.Bleed -> if (e.side == Side.PLAYER) 2 else 3
+        is FightEvent.Ko -> 4
+        else -> if (causedBy(e) == Side.PLAYER) 0 else 1
+    }
+    return flipped.sortedBy(::rank) // stable: each group keeps its own order
+}
+
+/** Whose move [e] is part of: an interrupt is the striker's, everything else its own side's. Not for bleeds or KOs. */
+private fun causedBy(e: FightEvent): Side = when (e) {
+    is FightEvent.Hit -> e.attacker
+    is FightEvent.Miss -> e.attacker
+    is FightEvent.Blocked -> e.blocker
+    is FightEvent.Interrupted -> e.side.other()
+    is FightEvent.SpecialReady -> e.side
+    is FightEvent.Heal -> e.side
+    is FightEvent.Drain -> e.side
+    is FightEvent.Bleed -> e.side
+    is FightEvent.Ko -> e.loser
+}
