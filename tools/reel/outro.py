@@ -1,6 +1,6 @@
 """The outro, as the song ends: the line "Slashing onto Android phones and Android TV this Halloween" slams down big in
 the middle as the announcer shouts it, then moves up as a TV and a phone running the game rise out of the storm under
-it, and it all goes dark.
+it, and lingers on the TV as Jason gets poked and then fed, until it all goes dark.
 """
 from __future__ import annotations
 
@@ -39,7 +39,8 @@ class Outro:
         key = (a[..., 1] > 150) & (a[..., 1] - np.maximum(a[..., 0], a[..., 2]) > 60)
         self.tv_screen = Image.fromarray((key * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(0.8))
         self.tv_box = self.tv_screen.getbbox()
-        self.tv_feed = Clip("tv-fight-freddy.mp4", 50.0, 56.0)
+        # The TV plays Jason at home from when it rises: poked by the player's hand, then fed a drumstick.
+        self.tv_feed = Clip("tv-care-jason.mp4", 1.0, 10.0)
         self.phone_feed = Clip("home-freddy-phone.mp4", 2.0, 8.0)
         line = Image.open(TITLE).convert("RGBA")
         big = min(1640, 0.74 * H * line.width / line.height)  # as big as the middle of the frame takes
@@ -69,7 +70,7 @@ class Outro:
         rise = ramp(t, RISE, RISE + 0.5, out_back)
         tv = self.tv.copy()
         x0, y0, x1, y1 = self.tv_box
-        pic = fx.cover(self.tv_feed.frame(t), x1 - x0, y1 - y0)
+        pic = fx.cover(self.tv_feed.frame(max(0.0, t - RISE)), x1 - x0, y1 - y0)
         layer = Image.new("RGB", tv.size)
         layer.paste(pic, (x0, y0))
         tv.paste(layer, (0, 0), self.tv_screen)

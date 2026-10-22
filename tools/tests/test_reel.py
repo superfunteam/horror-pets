@@ -23,11 +23,18 @@ def start_of(seq, kind):
     return next((s, c) for s, c in zip(seq.starts, seq.scenes) if isinstance(c, kind))
 
 
-def test_the_killers_land_one_a_bar_from_the_first_drop(seq):
+def in_song(seq, t: float) -> float:
+    """Where video time [t] falls in the song, across the edit."""
+    cue = [c for c in seq.cues() if c.music and c.t <= t + 1e-9][-1]
+    return cue.skip + (t - cue.t)
+
+
+def test_the_killers_land_on_the_drops(seq):
     starts = [s for s, c in zip(seq.starts, seq.scenes) if isinstance(c, CharacterIntro)]
     beats = [0] + [b for _, b in trailer.ORDER]
-    assert starts == pytest.approx([trailer.bar(8) + sum(beats[:k + 1]) * trailer.BEAT for k in range(7)])
-    assert starts[5] == pytest.approx(trailer.bar(16))  # Michael on the second drop
+    assert starts == pytest.approx([starts[0] + sum(beats[:k + 1]) * trailer.BEAT for k in range(7)])
+    assert in_song(seq, starts[0]) == pytest.approx(trailer.bar(8))  # Jason on the first drop
+    assert in_song(seq, starts[5]) == pytest.approx(trailer.bar(16))  # Michael on the second
 
 
 def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killers(seq):
@@ -37,12 +44,6 @@ def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killer
     assert shout.t + title.SHOUT_FIRST == pytest.approx(crt.press + 0.12)
     raise_start, _ = start_of(seq, RaiseTrain)
     assert raise_start == pytest.approx(trailer.bar(4))
-
-
-def in_song(seq, t: float) -> float:
-    """Where video time [t] falls in the song, across the edit."""
-    cue = [c for c in seq.cues() if c.music and c.t <= t + 1e-9][-1]
-    return cue.skip + (t - cue.t)
 
 
 def test_the_name_is_shown_and_shouted_once_and_the_hits_land_on_a_drop(seq):
@@ -58,7 +59,7 @@ def test_the_phones_tap_as_the_breakdown_starts_and_fight_from_the_last_drop(seq
     start, pvp = start_of(seq, OnlinePvp)
     assert in_song(seq, start + pvp.tap) == pytest.approx(trailer.bar(24))
     assert in_song(seq, start + pvp.fight_at) == pytest.approx(trailer.bar(32))
-    assert in_song(seq, start + pvp.duration) == pytest.approx(trailer.bar(36))  # the outro as the song ends
+    assert in_song(seq, start + pvp.duration) == pytest.approx(trailer.bar(32))  # the outro on the last drop, again
 
 
 def test_every_jump_in_the_song_is_on_a_bar(seq):

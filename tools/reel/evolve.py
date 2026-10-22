@@ -25,6 +25,7 @@ ATTACKS = cast.ROOT / "video/voice/attacks.wav"  # "Kill to unlock over sixty sp
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
 CARD_W, CARD_H, CARD_GAP = 380, 520, 44
+CARD_SPEED = 364  # px a second each row of cards slides
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,10 @@ class Cut:
     at: float
     length: float
     clip: Clip
-    zoom: float = 1.28  # fights are cropped in on the fighters
-    focus: tuple[float, float] = (0.5, 0.56)
+    # Fights are cropped in on the fighters, past the game's health bars and meters (top), command menu (left) and help
+    # line (bottom), which a tighter crop would only clip.
+    zoom: float = 1.62
+    focus: tuple[float, float] = (0.5, 0.585)
 
 
 @dataclass(frozen=True)
@@ -176,7 +179,7 @@ class FightToEvolve:
         local = t - self.cards_at
         step = CARD_W + CARD_GAP
         bump = 1 + 0.035 * max(pulse(local % self.beat, 0, 0.18), 0)
-        for row, (deck, y, speed) in enumerate(((SPECIALS, H * 0.285, -520), (HEAVIES, H * 0.735, 520))):
+        for row, (deck, y, speed) in enumerate(((SPECIALS, H * 0.285, -CARD_SPEED), (HEAVIES, H * 0.735, CARD_SPEED))):
             span = step * len(deck)
             for i, c in enumerate(deck):
                 x = (i * step + speed * local + (row * step / 2)) % span - step / 2
@@ -195,4 +198,4 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        return [Cue(self.specials_at, cast.voice("special_move"), 1.1), Cue(self.cards_at + 0.1, ATTACKS, 1.15)]
+        return [Cue(self.cards_at + 0.1, ATTACKS, 1.15)]

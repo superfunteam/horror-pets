@@ -25,6 +25,8 @@ SOUNDS = {  # (prompt, seconds)
                "noise with a faint electrical hum, no music, no voices", 3.0),
     "channel": ("An old CRT television changing channel: a hard mechanical knob click and a short sharp crackling "
                 "burst of static that cuts off, no music, no voices", 1.0),
+    "projector": ("An old 16mm film projector starting up: a mechanical clattering whir and the film rattling through the gate, "
+                  "speeding up faster and faster, no music, no voices", 3.0),
     "start": ("Retro arcade video game press start sound: a bright, sparkling, punchy bling chime with a quick rising "
               "arpeggio, 16-bit game console, no voices", 1.2),
 }

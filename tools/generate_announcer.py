@@ -84,7 +84,7 @@ LINES = {
     "whiffed": "[shouting] WHIFFED IT!!!",
     "nowhere_close": "[shouting] NOWHERE CLOSE!!!",
 }
-NUMBERS = {"2": "two", "60": "sixty"}
+NUMBERS = {"2": "two", "25": "twenty five", "60": "sixty"}
 
 # trim the breath before the shout and the quiet end of the tail (the voice keeps its own arena reverb), add a
 # short slap-back, normalize. Tight trims keep "[name]! Versus! [name]!" inside the VS card.
@@ -99,7 +99,7 @@ def redact(text: str, key: str) -> str:
 
 def words(text: str) -> str:
     """Lowercase words only, with [tags] and punctuation removed and digits spelled out."""
-    text = re.sub(r"\[[^\]]*\]", " ", text.lower())
+    text = re.sub(r"\[[^\]]*\]", " ", text.lower()).replace("-", " ")
     return " ".join(NUMBERS.get(w, w) for w in re.findall(r"[a-z0-9]+", text))
 
 

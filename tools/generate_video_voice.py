@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LINES = {
     "title": "[shouting] VIRTUAL PET SLASHER 2 TURBO!!!",
     "attacks": "[shouting] KILL TO UNLOCK OVER SIXTY SPECIAL ATTACKS!!!",
-    "tap": "[shouting] TAP TO FIGHT YOUR FRIENDS!!!",
+    "tap": "[shouting] TAP TO... [roaring] KILL!!! [shouting] ...YOUR FRIENDS!!!",
+    "environments": "[shouting] OVER TWENTY-FIVE UNIQUE ENVIRONMENTS!!!",
     "outro": "[shouting] SLASHING ONTO ANDROID PHONES AND ANDROID TV THIS HALLOWEEN!!!",
 }
 
