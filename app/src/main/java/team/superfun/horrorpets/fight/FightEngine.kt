@@ -7,7 +7,11 @@ import team.superfun.horrorpets.game.clampStat
 import team.superfun.horrorpets.game.mood
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Attack
+import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.SpecialEffect
+import team.superfun.horrorpets.model.Trait
+import team.superfun.horrorpets.model.kitOf
 import team.superfun.horrorpets.model.spec
 
 /** Hit points for a pet of [level] and [hunger] (0 = full, 100 = starving), times its passive's (Jason is built tougher). */
@@ -19,7 +23,7 @@ internal fun maxHpFor(id: PetId, level: Int, hunger: Double): Int {
 
 private fun lerp(a: Double, b: Double, t: Double): Double = a + (b - a) * t
 
-/** The player's pet as a fresh fighter: full hit points, empty meter, and its live strength and mood. */
+/** The player's pet as a fresh fighter: full hit points, empty meter, its live strength and mood, and its equipped attacks. */
 fun buildFighter(p: PetState): Fighter {
     val maxHp = maxHpFor(p.id, p.level, p.hunger)
     return Fighter(
@@ -30,12 +34,13 @@ fun buildFighter(p: PetState): Fighter {
         strength = p.strength,
         mood = mood(p),
         meter = 0,
+        kit = kitOf(p),
     )
 }
 
 /**
- * The CPU's fighter, scaled to [player]. Draws, in this order: level offset (`nextInt(-1, 2)`),
- * then strength offset (`nextInt(-10, 11)`).
+ * The CPU's fighter, scaled to [player], with the best attacks it has at its level. Draws, in this order: level
+ * offset (`nextInt(-1, 2)`), then strength offset (`nextInt(-10, 11)`).
  */
 fun buildOpponent(id: PetId, player: PetState, rng: Random): Fighter {
     val spread = FightTuning.OPPONENT_LEVEL_SPREAD
@@ -51,6 +56,7 @@ fun buildOpponent(id: PetId, player: PetState, rng: Random): Fighter {
         strength = strength,
         mood = FightTuning.OPPONENT_MOOD,
         meter = 0,
+        kit = Kit.best(id, level),
     )
 }
 
@@ -79,6 +85,16 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *   The drinker heals `round(maxHp * (0.5 + 0.5 * roll))` (never past max HP) before the other side's move
  *   lands, so a potion can save it from a KO. Against it a STRIKE, HEAVY or SPECIAL attacks (nothing to
  *   interrupt or block), and a BLOCK does nothing. It costs a potion and leaves the meters alone.
+ *
+ * ## Attacks
+ * A STRIKE, HEAVY or SPECIAL swings the fighter's attack for that slot ([Fighter.kit]; see the catalog in
+ * `model/Attacks.kt`). Its power is the move's multiplier below (the starting attacks' are the numbers given);
+ * its traits add to the crit chance, change the miss chance (never below 0), set how much meter a landed hit
+ * fills, and, as it lands, bleed the target (a new bleed keeps the longer and harder of it and one still
+ * running), drain (heals a share of the damage, never past max HP), daze (always, or with a chance that rolls one
+ * more die, drawn after the crit roll and only when the attack lands) and shatter (knocks meter off the target,
+ * after the target's own move this turn has filled or spent it; a SpecialReady it no longer has is dropped). A
+ * counter is not an attack: it is the same for every kit.
  *
  * ## Damage, crits, misses, meter, combos
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
@@ -171,22 +187,32 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         FightEvent.Bleed(Side.PLAYER, playerBleed).takeIf { playerBleed > 0 },
         FightEvent.Bleed(Side.CPU, cpuBleed).takeIf { cpuBleed > 0 },
     )
-    val events = player.events + cpu.events + bleeds + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
+    // A shatter knocks the other side's meter back after its own move has filled (or spent) it, so a meter it
+    // just filled may not stay full: then it is not announced.
+    val playerMeter = (player.meter - cpu.shatter).coerceAtLeast(0)
+    val cpuMeter = (cpu.meter - player.shatter).coerceAtLeast(0)
+    val unready = setOfNotNull(Side.PLAYER.takeIf { playerMeter < FightTuning.METER_MAX }, Side.CPU.takeIf { cpuMeter < FightTuning.METER_MAX })
+    val moves = (player.events + cpu.events).filterNot { it is FightEvent.SpecialReady && it.side in unready }
+    val events = moves + bleeds + listOfNotNull(winner?.let { FightEvent.Ko(it.other()) })
     val playerCombo = comboAfter(s.player, player, hitBy = cpu)
+    val (playerBleedTurns, playerBleedShare) = bleedAfter(s.player, cpu)
+    val (cpuBleedTurns, cpuBleedShare) = bleedAfter(s.cpu, player)
     val next = s.copy(
         player = s.player.copy(
             hp = playerHp,
-            meter = player.meter,
+            meter = playerMeter,
             combo = playerCombo,
-            bleed = bleedAfter(s.player, cpu),
-            dazed = cpu.inflicts == SpecialEffect.DAZE,
+            bleed = playerBleedTurns,
+            bleedShare = playerBleedShare,
+            dazed = cpu.dazes,
         ),
         cpu = s.cpu.copy(
             hp = cpuHp,
-            meter = cpu.meter,
+            meter = cpuMeter,
             combo = comboAfter(s.cpu, cpu, hitBy = player),
-            bleed = bleedAfter(s.cpu, player),
-            dazed = player.inflicts == SpecialEffect.DAZE,
+            bleed = cpuBleedTurns,
+            bleedShare = cpuBleedShare,
+            dazed = player.dazes,
         ),
         turn = s.turn + 1,
         playerHistory = s.playerHistory + playerMove,
@@ -250,28 +276,36 @@ private fun requireSpecialReady(side: Side, f: Fighter, move: Move) {
 }
 
 /**
- * What one side's move did this turn: its events, the damage it dealt, its meter afterwards, what it healed,
- * and the lasting effect its special [inflicts] on the other side (a BLEED or a DAZE).
+ * What one side's move did this turn: its events, the damage it dealt, its meter afterwards, what it healed, and
+ * what its attack did to the other side: the bleed it [bleeds], whether it [dazes], how much meter it [shatter]s.
  */
 private class Action(
     val events: List<FightEvent>,
     val damage: Int,
     val meter: Int,
     val healed: Int = 0,
-    val inflicts: SpecialEffect? = null,
+    val bleeds: Trait.Bleed? = null,
+    val dazes: Boolean = false,
+    val shatter: Int = 0,
 ) {
     val missed: Boolean get() = events.any { it is FightEvent.Miss }
 }
 
-/** What [f] bleeds at the end of this turn, now at [hp]: 6% of its max HP if it was bleeding (and still up), else 0. */
+/** What [f] bleeds at the end of this turn, now at [hp]: its bleed's share of its max HP if it was bleeding (and still up), else 0. */
 private fun bleedTick(f: Fighter, hp: Int): Int {
     if (f.bleed <= 0 || hp <= 0) return 0
-    return (f.maxHp * FightTuning.BLEED_SHARE).roundToInt().coerceAtLeast(1).coerceAtMost(hp)
+    return (f.maxHp * f.bleedShare).roundToInt().coerceAtLeast(1).coerceAtMost(hp)
 }
 
-/** [f]'s bleed after this turn: restarted by the [other] side's bleeding special, else one turn less. */
-private fun bleedAfter(f: Fighter, other: Action): Int =
-    if (other.inflicts == SpecialEffect.BLEED) FightTuning.BLEED_TURNS else (f.bleed - 1).coerceAtLeast(0)
+/**
+ * [f]'s bleed after this turn (turns left, and its share): one turn less, or the [other] side's new bleed. A new bleed
+ * on top of one still running never stacks: it keeps the longer and the harder of the two.
+ */
+private fun bleedAfter(f: Fighter, other: Action): Pair<Int, Double> {
+    val left = (f.bleed - 1).coerceAtLeast(0)
+    val new = other.bleeds ?: return left to f.bleedShare
+    return if (left > 0) maxOf(left, new.turns) to maxOf(f.bleedShare, new.share) else new.turns to new.share
+}
 
 /** [me]'s combo after a turn in which it played [mine] and was hit by [hitBy] (see [resolveTurn]). */
 private fun comboAfter(me: Fighter, mine: Action, hitBy: Action): Int = when {
@@ -310,26 +344,38 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
     var damage = 0
     var landed = false
     var healed = 0
-    var inflicts: SpecialEffect? = null
+    var bleeds: Trait.Bleed? = null
+    var dazes = false
+    var shatter = 0
+    // The attack swung: the kit's for the move, or none for a counter (a block's riposte, the same for every kit).
+    val attack = if (counter) null else me.kit.attackFor(myMove)
     if (attacks) {
         val missRoll = rng.nextDouble()
         val varianceRoll = rng.nextDouble()
         val critRoll = rng.nextDouble()
         val hitMove = if (counter) Move.STRIKE else myMove
-        if (missRoll < missChance(myMove, counter, other)) {
+        if (missRoll < missChance(myMove, counter, other, attack)) {
             events += FightEvent.Miss(side, myMove)
         } else {
-            val crit = critRoll < critChance(me)
-            damage = damageOf(me, other, moveMultiplier(me, myMove, counter) * comboMultiplier(me), varianceRoll, crit)
-            val effect = if (myMove == Move.SPECIAL) me.id.spec.special.effect else null
-            events += FightEvent.Hit(side, hitMove, damage, crit, counter, combo = me.combo, effect = effect)
+            val crit = critRoll < critChance(me, attack)
+            damage = damageOf(me, other, moveMultiplier(me, myMove, counter, attack) * comboMultiplier(me), varianceRoll, crit)
             landed = true
-            if (effect == SpecialEffect.DRAIN) {
-                healed = (damage * FightTuning.DRAIN_SHARE).roundToInt().coerceAtMost(me.maxHp - me.hp)
-                if (healed > 0) events += FightEvent.Drain(side, healed)
-            } else {
-                inflicts = effect
+            if (attack != null) {
+                // What the attack leaves as it lands. A chance to daze rolls one more die, only for an attack that has one.
+                val dazeChance = attack.daze
+                dazes = dazeChance >= 1.0 || (dazeChance > 0.0 && rng.nextDouble() < dazeChance)
+                bleeds = attack.bleed
+                shatter = attack.shatter.coerceAtMost(other.meter)
+                if (attack.drain > 0.0) healed = (damage * attack.drain).roundToInt().coerceAtMost(me.maxHp - me.hp).coerceAtLeast(0)
             }
+            val effect = when {
+                bleeds != null -> SpecialEffect.BLEED
+                dazes -> SpecialEffect.DAZE
+                attack != null && attack.drain > 0.0 -> SpecialEffect.DRAIN
+                else -> null
+            }
+            events += FightEvent.Hit(side, hitMove, damage, crit, counter, combo = me.combo, effect = effect, shattered = shatter)
+            if (healed > 0) events += FightEvent.Drain(side, healed)
         }
     }
 
@@ -337,33 +383,38 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
 
     val meter = when {
         myMove == Move.SPECIAL -> 0
-        landed -> (me.meter + FightTuning.METER_PER_HIT).coerceAtMost(FightTuning.METER_MAX)
+        landed -> (me.meter + (attack?.meterGain ?: FightTuning.METER_PER_HIT)).coerceAtMost(FightTuning.METER_MAX)
         else -> me.meter
     }
     if (meter == FightTuning.METER_MAX && me.meter < FightTuning.METER_MAX) events += FightEvent.SpecialReady(side)
-    return Action(events, damage, meter, healed, inflicts)
+    return Action(events, damage, meter, healed, bleeds, dazes, shatter)
 }
 
-private fun missChance(move: Move, counter: Boolean, defender: Fighter): Double {
+private fun missChance(move: Move, counter: Boolean, defender: Fighter, attack: Attack?): Double {
     if (counter) return 0.0
     val base = when (move) {
         Move.STRIKE -> FightTuning.MISS_STRIKE
         Move.HEAVY -> FightTuning.MISS_HEAVY
         else -> return 0.0 // SPECIAL never misses
     }
-    return base + defender.id.spec.passive.evadeBonus
+    return (base + (attack?.missChange ?: 0.0) + defender.id.spec.passive.evadeBonus).coerceAtLeast(0.0)
 }
 
-private fun critChance(attacker: Fighter): Double {
+private fun critChance(attacker: Fighter, attack: Attack?): Double {
     val moodShare = attacker.mood.coerceIn(0, 100) / 100.0
-    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + attacker.id.spec.passive.critBonus
+    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + attacker.id.spec.passive.critBonus + (attack?.critBonus ?: 0.0)
 }
 
-private fun moveMultiplier(attacker: Fighter, move: Move, counter: Boolean): Double = when {
-    counter -> attacker.id.spec.passive.counterMult
-    move == Move.HEAVY -> FightTuning.HEAVY_MULT * attacker.id.spec.passive.heavyMult
-    move == Move.SPECIAL -> FightTuning.SPECIAL_MULT
-    else -> FightTuning.STRIKE_MULT * attacker.id.spec.passive.strikeMult
+/** A hit's multiplier for its move: a counter's from the passive, otherwise the attack's power (times the passive's for its slot). */
+private fun moveMultiplier(attacker: Fighter, move: Move, counter: Boolean, attack: Attack?): Double {
+    val passive = attacker.id.spec.passive
+    if (counter) return passive.counterMult
+    val power = attack?.power ?: return FightTuning.STRIKE_MULT
+    return when (move) {
+        Move.HEAVY -> power * passive.heavyMult
+        Move.SPECIAL -> power
+        else -> power * passive.strikeMult
+    }
 }
 
 private fun comboMultiplier(attacker: Fighter): Double =

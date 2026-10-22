@@ -8,6 +8,7 @@ import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
+import team.superfun.horrorpets.fight.attackFor
 import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.model.SpecialStyle
 
@@ -168,7 +169,8 @@ internal fun swingHoldMs(swing: Anim, spec: AnimSpec, impact: Long): Long {
 internal data class HudStart(val hp: Int, val meter: Int)
 
 /**
- * A side's HP and meter before the turn whose [events] left it as [f], as near as the events tell: the
+ * A side's HP and meter before the turn whose [events] left it as [f], as near as the events tell (what its
+ * attacks fill and what was shattered off it included): the
  * damage it took (and bled) is given back and a potion's or a drain's heal taken back out (always within 0..max HP), the special it
  * used was a full meter, and each hit it landed (counters included) had not yet filled its cell. Only for a fight screen built in the middle of a
  * turn (the Activity was recreated while it played); otherwise the bars simply follow the turn.
@@ -176,7 +178,8 @@ internal data class HudStart(val hp: Int, val meter: Int)
 internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): HudStart {
     var taken = 0
     var healed = 0
-    var landed = 0
+    var gained = 0
+    var shattered = 0
     var usedSpecial = false
     for (e in events) {
         if (e is FightEvent.Heal && e.side == side) healed += e.amount
@@ -184,11 +187,16 @@ internal fun hudBeforeTurn(f: Fighter, side: Side, events: List<FightEvent>): Hu
         if (e is FightEvent.Bleed && e.side == side) taken += e.damage
         if (e !is FightEvent.Hit) continue
         when {
-            e.attacker != side -> taken += e.damage
+            e.attacker != side -> {
+                taken += e.damage
+                shattered += e.shattered
+            }
             e.move == Move.SPECIAL -> usedSpecial = true
-            else -> landed++
+            // A counter fills the usual amount; any other hit what its attack fills.
+            e.counter -> gained += FightTuning.METER_PER_HIT
+            else -> gained += f.kit.attackFor(e.move)?.meterGain ?: FightTuning.METER_PER_HIT
         }
     }
-    val meter = if (usedSpecial) FightTuning.METER_MAX else (f.meter - FightTuning.METER_PER_HIT * landed).coerceAtLeast(0)
+    val meter = if (usedSpecial) FightTuning.METER_MAX else (f.meter + shattered - gained).coerceIn(0, FightTuning.METER_MAX)
     return HudStart(hp = (f.hp + taken - healed).coerceIn(0, f.maxHp), meter = meter)
 }
