@@ -21,6 +21,7 @@ import team.superfun.horrorpets.fight.mirroredEvents
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Slot
 import team.superfun.horrorpets.pvp.Hosted
 import team.superfun.horrorpets.pvp.Joined
 import team.superfun.horrorpets.pvp.PvpException
@@ -257,6 +258,21 @@ class PvpFlowTest {
         assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
         host.pump(0)
         assertEquals("the room is left once the fight is over", Role.HOST, hub.rooms.single().left)
+    }
+
+    @Test
+    fun eachPlayerFightsWithTheirOwnAttacksOnBothApps() {
+        val host = App(
+            PetState(PetId.JASON, level = 3, known = setOf("jason_light_1", "jason_heavy_1"), equipped = mapOf(Slot.HEAVY to "jason_heavy_1")),
+            hub.app(),
+        )
+        val guest = freddyApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        assertEquals("Sleeping Bag Slam", host.fight.fight.player.kit.heavy.name)
+        assertEquals("the guest sees the host's attacks too", "Sleeping Bag Slam", guest.fight.fight.cpu.kit.heavy.name)
+        assertEquals(host.fight.fight.mirrored(), guest.fight.fight)
     }
 
     @Test

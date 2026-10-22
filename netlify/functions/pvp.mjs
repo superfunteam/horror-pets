@@ -29,13 +29,23 @@ const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const fail = (status, error, extra = {}) => json(status, { error, ...extra });
 
-/** A fighter as the app sends it, checked field by field; null if anything is off. */
+/** An attack id as the app names them: the killer, the slot, the tier. */
+const ATTACK = /^[a-z]+_(light|heavy|special)_[0-3]$/;
+
+/**
+ * A fighter as the app sends it, checked field by field; null if anything is off. Its `attacks` (its light, heavy
+ * and special, by id) are passed on when they are well formed, so both apps fight with the same ones.
+ */
 function fighterOf(f) {
   if (!f || typeof f !== "object") return null;
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   if (!PETS.includes(f.id) || !int(f.level, 1, 999) || !int(f.maxHp, 1, 99999) || !int(f.mood, 0, 100)) return null;
   if (typeof f.strength !== "number" || !(f.strength >= 0 && f.strength <= 100)) return null;
-  return { id: f.id, level: f.level, maxHp: f.maxHp, strength: f.strength, mood: f.mood };
+  const fighter = { id: f.id, level: f.level, maxHp: f.maxHp, strength: f.strength, mood: f.mood };
+  if (Array.isArray(f.attacks) && f.attacks.length === 3 && f.attacks.every((a) => typeof a === "string" && ATTACK.test(a))) {
+    fighter.attacks = f.attacks;
+  }
+  return fighter;
 }
 
 async function body(req) {
