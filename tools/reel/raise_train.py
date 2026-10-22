@@ -2,7 +2,7 @@
 
 Leatherface dances and swings his saw alone in his butcher room as the title slams in. On the next bar the frame splits
 and Jason gets a drumstick dropped at his feet on the dock; on the bar after, it splits again and Freddy trains in the
-boiler room while Chucky dances in the toy store. Every panel's stage drifts a little behind its killer.
+boiler room while Chucky jumps and stabs in the toy store. Every panel's stage drifts a little behind its killer.
 """
 from __future__ import annotations
 
@@ -32,18 +32,20 @@ class Panel:
 
 
 class RaiseTrain:
-    """Three bars of [bar] seconds: one panel, then two, then four, each split landing on a downbeat."""
+    """[bars] bars of [bar] seconds: one panel, then two, then four (holding for the rest), each split on a downbeat."""
 
-    def __init__(self, bar: float):
+    def __init__(self, bar: float, bars: int = 3):
         self.bar = bar
-        self.duration = 3 * bar
+        self.duration = bars * bar
         b = bar
+        later = range(2, bars)
         self.panels = [
-            Panel("leatherface", "butcher", 0, ((0, "dance"), (b / 2, "attack"), (b, "dance"), (1.5 * b, "attack"),
-                                                (2 * b, "dance"), (2.5 * b, "attack")), x=0.5),
-            Panel("jason", "dock", b, ((b + 0.35, "jump"), (1.5 * b, "wave"), (2 * b, "attack"), (2.5 * b, "jump"))),
-            Panel("freddy", "boiler", 2 * b, ((2 * b, "work"), (2 * b + 0.9, "work"))),
-            Panel("chucky", "toystore", 2 * b, ((2 * b, "jump"), (2 * b + 0.6, "attack"), (2.5 * b + 0.4, "wave"))),
+            Panel("leatherface", "butcher", 0, tuple(m for k in range(bars) for m in ((k * b, "dance"), (k * b + b / 2, "attack")))),
+            Panel("jason", "dock", b, ((b + 0.35, "jump"), (1.5 * b, "wave"))
+                  + tuple(m for k in later for m in ((k * b, "attack"), (k * b + b / 2, "jump")))),
+            Panel("freddy", "boiler", 2 * b, tuple(m for k in later for m in ((k * b, "work"), (k * b + 0.9, "work")))),
+            Panel("chucky", "toystore", 2 * b,
+                  tuple(m for k in later for m in ((k * b, "jump"), (k * b + 0.6, "attack"), (k * b + b / 2 + 0.4, "wave")))),
         ]
         self.stages = {}
         for p in self.panels:

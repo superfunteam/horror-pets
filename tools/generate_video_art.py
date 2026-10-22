@@ -62,6 +62,16 @@ PROPS = {  # (prompt, size, transparent background)
         "controller on the coffee table. Cinematic and moody, deep purple and orange light, glossy high-end 3D "
         "render. No people, no characters, no text or logos. Landscape 16:9.",
         "2560x1440", False),
+    "basement": (
+        "A dark late-1980s / early-1990s basement hangout at night, seen from behind a worn plaid couch: an old CRT "
+        "television with a deep boxy plastic back and a slightly curved glass screen sits on a low wood-veneer stand "
+        f"with a VCR and a game console under it, and it is the room's main light; its screen is {GREEN}. Dark wood "
+        "paneling, shag carpet, a beanbag chair, a stack of VHS tapes and game cartridges, a game controller on a "
+        "scuffed coffee table with soda cans and a bowl of chips, a glowing lava lamp, a small high basement window "
+        "with only night outside. Cinematic and moody, deep shadows, warm amber and cool blue light, glossy high-end "
+        "3D render. No Halloween decorations, no pumpkins, no people, no characters, no text, posters or logos. "
+        "Landscape 16:9.",
+        "2560x1440", False),
     "phone": (
         "A modern Android smartphone lying sideways in landscape orientation, seen straight on from the front, thin "
         f"black bezels, a small punch-hole front camera, a glossy dark frame; its screen is {GREEN}. Isolated on a "

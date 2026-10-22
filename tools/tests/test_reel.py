@@ -25,7 +25,7 @@ def start_of(seq, kind):
 
 def test_the_killers_land_one_a_bar_from_the_first_drop(seq):
     starts = [s for s, c in zip(seq.starts, seq.scenes) if isinstance(c, CharacterIntro)]
-    assert starts == pytest.approx([trailer.bar(7 + k) for k in range(7)])
+    assert starts == pytest.approx([trailer.bar(8 + k) for k in range(7)])
 
 
 def test_start_is_pressed_on_bar_two_and_raise_and_train_comes_before_the_killers(seq):
@@ -41,14 +41,14 @@ def test_the_name_is_shown_and_shouted_once_and_the_fights_hit_the_second_drop(s
     assert not any(isinstance(c, TitleCard) for c in seq.scenes)  # the title screen on the TV is the only one
     assert sum(c.path == title.SHOUT for c in seq.cues()) == 1
     start, fights = start_of(seq, FightToEvolve)
-    assert start == pytest.approx(trailer.bar(14))
-    assert start + fights.cuts[2].at == pytest.approx(trailer.bar(15) + trailer.BEAT)
+    assert start == pytest.approx(trailer.bar(15))
+    assert start + fights.cuts[2].at == pytest.approx(trailer.bar(16))
 
 
-def test_the_phones_tap_on_the_breakdown_bass_hit_and_fight_from_the_last_drop(seq):
+def test_the_phones_tap_in_the_breakdown_and_fight_from_the_last_drop(seq):
     start, pvp = start_of(seq, OnlinePvp)
     assert start + pvp.tap == pytest.approx(trailer.bar(28))
-    assert start + pvp.fight_at == pytest.approx(trailer.bar(31))
+    assert start + pvp.fight_at == pytest.approx(trailer.bar(32))
     assert start + pvp.duration == pytest.approx(trailer.bar(36))
 
 

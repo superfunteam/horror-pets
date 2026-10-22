@@ -46,26 +46,29 @@ def feed(file: str, at: float, length: float, start: float, end: float) -> Feed:
 
 
 class OnlinePvp:
-    """[bar] seconds a bar, [beat] a beat: three bars of approach, the tap on the fourth's downbeat, two bars of VS,
-    five of fighting."""
+    """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones coming together, the tap on the next bar's
+    downbeat, [vs] bars of VS after that bar, and [fight] bars of fighting, the last of them the K.O."""
 
-    def __init__(self, bar: float, beat: float):
+    def __init__(self, bar: float, beat: float, approach: int = 3, vs: int = 2, fight: int = 5):
         self.bar, self.beat = bar, beat
         b = bar
-        self.tap, self.vs_at, self.fight_at = 3 * b, 4 * b, 6 * b
-        self.duration = 11 * b
-        ko = 10 * b
+        self.tap = approach * b
+        self.vs_at = self.tap + b
+        self.fight_at = self.vs_at + vs * b
+        self.duration = self.fight_at + fight * b
+        ko = self.duration - b
+        # The turns both phones play (Jason's recording's times): a hit, Freddy's drain, Jason's super and its slashes.
+        turns = {4: [(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)],
+                 3: [(84.6, 86.6), (92.6, 95.0), (132.2, 135.2)]}[fight - 1]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
         self.feeds = (
             [feed("pvp-jason.mp4", 0, self.tap, 20.0, 21.0),
              feed("pvp-jason.mp4", self.tap, self.fight_at - self.tap, 29.4, 34.4)]
-            + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e)
-               for k, (s, e) in enumerate([(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)])]
+            + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e) for k, (s, e) in enumerate(turns)]
             + [feed("pvp-jason-ko.mp4", ko, b, 10.6, 14.4)],
             [feed("pvp-freddy.mp4", 0, self.tap, 23.5, 28.4),
              feed("pvp-freddy.mp4", self.tap, self.fight_at - self.tap, 28.9, 33.9)]
-            + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG)
-               for k, (s, e) in enumerate([(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)])]
+            + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG) for k, (s, e) in enumerate(turns)]
             + [feed("pvp-freddy-ko.mp4", ko, b, 11.6, 15.4)],
         )
         self.ko = ko
@@ -89,15 +92,16 @@ class OnlinePvp:
         back, and part the same way."""
         b = self.bar
         hold_x, hold_yaw = 9.9, 0.3
-        if t < 2 * b:  # flying in, then hanging side by side
+        turn_at = self.tap - b  # the last bar before the tap: turning to meet
+        if t < turn_at:  # flying in, then hanging side by side
             fly = ramp(t, 0, 1.0, out_cubic)
-            x, yaw = lerp(48, 10.5, fly) - 0.6 * ramp(t, 1.0, 2 * b), lerp(2.4, hold_yaw, fly)
+            x, yaw = lerp(48, 10.5, fly) - 0.6 * ramp(t, 1.0, turn_at), lerp(2.4, hold_yaw, fly)
             z, still = lerp(-8, 0, fly), 0.0
             orbit, dist, lift = 0.0, 44.0, 0.0
         elif t < self.tap:  # turning edge-on and closing until their backs touch
-            swing = ramp(t, 2 * b, self.tap, in_out_sine)
+            swing = ramp(t, turn_at, self.tap, in_out_sine)
             yaw = lerp(hold_yaw, math.pi / 2, swing)
-            gap = (hold_x - clear_x(hold_yaw, 0)) * (1 - ramp(t, 2 * b, self.tap, in_cubic))
+            gap = (hold_x - clear_x(hold_yaw, 0)) * (1 - ramp(t, turn_at, self.tap, in_cubic))
             x, z, still = clear_x(yaw, gap), 0.0, swing
             orbit, dist, lift = 0.75 * swing, lerp(44, 36, swing), 5 * swing
         elif t < self.vs_at:  # a little recoil from the tap, then parting and spinning back to face us

@@ -1,8 +1,8 @@
 """Trim the picked feature-scene art from tools/generate_video_art.py into video/art/.
 
-Titles are cropped to their visible pixels plus a margin and saved WIDTH wide as WebP with alpha. The CRT room is saved
-with its chroma-key screen cut out as a mask (room-crt-screen.png, white where the screen is), and the green light the
-key threw on the room turned into a cold TV glow, so a scene can lay anything into the screen. The TV keeps its green
+Titles are cropped to their visible pixels plus a margin and saved WIDTH wide as WebP with alpha. The basement with
+the CRT TV is saved with its chroma-key screen cut out as a mask (basement-screen.png, white where the screen is), and
+the green light the key threw on the room turned into a cold TV glow, so a scene can lay anything into the screen. The TV keeps its green
 screen (scenes key it).
 
 Usage: tools/.venv/bin/python -I tools/finalize_video_art.py
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "art-work/video/art"
 OUT = ROOT / "video/art"
 TITLES = {"raise": 1, "fight": 1, "pvp-local": 2, "outro": 2}
-ROOM, TV = 2, 1
+ROOM, TV = ("basement", 2), 1
 WIDTH = 1600
 
 
@@ -45,8 +45,8 @@ def green(a: np.ndarray) -> np.ndarray:
     return (a[..., 1] > 150) & (a[..., 1] - np.maximum(a[..., 0], a[..., 2]) > 60)
 
 
-def room(k: int) -> list[Path]:
-    a = np.asarray(Image.open(SRC / f"room-crt-{k}.png").convert("RGB")).astype(np.float32)
+def room(name: str, k: int) -> list[Path]:
+    a = np.asarray(Image.open(SRC / f"{name}-{k}.png").convert("RGB")).astype(np.float32)
     labels, n = ndimage.label(green(a))
     sizes = ndimage.sum(np.ones_like(labels), labels, range(1, n + 1))
     screen = ndimage.binary_fill_holes(labels == 1 + int(np.argmax(sizes)))
@@ -54,11 +54,11 @@ def room(k: int) -> list[Path]:
     # The rest of the room: whatever green the key cast becomes a cold blue TV glow.
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
     spill = np.clip(g - np.maximum(r, b), 0, None) * ~screen
-    a[..., 1] = g - spill * 0.85
-    a[..., 2] = b + spill * 0.45
-    a[..., 0] = r + spill * 0.15
+    a[..., 1] = g - spill
+    a[..., 2] = b + spill * 0.55
+    a[..., 0] = r + spill * 0.2
     a[screen] = 0
-    room_path, mask_path = OUT / "room-crt.webp", OUT / "room-crt-screen.png"
+    room_path, mask_path = OUT / f"{name}.webp", OUT / f"{name}-screen.png"
     Image.fromarray(np.clip(a, 0, 255).astype(np.uint8)).save(room_path, "WEBP", quality=90, method=6)
     Image.fromarray((screen * 255).astype(np.uint8), "L").save(mask_path, optimize=True)
     return [room_path, mask_path]
@@ -74,7 +74,7 @@ def tv(k: int) -> Path:
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
-    paths = [title(n, k) for n, k in TITLES.items()] + room(ROOM) + [tv(TV)]
+    paths = [title(n, k) for n, k in TITLES.items()] + room(*ROOM) + [tv(TV)]
     for p in paths:
         print(f"{p.relative_to(ROOT)} {Image.open(p).size} {p.stat().st_size // 1024} KB")
     return 0

@@ -1,4 +1,4 @@
-"""The opening: an old CRT TV in a dark living room, starting the game.
+"""The opening: an old CRT TV in a dark 80s/90s basement hangout, starting the game.
 
 It fades up close on the tube showing faint static. A channel change crackles onto the game's title screen (recorded
 off the TV emulator, logo and all), seen through scanlines, bloom, color fringes, flicker and a rolling bar; a beat
@@ -20,8 +20,8 @@ from .motion import in_cubic, in_out_sine, lerp, out_cubic, pulse, ramp
 from .render import FPS, H, W, Cue
 from .title import SHOUT, SHOUT_FIRST, SHOUT_TURBO
 
-ROOM = cast.ROOT / "video/art/room-crt.webp"
-MASK = cast.ROOT / "video/art/room-crt-screen.png"
+ROOM = cast.ROOT / "video/art/basement.webp"
+MASK = cast.ROOT / "video/art/basement-screen.png"
 SFX = cast.ROOT / "video/sfx"
 TITLE = Clip("tv-title.mp4", 3.0, 9.0)  # the title screen, PRESS START blinking, before it was pressed
 PRESS_BOX = (0.36, 0.76, 0.64, 0.86)  # where PRESS START sits on the title screen, as fractions of it
