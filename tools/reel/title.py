@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageEnhance
 
 from . import cast, fx
-from .motion import in_cubic, jitter, lerp, out_back, pulse, ramp
+from .motion import in_cubic, jitter, lerp, out_back, out_cubic, pulse, ramp
 from .render import FPS, H, W, Cue
 
 BACKDROP = cast.ROOT / "site/art/backdrop.webp"
@@ -73,12 +73,17 @@ class TitleCard:
 
     def __init__(self, duration: float, arrivals: dict[str, float] | None = None, logo_at: float | None = None,
                  turbo_at: float | None = None, lightning: tuple[float, ...] = (), fade_in: float = 0.0,
-                 fade_out: float = 0.0, shout: bool = True, seed: int = 29):
+                 fade_out: float = 0.0, shout: bool = True, arrive: float = ARRIVE, reach: float = 1.0,
+                 seed: int = 29):
         self.duration, self.arrivals = duration, arrivals or {}
+        # How long each killer takes to come in, and from how far (a share of the way from off the edge): a short slam
+        # from all the way out, or (arrive long, reach small) edging in from just inside the frame.
+        self.arrive, self.reach = arrive, reach
+        self.edge = reach < 1.0
+        hits = [*(() if self.edge else self.arrivals.values()), *(x for x in (logo_at, turbo_at) if x is not None)]
+        self.lightning = sorted({*lightning, *hits})
         self.logo_at, self.turbo_at, self.fade_in, self.fade_out = logo_at, turbo_at, fade_in, fade_out
         self.shout = shout
-        hits = [*self.arrivals.values(), *(x for x in (logo_at, turbo_at) if x is not None)]
-        self.lightning = sorted({*lightning, *hits})
 
         bg = fx.cover(Image.open(BACKDROP).convert("RGB"), round(W * ZOOM_MAX), round(H * ZOOM_MAX))
         self.bg = ImageEnhance.Brightness(bg).enhance(0.85)
@@ -110,19 +115,20 @@ class TitleCard:
 
     def zoom(self, t: float) -> float:
         z = 1 + 0.05 * ramp(t, 0, self.duration)
-        z += sum(0.03 * pulse(t, a, 0.3) for a in self.arrivals.values())
+        if not self.edge:
+            z += sum(0.03 * pulse(t, a, 0.3) for a in self.arrivals.values())
         return z + 0.06 * self.hit(t, self.turbo_at, 0.5)
 
     def shake(self, t: float) -> tuple[float, float]:
-        amp = sum(18 * pulse(t, a, 0.25) for a in self.arrivals.values())
+        amp = 0.0 if self.edge else sum(18 * pulse(t, a, 0.25) for a in self.arrivals.values())
         amp += 30 * self.hit(t, self.logo_at, 0.35) + 44 * self.hit(t, self.turbo_at, 0.5)
         jx, jy = jitter(t, FPS, 11)
         return jx * amp, jy * amp
 
     def spot_pose(self, s: Spot, t: float, z: float) -> tuple[float, float, float, float]:
         """Killer [s]'s center, scale and tilt at [t] under camera zoom [z]."""
-        u = ramp(t, self.arrivals[s.id], self.arrivals[s.id] + ARRIVE, out_back)
-        ox, oy = FROM[s.side]
+        u = ramp(t, self.arrivals[s.id], self.arrivals[s.id] + self.arrive, out_cubic if self.edge else out_back)
+        ox, oy = (v * self.reach for v in FROM[s.side])
         x, y = s.x * W + ox * (1 - u), s.y * H + oy * (1 - u)
         k = 1 + (z - 1) * s.depth
         scale = k * (1 + 0.06 * self.hit(t, self.turbo_at, 0.3))
@@ -187,7 +193,7 @@ class TitleCard:
                 continue
             x, y, sc, a = self.spot_pose(s, t, z)
             for (back, _), ghost in zip(GHOSTS, self.ghosts[s.id]):
-                if self.arrivals[s.id] <= t - back < self.arrivals[s.id] + ARRIVE:
+                if not self.edge and self.arrivals[s.id] <= t - back < self.arrivals[s.id] + self.arrive:
                     gx, gy, gs, ga = self.spot_pose(s, t - back, z)
                     fx.place(canvas, fx.transformed(ghost, gs, ga), gx + dx, gy + dy)
             fx.place(canvas, fx.transformed(self.cards[s.id], sc, a), x + dx, y + dy)
@@ -199,7 +205,8 @@ class TitleCard:
 
         out = canvas.convert("RGB")
         out = fx.chroma(out, 14 * self.hit(t, self.logo_at, 0.2) + 20 * self.hit(t, self.turbo_at, 0.25))
-        out = fx.flash(out, WHITE, max(0.0, *(0.2 * pulse(t, a, 0.1) for a in set(self.arrivals.values())),
+        arrivals = () if self.edge else set(self.arrivals.values())
+        out = fx.flash(out, WHITE, max(0.0, *(0.2 * pulse(t, a, 0.1) for a in arrivals),
                                        0.7 * self.hit(t, self.logo_at, 0.12), 0.85 * self.hit(t, self.turbo_at, 0.16)))
         dark = max(1 - ramp(t, 0, self.fade_in) if self.fade_in else 0.0,
                    ramp(t, self.duration - self.fade_out, self.duration) if self.fade_out else 0.0)

@@ -3,8 +3,9 @@
 It fades up close on the tube showing faint static. A channel change crackles onto the game's title screen (recorded
 off the TV emulator, logo and all), seen through scanlines, bloom, color fringes, flicker and a rolling bar; a beat
 later the camera rushes into the screen and the CRT look falls away until the title fills the frame, crystal clear.
-On the next bar PRESS START flashes with a bling, and as the announcer shouts the game's name the camera pushes into
-the logo, punching on TURBO, until it flashes over into whatever comes next.
+On the next bar PRESS START blinks with a bling and a flash cuts to the title in layers, as on the landing page (see
+title.TitleCard): the storm drifting behind, the seven killers edging in from the sides, the logo slamming down as the
+announcer shouts the game's name and punching on TURBO, until it flashes over into whatever comes next.
 """
 from __future__ import annotations
 
@@ -18,16 +19,16 @@ from . import cast, fx
 from .footage import Clip
 from .motion import in_cubic, in_out_sine, lerp, out_cubic, pulse, ramp
 from .render import FPS, H, W, Cue
-from .title import SHOUT, SHOUT_FIRST, SHOUT_TURBO
+from .title import SHOUT, SHOUT_FIRST, SHOUT_TURBO, SPOTS, TitleCard
 
 ROOM = cast.ROOT / "video/art/basement.webp"
 MASK = cast.ROOT / "video/art/basement-screen.png"
 SFX = cast.ROOT / "video/sfx"
 TITLE = Clip("tv-title.mp4", 3.0, 9.0)  # the title screen, PRESS START blinking, before it was pressed
 PRESS_BOX = (0.36, 0.76, 0.64, 0.86)  # where PRESS START sits on the title screen, as fractions of it
-LOGO_AT = (0.5, 0.3)  # the logo's middle, as a fraction of the title screen
 Z0 = 1.55  # how close the camera starts to the TV
 SHOUT_DELAY = 0.12  # the shout's first word lands this long after start is pressed
+BLINK = 0.3  # how long PRESS START blinks before the cut to the layered title
 
 
 class CrtIntro:
@@ -37,6 +38,9 @@ class CrtIntro:
     def __init__(self, duration: float, channel: float, rush: tuple[float, float], press: float):
         self.duration, self.channel, self.rush, self.press = duration, channel, rush, press
         self.turbo = press + SHOUT_DELAY + SHOUT_TURBO - SHOUT_FIRST
+        self.cut = press + BLINK
+        self.title = TitleCard(duration - self.cut, arrivals={s.id: 0.05 * k for k, s in enumerate(SPOTS)},
+                               logo_at=0.14, turbo_at=self.turbo - self.cut, shout=False, arrive=1.4, reach=0.3)
         self.room = Image.open(ROOM).convert("RGB")
         self.mask = Image.open(MASK).convert("L").filter(ImageFilter.GaussianBlur(1.5))
         x0, y0, x1, y1 = self.mask.getbbox()
@@ -75,16 +79,8 @@ class CrtIntro:
         return Image.blend(Image.new("RGB", (w, h), (12, 14, 18)), grey, level)
 
     def title_screen(self, t: float, w: int, h: int) -> Image.Image:
-        """The title screen at [t], [w] x [h]: from the press on, pushing in on the logo, with PRESS START lit."""
+        """The title screen at [t], [w] x [h], with PRESS START blinking bright as it is pressed."""
         im = TITLE.frame(t - self.channel)
-        if t >= self.press:
-            z = 1 + 0.16 * ramp(t, self.press, self.duration, out_cubic) + 0.05 * pulse(t, self.turbo, 0.3)
-            z *= 1 + 0.04 * pulse(t, self.press, 0.25)
-            cw, ch = im.width / z, im.height / z
-            cx = lerp(im.width / 2, LOGO_AT[0] * im.width, ramp(t, self.press, self.duration))
-            cy = lerp(im.height / 2, LOGO_AT[1] * im.height, ramp(t, self.press, self.duration))
-            cy = min(max(cy, ch / 2), im.height - ch / 2)
-            im = im.resize(im.size, Image.BILINEAR, box=(cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2))
         im = im.resize((w, h), Image.BILINEAR) if (w, h) != im.size else im
         lit = sum(pulse(t, self.press + k * 0.12, 0.1) for k in range(3))
         if lit > 0.01:  # PRESS START blinks bright as it is pressed
@@ -122,6 +118,10 @@ class CrtIntro:
         return ImageChops.add(im, Image.blend(Image.new("RGB", im.size), glow, 0.4 * crt))
 
     def frame(self, t: float) -> Image.Image:
+        if t >= self.cut:
+            out = self.title.frame(t - self.cut)
+            return fx.flash(out, (255, 255, 255), max(0.9 * pulse(t, self.cut, 0.2),
+                                                       0.8 * ramp(t, self.duration - 0.15, self.duration)))
         z = self.zoom(t)
         crt = 1 - ramp(t, self.rush[0], self.rush[1] - 0.05, out_cubic)
         if z >= self.z_full - 1e-6:  # the picture fills the frame: no room left to draw
@@ -141,8 +141,7 @@ class CrtIntro:
             spill = 0.16 * crt * (0.85 + 0.15 * random.Random(round(t * FPS) + 9).random())
             out = Image.blend(out, ImageChops.screen(out, tube.filter(ImageFilter.GaussianBlur(60)).convert("RGB")), spill)
         out = fx.flash(out, (0, 0, 0), 1 - ramp(t, 0, 0.5, in_out_sine))
-        flash = max(0.7 * pulse(t, self.press, 0.18), 0.45 * pulse(t, self.turbo, 0.16),
-                    0.8 * ramp(t, self.duration - 0.15, self.duration))
+        flash = 0.5 * ramp(t, self.press, self.cut, in_cubic)  # into the cut
         return fx.flash(out, (255, 255, 255), flash)
 
     def cues(self) -> list[Cue]:

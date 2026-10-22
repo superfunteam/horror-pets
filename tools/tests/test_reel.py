@@ -43,19 +43,25 @@ def test_the_name_is_shown_and_shouted_once_and_the_hits_start_on_the_second_dro
     start, fights = start_of(seq, FightToEvolve)
     assert start == pytest.approx(trailer.bar(15))
     assert start + fights.cuts[1].at == pytest.approx(trailer.bar(16))  # the hits start on the drop
-    assert fights.special_at > fights.cuts[6].at  # Pinhead's super comes after six of them
+    assert fights.specials_at == pytest.approx(fights.cuts[1].at + 5 * trailer.BEAT)  # five hits, then the specials
 
 
-def test_the_phones_tap_in_the_breakdown_and_fight_from_the_last_drop(seq):
+def test_the_phones_tap_as_the_breakdown_starts_and_fight_from_the_last_drop(seq):
     start, pvp = start_of(seq, OnlinePvp)
-    assert start + pvp.tap == pytest.approx(trailer.bar(28))
-    assert start + pvp.fight_at == pytest.approx(trailer.bar(32))
-    assert start + pvp.duration == pytest.approx(trailer.bar(36))
+    song = [c for c in seq.cues() if c.music]
+    splice = song[1].t
+
+    def in_song(t: float) -> float:  # where video time t falls in the song, across the splice
+        return t if t < splice else song[1].skip + (t - splice)
+
+    assert in_song(start + pvp.tap) == pytest.approx(trailer.bar(24))
+    assert in_song(start + pvp.fight_at) == pytest.approx(trailer.bar(32))
 
 
-def test_the_music_starts_with_the_video(seq):
-    (music,) = [c for c in seq.cues() if c.music]
-    assert music.t == 0 and music.skip == 0 and music.path == trailer.SONG
+def test_the_song_jumps_from_bar_26_to_31_on_the_beat(seq):
+    first, second = [c for c in seq.cues() if c.music]
+    assert first.t == 0 and first.skip == 0 and first.length == pytest.approx(trailer.bar(26) + 0.02)
+    assert second.t == pytest.approx(trailer.bar(26)) and second.skip == pytest.approx(trailer.bar(31))
 
 
 def test_the_phones_never_pass_through_each_other(seq):

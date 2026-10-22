@@ -22,7 +22,9 @@ from generate_announcer import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 LINES = {
     "title": "[shouting] VIRTUAL PET SLASHER 2 TURBO!!!",
-    "learn": "[shouting] LEARN OVER SIXTY SPECIAL ATTACKS!!!",
+    "attacks": "[shouting] KILL TO UNLOCK OVER SIXTY SPECIAL ATTACKS!!!",
+    "tap": "[shouting] TAP TO FIGHT YOUR FRIENDS!!!",
+    "outro": "[shouting] SLASHING ON ANDROID PHONES AND ANDROID TV THIS HALLOWEEN!!!",
 }
 
 

@@ -1,5 +1,6 @@
-"""The outro, on the song's final hit: a TV and a phone running the game rise out of the storm, the line "Slashing on
-Android phones & Android TV this Halloween" slams down over them, the site's address fades up, and it all goes dark.
+"""The outro, as the song ends: a TV and a phone running the game rise out of the storm, the line "Slashing on Android
+phones & Android TV this Halloween" slams down over them as the announcer shouts it, the site's address fades up, and
+it all goes dark.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ TV = cast.ROOT / "video/art/tv.webp"
 STORM = cast.ROOT / "site/art/backdrop.webp"
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 URL = "PETS.SUPERFUN.GAMES"
+LINE = cast.ROOT / "video/voice/outro.wav"  # the line, shouted (tools/generate_video_voice.py)
 RIM = (255, 60, 110)
 
 
@@ -93,4 +95,4 @@ class Outro:
         return fx.flash(out, (0, 0, 0), ramp(t, self.duration - self.fade, self.duration, in_out_sine))
 
     def cues(self) -> list[Cue]:
-        return []
+        return [Cue(0.3, LINE, 1.15)]

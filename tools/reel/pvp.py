@@ -25,10 +25,12 @@ STORM = cast.ROOT / "site/art/backdrop.webp"
 RIM = (255, 60, 110)
 NFC = (150, 215, 255)
 LAG = 1.667  # Freddy's recording runs this far behind Jason's (lined up on Jason's super)
-# Where each phone's VS card starts in its recording, how long the stretch through FIGHT! runs, and when VS and FIGHT!
-# land in Jason's (seconds after its start).
+# Where each phone's VS card starts in its recording, and how long the stretch through FIGHT! runs.
 VS_JASON, VS_FREDDY, VS_LEN = 30.3, 29.0, 5.0
-VS_SLAM, FIGHT_SLAM = 1.13, 3.02
+FIGHT_SLAM = 1.13 + 1.89  # FIGHT! lands this long after the VS card starts, in Jason's
+# The last blow's K.O. into the results, in each phone's K.O. recording (K.O. lands 0.2 s in, the results ~3 s after).
+KO_JASON, KO_FREDDY = (10.5, 17.0), (11.5, 18.0)
+TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to fight your friends!" (tools/generate_video_voice.py)
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
 
 
@@ -51,32 +53,32 @@ def feed(file: str, at: float, length: float, start: float, end: float) -> Feed:
 
 
 class OnlinePvp:
-    """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones coming together, the tap on the next bar's
-    downbeat, [vs] bars of VS after that bar, and [fight] bars of fighting, the last of them the K.O."""
+    """[bar] seconds a bar, [beat] a beat: [approach] bars of the phones flying in and turning to meet, the tap on the
+    next bar's downbeat, [vs] bars of VS after that bar, [turns] bars of fighting and [ko_bars] of the K.O. and the
+    results."""
 
-    def __init__(self, bar: float, beat: float, approach: int = 3, vs: int = 2, fight: int = 5):
+    def __init__(self, bar: float, beat: float, approach: int = 3, vs: int = 2, turns: int = 3, ko_bars: int = 1):
         self.bar, self.beat = bar, beat
         b = bar
         self.tap = approach * b
         self.vs_at = self.tap + b
         self.fight_at = self.vs_at + vs * b
-        self.duration = self.fight_at + fight * b
-        ko = self.duration - b
-        # The turns both phones play (Jason's recording's times): a hit, Freddy's drain, Jason's super and its slashes.
-        turns = {4: [(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)],
-                 3: [(84.6, 86.6), (92.6, 95.0), (132.2, 135.2)]}[fight - 1]
+        self.ko = self.fight_at + turns * b
+        self.duration = self.ko + ko_bars * b
+        # The turns both phones play (Jason's recording's times), the last always Jason's super and its slashes.
+        played = [(84.6, 86.6), (92.6, 95.0), (132.2, 134.2), (134.2, 135.8)] if turns == 4 else \
+            [(84.6, 86.6), (92.6, 95.0), (132.2, 135.2)][-turns:]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
         self.feeds = (
             [feed("home-jason-phone.mp4", 0, self.tap, 1.5, 1.5 + self.tap),
              feed("pvp-jason.mp4", self.tap, self.fight_at - self.tap, VS_JASON, VS_JASON + VS_LEN)]
-            + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e) for k, (s, e) in enumerate(turns)]
-            + [feed("pvp-jason-ko.mp4", ko, b, 10.6, 14.4)],
+            + [feed("pvp-jason.mp4", self.fight_at + k * b, b, s, e) for k, (s, e) in enumerate(played)]
+            + [feed("pvp-jason-ko.mp4", self.ko, ko_bars * b, *KO_JASON)],
             [feed("home-freddy-phone.mp4", 0, self.tap, 1.5, 1.5 + self.tap),
              feed("pvp-freddy.mp4", self.tap, self.fight_at - self.tap, VS_FREDDY, VS_FREDDY + VS_LEN)]
-            + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG) for k, (s, e) in enumerate(turns)]
-            + [feed("pvp-freddy-ko.mp4", ko, b, 11.6, 15.4)],
+            + [feed("pvp-freddy.mp4", self.fight_at + k * b, b, s + LAG, e + LAG) for k, (s, e) in enumerate(played)]
+            + [feed("pvp-freddy-ko.mp4", self.ko, ko_bars * b, *KO_FREDDY)],
         )
-        self.ko = ko
         storm = fx.cover(Image.open(STORM).convert("RGB"), round(W * 1.1), round(H * 1.1))
         self.storm = ImageEnhance.Brightness(storm.filter(ImageFilter.GaussianBlur(3))).enhance(0.38)
         self.vignette = fx.vignette(W, H, 0.75)
@@ -181,7 +183,7 @@ class OnlinePvp:
         return fx.flash(out, (255, 255, 255), max(0.75 * pulse(t, self.tap, 0.16), 0.4 * pulse(t, self.ko, 0.12)))
 
     def cues(self) -> list[Cue]:
-        stretch = (self.fight_at - self.tap) / VS_LEN
-        vs, fight = self.tap + VS_SLAM * stretch, self.tap + FIGHT_SLAM * stretch
-        return [Cue(vs, cast.voice("versus"), 1.1), Cue(fight, cast.voice("fight"), 1.1),
-                Cue(self.ko + 0.05, cast.voice("ko"), 1.1)]
+        fight = self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN
+        ko = 0.2 * (self.duration - self.ko) / (KO_JASON[1] - KO_JASON[0])  # the K.O. on screen, sped up to fit
+        return [Cue(self.tap + 0.25, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1),
+                Cue(self.ko + ko, cast.voice("ko"), 1.1)]

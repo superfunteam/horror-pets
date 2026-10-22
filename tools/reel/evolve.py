@@ -1,10 +1,12 @@
-"""Fight to evolve your skills: real fights cut on the beat, what winning brings, then a wall of attack cards.
+"""Fight to evolve your skills: real fights cut on the beat, then a wall of attack cards.
 
-First, gameplay recorded off the TV emulator, cut on the beat: the VS card into FIGHT!, a crit, Pinhead's super and
-chains (on the song's second drop), Freddy's claws draining, a potion, a combo, Jason's guard break into a K.O., with the
-title slamming in over the start; then Pinhead joining the stable, and Freddy learning a new special. Then the game's learnable attacks recut as cards: two rows sliding opposite ways, each
-card a killer swinging their sprite on their stage while the attack's marks (AttackMarks.kt, see marks.py) rip across
-it, its name and its four lit tiers underneath.
+First, gameplay recorded off the TV emulator (driven by the app's puppet mode), cut on the beat: Leatherface and Michael
+trading blows under the title, then from the song's drop a different killer landing a hit every beat (Chucky,
+Ghostface, Jason, Freddy, Leatherface), then specials one after another (Pinhead's chains, Chucky's voodoo,
+Ghostface's knives, Leatherface's saw dance) and a K.O. Then the game's learnable attacks recut as cards, as the
+announcer shouts that killing unlocks over sixty: two rows sliding opposite ways, each card a killer swinging their
+sprite on their stage while the attack's marks (AttackMarks.kt, see marks.py) rip across it, its name and its four lit
+tiers underneath.
 """
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ from .motion import pulse
 from .render import H, W, Cue
 
 TITLE = cast.ROOT / "video/art/title-fight.webp"
-LEARN = cast.ROOT / "video/voice/learn.wav"  # "Learn over sixty special attacks!" (tools/generate_video_voice.py)
+ATTACKS = cast.ROOT / "video/voice/attacks.wav"  # "Kill to unlock over sixty special attacks!" (generate_video_voice.py)
 FONT = str(cast.ROOT / "app/src/main/res/font/barlow_condensed_extrabold.ttf")
 STORM = cast.ROOT / "site/art/backdrop.webp"
 CARD_W, CARD_H, CARD_GAP = 380, 520, 44
@@ -69,26 +71,26 @@ def _text(s: str, size: int, fill, width: float) -> Image.Image:
 
 
 class FightToEvolve:
-    """[bars] bars of [bar] seconds: [montage_bars] of fights cut on the beat, a bar of the unlock, the rest of cards.
-    The VS card runs up to the [drop] (seconds in), where the hits start flying, a different killer every beat, before
-    Pinhead's super, his chains and a K.O."""
+    """[bars] bars of [bar] seconds: [montage_bars] of fights cut on the beat, the rest of cards. A fight plays under
+    the title up to the [drop] (seconds in), where the hits start flying, a different killer every beat, then their
+    specials one after another (the attacks themselves, without their name banners), and a K.O."""
 
-    def __init__(self, bar: float, beat: float, drop: float, bars: int = 9, montage_bars: int = 4):
+    def __init__(self, bar: float, beat: float, drop: float, bars: int = 7, montage_bars: int = 4):
         self.bar, self.beat, self.drop = bar, beat, drop
         self.duration = bars * bar
-        self.unlock_at = montage_bars * bar
-        self.cards_at = (montage_bars + 1) * bar
+        self.cards_at = montage_bars * bar
         # (beats long, recording, from, to): the montage, cut on the beat.
         montage = [
-            (round(drop / beat), "tv-fight-chucky-ghostface.mp4", 1.3, 4.7),  # Chucky vs Ghostface: VS into FIGHT!
-            (1, "tv-fight-leatherface-michael.mp4", 12.6, 13.5),  # Leatherface's saw, a crit
+            (round(drop / beat), "tv-fight-leatherface-michael.mp4", 7.0, 9.6),  # Leatherface vs Michael, under the title
             (1, "tv-fight-chucky-ghostface.mp4", 7.1, 7.9),  # Chucky's crit
             (1, "tv-fight-ghostface-freddy.mp4", 20.6, 21.5),  # Ghostface's combo crit
             (1, "tv-fight-pinhead.mp4", 7.7, 8.6),  # Jason's crit on Pinhead
             (1, "tv-fight-freddy.mp4", 28.6, 29.8),  # Freddy's claws draining Jason
-            (1, "tv-fight-ghostface-freddy.mp4", 24.6, 25.5),  # Ghostface's guard break
-            (2, "tv-fight-pinhead.mp4", 27.45, 28.3),  # Pinhead's super cut-in
-            (2, "tv-fight-pinhead.mp4", 28.8, 30.3),  # his chains for 55
+            (1, "tv-fight-leatherface-michael.mp4", 12.6, 13.5),  # Leatherface's saw, a crit
+            (2, "tv-fight-pinhead.mp4", 28.8, 30.3),  # specials: Pinhead's chains for 55,
+            (1, "tv-fight-chucky-ghostface.mp4", 22.6, 23.6),  # Chucky's voodoo for 103,
+            (1, "tv-fight-ghostface-freddy.mp4", 30.4, 31.6),  # Ghostface's knives,
+            (1, "tv-fight-leatherface-michael.mp4", 37.2, 38.6),  # Leatherface's saw dance
         ]
         ko = montage_bars * 4 - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
@@ -97,9 +99,7 @@ class FightToEvolve:
         for beats, file, start, end in montage:
             self.cuts.append(Cut(at, beats * beat, Clip(file, start, end, speed=(end - start) / (beats * beat))))
             at += beats * beat
-        self.special_at = self.cuts[-3].at
-        self.cuts.append(Cut(self.unlock_at, bar, Clip("tv-fight-pinhead.mp4", 94.3, 96.3, speed=2.0 / bar), zoom=1.5,
-                             focus=(0.5, 0.42)))  # UNLOCKED!
+        self.specials_at = self.cuts[6].at
         self.title = Slam(Image.open(TITLE).convert("RGBA"), (W / 2, H * 0.36), 980, land=0.14, leave=drop - 0.25,
                           exit_dx=2400, glint_at=0.55)
         storm = fx.cover(Image.open(STORM).convert("RGB"), W, H).filter(ImageFilter.GaussianBlur(4))
@@ -195,5 +195,4 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        return [Cue(self.special_at, cast.voice("special_move"), 1.1), Cue(self.unlock_at + 0.1, cast.voice("unlocked"), 1.1),
-                Cue(self.cards_at + 0.1, LEARN, 1.15)]
+        return [Cue(self.specials_at, cast.voice("special_move"), 1.1), Cue(self.cards_at + 0.1, ATTACKS, 1.15)]

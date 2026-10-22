@@ -95,7 +95,7 @@ class RaiseTrain:
         left, top = (scene.width - w) // 2, (scene.height - h) // 2
         panel = scene.crop((left, top, left + w, top + h)).convert("RGBA")
         floor = stage["floorY"] * scene.height - top
-        cell_h = round(scene.height * 0.62)
+        cell_h = round(scene.height * 0.62 * sprites.manifest(p.pet).get("displayScale", 1.0))  # Chucky is a doll
         anim, at = self.anim_at(p, t)
         k = sprites.frame_at(p.pet, anim, at)
         cell = sprites.cell(p.pet, anim, k, cell_h)

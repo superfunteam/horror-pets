@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -76,3 +78,36 @@ def voice(name: str) -> Path:
 
 def sfx(name: str) -> Path:
     return ROOT / f"audio-final/sfx/{name}.wav"
+
+
+# The killers' sounds in their intros: each one's special-move sound from the game, made for the trailer only (the
+# game's files are left as they are): Pinhead's hit, the second half of his, is 50% louder, and all are matched in
+# loudness. Michael has no sound of his own; he is silent.
+INTRO_LUFS = -14.0
+INTRO_BOOST = {"pinhead": (0.7, 1.5)}  # from this many seconds in, this many times louder
+SOUND_CACHE = ROOT / "art-work/video/cache/sfx"
+
+
+def _lufs(path: Path) -> float:
+    err = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path), "-af", "ebur128", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    return float(re.findall(r"I:\s+(-?[\d.]+) LUFS", err)[-1])
+
+
+def intro_sound(pet: str) -> Path | None:
+    """[pet]'s sound for its intro (see INTRO_LUFS), built into the cache the first time; None for Michael."""
+    if pet == "michael":
+        return None
+    out = SOUND_CACHE / f"intro-{pet}.wav"
+    if out.exists():
+        return out
+    SOUND_CACHE.mkdir(parents=True, exist_ok=True)
+    boosted = SOUND_CACHE / f"intro-{pet}-boosted.wav"
+    at, gain = INTRO_BOOST.get(pet, (0.0, 1.0))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(sfx(f"special_{pet}")), "-af",
+                    f"volume={gain}:enable='gte(t,{at})'", str(boosted)], check=True)
+    db = INTRO_LUFS - _lufs(boosted)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(boosted), "-af",
+                    f"volume={db:.2f}dB,alimiter=limit=0.95:level=disabled", str(out)], check=True)
+    boosted.unlink()
+    return out
