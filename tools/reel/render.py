@@ -61,7 +61,7 @@ class Sequence:
 
     def frame(self, t: float) -> Image.Image:
         i = max(i for i, s in enumerate(self.starts) if s <= t + 1e-9)
-        return self.scenes[i].frame(t - self.starts[i])
+        return self.scenes[i].frame(max(0.0, t - self.starts[i]))  # never a hair before a scene's start
 
     def cues(self) -> list[Cue]:
         return [replace(c, t=c.t + s) for s, scene in zip(self.starts, self.scenes) for c in scene.cues()] + list(self.extra)

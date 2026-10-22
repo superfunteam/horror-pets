@@ -140,7 +140,9 @@ class OnlinePvp:
         z = 1 + 0.05 * t / self.duration
         bw, bh = self.storm.size
         vw, vh = W * 1.1 / z, H * 1.1 / z
-        box = (bw / 2 - vw / 2 - dx, bh / 2 - vh / 2 - dy, bw / 2 + vw / 2 - dx, bh / 2 + vh / 2 - dy)
+        cx = min(max(bw / 2 - dx, vw / 2), bw - vw / 2)
+        cy = min(max(bh / 2 - dy, vh / 2), bh - vh / 2)
+        box = (cx - vw / 2, cy - vh / 2, cx + vw / 2, cy + vh / 2)
         canvas = self.storm.resize((W, H), Image.BILINEAR, box=box).convert("RGBA")
         self.embers.draw(canvas, t, False, dx, dy)
         self.burst(canvas, t)
