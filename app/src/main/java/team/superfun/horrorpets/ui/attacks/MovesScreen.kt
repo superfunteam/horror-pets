@@ -183,7 +183,8 @@ private fun SlotRow(
         verticalArrangement = Arrangement.Center,
     ) {
         BasicText(
-            "${slot.label.uppercase()}  ·  ${listOf("STRIKE", "HEAVY", "SPECIAL")[slot.ordinal]}",
+            // A light attack is what STRIKE swings; HEAVY and SPECIAL are their own commands.
+            if (slot == Slot.LIGHT) "LIGHT  ·  STRIKE" else slot.label.uppercase(),
             style = displayStyle(11.sp, FontWeight.Bold, color = Amber, tracking = 0.22f),
             maxLines = 1,
         )

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
@@ -152,7 +153,8 @@ internal fun AttackCard(
             maxLines = 1,
         )
         Spacer(Modifier.height(8.dp))
-        AttackPreview(attack, Modifier.fillMaxWidth().height(PreviewHeight))
+        // The preview gives up height first, so on a short screen (a phone's insets) the stats always fit.
+        AttackPreview(attack, Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 34.dp, max = PreviewHeight))
         Spacer(Modifier.height(8.dp))
         for (line in statLines(attack, vs)) StatRow(line)
         footer()

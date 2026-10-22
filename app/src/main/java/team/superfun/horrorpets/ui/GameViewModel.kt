@@ -872,6 +872,15 @@ class GameViewModel(
         persist(game)
     }
 
+    /** Debug builds only (see `MainActivity`): sets the selected pet's level, to try the attacks it unlocks. */
+    fun debugSetLevel(level: Int) {
+        val s = _state.value
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        val game = s.game.withPet(pet.copy(level = level.coerceIn(1, Tuning.MAX_LEVEL), xp = 0))
+        _state.value = s.copy(game = game).routeHome()
+        persist(game)
+    }
+
     /** Back from MOVES. */
     fun onMovesBack() {
         val s = _state.value

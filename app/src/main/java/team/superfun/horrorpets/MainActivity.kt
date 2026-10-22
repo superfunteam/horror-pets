@@ -27,6 +27,7 @@ import kotlin.math.max
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.Anim
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
         audio = GameAudio(this)
         applyDebugTimeTravel(intent)
         vm.start()
+        applyDebugLevel(intent)
 
         // The music follows the screen. Collecting only while started means a stopped game stays quiet;
         // GameAudio ignores a track it is already playing, so coming back never restarts it.
@@ -172,6 +174,7 @@ class MainActivity : ComponentActivity() {
         // No vm.onResume() here: an Activity is always paused before it gets a new intent, so the real
         // onResume() follows and picks up the new clock offset.
         applyDebugTimeTravel(intent)
+        applyDebugLevel(intent)
     }
 
     /**
@@ -246,6 +249,22 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    /**
+     * Debug builds only: `adb shell am start -S -n team.superfun.horrorpets/.MainActivity --ei debug_level 14` sets the
+     * selected pet's level once the save has loaded, to try the attacks it unlocks.
+     */
+    private fun applyDebugLevel(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
+        val level = intent?.extras?.getInt(EXTRA_DEBUG_LEVEL, 0) ?: 0
+        if (level <= 0) return
+        lifecycleScope.launch {
+            vm.state.first { it.screen != Screen.Loading }
+            delay(1_000) // after the launch's own save of what it loaded, or that would write over this
+            Log.i(TAG, "Debug: selected pet to level $level")
+            vm.debugSetLevel(level)
+        }
+    }
+
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -271,6 +290,7 @@ class MainActivity : ComponentActivity() {
         }
         const val MS_PER_HOUR = 3_600_000.0
         const val EXTRA_ADVANCE_HOURS = "advance_hours"
+        const val EXTRA_DEBUG_LEVEL = "debug_level"
 
         val NO_REPEAT_KEYS = setOf(
             KeyEvent.KEYCODE_DPAD_CENTER,

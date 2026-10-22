@@ -74,7 +74,7 @@ fun LearnScreen(
             Modifier.fillMaxSize().padding(horizontal = safe.horizontal, vertical = safe.vertical),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            ScreenTitle("${pet.id.displayName} can learn a new ${attack.slot.label}!", "Level ${pet.level}")
+            ScreenTitle("${pet.id.displayName} can learn a new ${attack.slot.label} attack!", "Level ${pet.level}")
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.fillMaxWidth().weight(1f),

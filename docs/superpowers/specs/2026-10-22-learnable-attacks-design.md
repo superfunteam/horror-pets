@@ -222,9 +222,9 @@ the next time they're on Home, one after another.
 - Both cards play their attack's marks on a loop, so the player sees how much flashier the new one is.
 - Changes are marked: better in bright green ▲, worse in Amber ▼.
 - LEARN IT is focused first. Back means "decide later": the screen comes back next time.
-- **Either way the pet now knows the attack.** A MOVES panel on the pet's card in the Stable lets the player
-  swap any known attack into its slot later, so skipping one is never permanent. (This is my
-  recommendation; it could also be a one-time choice, Pokémon-style.)
+- **Either way the pet now knows the attack.** MOVES, on Home's action bar after FIGHT, shows each slot's
+  four attacks (the locked ones too, with the level they unlock at) and equips any unlocked one, so skipping
+  one is never permanent.
 
 ## In the fight
 
@@ -276,7 +276,7 @@ how long all scaled by the attack's tier.
   are new fields with defaults, so existing saves load with today's attacks equipped.
 - **Engine:** power, accuracy, crit and meter come from the equipped attack, and perks apply when it lands. A
   daze-chance perk rolls one extra die only for attacks that have one.
-- **Screens:** the new-attack screen, the MOVES panel in the Stable, attack names in callouts and the help
+- **Screens:** the new-attack screen, MOVES on Home's action bar, attack names in callouts and the help
   line, and the mark layer with tier scaling.
 - **Relay:** passes each fighter's equipped attacks.
 - **Tests:**
