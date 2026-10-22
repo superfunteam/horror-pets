@@ -193,7 +193,8 @@ class OnlinePvp:
 
     def cues(self) -> list[Cue]:
         said = self.tap + TAP_REST_AT + (TAP_END - TAP_REST) / TAP_REST_TEMPO  # the line's done
-        fight = max(self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN, said + 0.12)  # on the FIGHT! card
+        fight = max(self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN, said + 0.6)  # on the FIGHT! card,
+        # a breath after the line
         hits = [Cue(t - cast.punch(cast.blow(name)), cast.blow(name), cast.BLOW_GAIN[name], ducking=False)
                 for t, name in [*self.blows, (self.ko_hit, "knockout")]]
         line = [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15, length=TAP_REST - 0.17, fade_out=0.05),
