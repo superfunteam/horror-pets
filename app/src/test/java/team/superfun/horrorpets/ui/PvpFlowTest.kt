@@ -162,7 +162,9 @@ private class App(pet: PetState, relay: PvpRelay?) {
 
 class PvpFlowTest {
     private val hub = RelayHub()
-    private fun jasonApp(relay: PvpRelay = hub.app()) = App(PetState(PetId.JASON, strength = 100.0, level = 3), relay)
+    /** A strong level-3 Jason who has already been offered the attacks he unlocked (so no learn screen comes up). */
+    private fun jasonApp(relay: PvpRelay = hub.app()) =
+        App(PetState(PetId.JASON, strength = 100.0, level = 3, known = setOf("jason_light_1", "jason_heavy_1")), relay)
     private fun freddyApp(relay: PvpRelay = hub.app()) = App(PetState(PetId.FREDDY, strength = 30.0), relay)
 
     /** Pumps both apps in step, so neither runs ahead of the other's requests. */

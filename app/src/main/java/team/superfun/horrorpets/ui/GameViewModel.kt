@@ -46,6 +46,8 @@ import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.nextFood
 import team.superfun.horrorpets.model.nextPlayGag
+import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.pendingAttacks
 import team.superfun.horrorpets.pvp.PvpException
 import team.superfun.horrorpets.pvp.PvpMatch
 import team.superfun.horrorpets.pvp.PvpRelay
@@ -145,7 +147,7 @@ class GameViewModel(
         _state.value = if (s.game.selected == null) {
             s.copy(screen = Screen.Switcher(SwitcherMode.ONBOARD), voice = s.voice + "choose_your_killer")
         } else {
-            val home = s.copy(screen = Screen.Home).routeFakeDeath()
+            val home = s.copy(screen = Screen.Home).routeHome()
             if (away == null) home else home.withAwayToast(away)
         }
     }
@@ -185,7 +187,7 @@ class GameViewModel(
         if (s.screen == Screen.Loading) return // the save has not been read yet: never overwrite it
         val (game, away) = applyElapsed(s.game, clock.nowMs(), clockFloorMs)
         if (game == s.game) return
-        val routed = s.copy(game = game).routeFakeDeath()
+        val routed = s.copy(game = game).routeHome()
         _state.value = if (welcomeBack) routed.withAwayToast(away) else routed
         persist(game)
     }
@@ -264,7 +266,7 @@ class GameViewModel(
         val s = _state.value
         if (!s.stableOpen || !s.game.isUnlocked(p)) return
         val game = s.game.copy(selected = p)
-        _state.value = s.copy(game = game, stableOpen = false).routeFakeDeath()
+        _state.value = s.copy(game = game, stableOpen = false).routeHome()
         if (game != s.game) persist(game)
     }
 
@@ -295,7 +297,7 @@ class GameViewModel(
             SwitcherMode.ONBOARD -> {
                 // The starter is the whole stable to begin with: the others are unlocked by beating them.
                 val game = s.game.copy(pets = s.game.pets + (p to (s.game.pets[p] ?: PetState(p))), selected = p)
-                _state.value = s.copy(game = game, screen = Screen.Home).routeFakeDeath()
+                _state.value = s.copy(game = game, screen = Screen.Home).routeHome()
                 persist(game)
             }
         }
@@ -774,7 +776,7 @@ class GameViewModel(
             return
         }
         running = null
-        val done = action.finish(s).copy(busy = false, petAnim = null).routeFakeDeath()
+        val done = action.finish(s).copy(busy = false, petAnim = null).routeHome()
         _state.value = done
         if (done.game != s.game) persist(done.game)
     }
@@ -810,17 +812,89 @@ class GameViewModel(
         _state.value = s.copy(refuse = reason, sfx = s.sfx + "refuse").beginAction(listOf(Anim.FAIL))
     }
 
-    private fun UiState.goHome(): UiState = copy(screen = Screen.Home, refuse = null, stableOpen = false).routeFakeDeath()
+    private fun UiState.goHome(): UiState = copy(screen = Screen.Home, refuse = null, stableOpen = false).routeHome()
+
+    // ---- attacks: learning and equipping -------------------------------------------------------
+
+    /** Attacks the player put off with Back on the learn screen: not offered again until the next launch. */
+    private val putOff = mutableSetOf<String>()
+
+    /** The learn screen's choice: [learn] swaps the new attack into its slot, else the old one stays. The pet knows it either way. */
+    fun onLearn(learn: Boolean) {
+        val s = _state.value
+        val screen = s.screen as? Screen.Learn ?: return
+        val pet = s.game.pets[screen.pet] ?: return
+        val attack = attackById(screen.attack) ?: return
+        val updated = pet.copy(
+            known = pet.known + attack.id,
+            equipped = if (learn) pet.equipped + (attack.slot to attack.id) else pet.equipped,
+        )
+        val game = s.game.withPet(updated)
+        _state.value = s.copy(game = game, sfx = s.sfx + if (learn) "levelup" else "ui_select").goHome()
+        persist(game)
+    }
+
+    /** Back on the learn screen: the choice waits until the next launch. */
+    fun onLearnLater() {
+        val s = _state.value
+        val screen = s.screen as? Screen.Learn ?: return
+        putOff += screen.attack
+        _state.value = s.goHome()
+    }
+
+    /** MOVES on Home: the selected pet's attacks. */
+    fun onMovesPressed() {
+        val s = _state.value
+        s.homePet() ?: return
+        _state.value = s.copy(screen = Screen.Moves, refuse = null)
+    }
+
+    /**
+     * Equips attack [id] in its slot, if it is the selected pet's and unlocked by its level (choosing one it was never
+     * offered counts as learning it). Anything else is refused.
+     */
+    fun onEquip(id: String) {
+        val s = _state.value
+        if (s.screen != Screen.Moves) return
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        val attack = attackById(id)
+        if (attack == null || attack.pet != pet.id || attack.level > pet.level) {
+            _state.value = s.copy(sfx = s.sfx + "refuse")
+            return
+        }
+        if (pet.equipped[attack.slot] == id || (attack.tier == 0 && pet.equipped[attack.slot] == null)) return
+        val updated = pet.copy(
+            known = if (attack.tier > 0) pet.known + id else pet.known,
+            equipped = if (attack.tier == 0) pet.equipped - attack.slot else pet.equipped + (attack.slot to id),
+        )
+        val game = s.game.withPet(updated)
+        _state.value = s.copy(game = game, sfx = s.sfx + "ui_select")
+        persist(game)
+    }
+
+    /** Back from MOVES. */
+    fun onMovesBack() {
+        val s = _state.value
+        if (s.screen != Screen.Moves) return
+        _state.value = s.goHome()
+    }
 
     /**
      * A pet whose fake death has not been shown yet is shown it the moment Home would take over.
      * State-based on purpose: it holds whether the flag was set by a load, a tick, a resume or a switch.
      */
-    private fun UiState.routeFakeDeath(): UiState {
+    /**
+     * Home is not always where the player lands: the selected pet's due fake death comes first, then any attack it
+     * has unlocked but not been offered yet (one learn screen at a time; see [pendingAttacks]).
+     */
+    private fun UiState.routeHome(): UiState {
         if (screen != Screen.Home || busy) return this
         val id = game.selected ?: return this
-        if (game.pets[id]?.fakeDeathPending != true) return this
-        return copy(screen = Screen.FakeDeath(id), refuse = null)
+        val pet = game.pets[id] ?: return this
+        if (pet.fakeDeathPending) return copy(screen = Screen.FakeDeath(id), refuse = null)
+        if (stableOpen) return this
+        val next = pendingAttacks(pet).firstOrNull { it.id !in putOff } ?: return this
+        return copy(screen = Screen.Learn(id, next.id), refuse = null, sfx = sfx + "unlock")
     }
 
     private fun GameState.withPet(p: PetState): GameState = copy(pets = pets + (p.id to p))

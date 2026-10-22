@@ -184,6 +184,7 @@ fun HomeScreen(
     onCare: (CareAction) -> Unit,
     onWalk: (dir: Int) -> Unit,
     onFight: () -> Unit,
+    onMoves: () -> Unit,
     onOpenStable: () -> Unit,
     onCloseStable: () -> Unit,
     onStablePick: (PetId) -> Unit,
@@ -587,6 +588,7 @@ fun HomeScreen(
                     lastWasFight = true
                     onFight()
                 },
+                onMoves = onMoves,
                 playFocus = playFocus,
                 upFocus = if (badgeShown) badgeFocus else null,
                 modifier = Modifier.align(Alignment.BottomCenter),

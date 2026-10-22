@@ -5,6 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
+import androidx.compose.ui.unit.dp
+import team.superfun.horrorpets.model.Attacks
+import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.attacksOf
+import team.superfun.horrorpets.model.Slot
+import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.ui.theme.Amber
 
 /** The help window's text: the move's hint in capitals, its parts split by Amber dots. */
@@ -26,12 +32,40 @@ class HelpTextTest {
     }
 
     @Test
-    fun everyMovesHintHasTwoParts() {
+    fun everyMovesHintHasTwoPartsWhateverAttackItSwings() {
         for (pet in PetId.entries) {
-            for (move in Move.entries) {
-                assertEquals("$pet $move", 1, helpText(moveHint(move, pet)).spanStyles.size)
+            for (tier in 0..3) {
+                val kit = Kit(attacksOf(pet, Slot.LIGHT)[tier], attacksOf(pet, Slot.HEAVY)[tier], attacksOf(pet, Slot.SPECIAL)[tier])
+                for (move in Move.entries) {
+                    assertEquals("$pet tier $tier $move", 1, helpText(moveHint(move, kit)).spanStyles.size)
+                }
             }
         }
+    }
+
+    @Test
+    fun aHintNamesTheAttackAndWhatItAdds() {
+        val crush = Kit.base(PetId.JASON).copy(heavy = attackById("jason_heavy_2")!!)
+        assertEquals("Crystal Lake Crush  \u00b7  breaks a Block, a Strike cuts it off, 25% daze", moveHint(Move.HEAVY, crush))
+        val hack = Kit.base(PetId.JASON).copy(light = attackById("jason_light_2")!!)
+        assertEquals("Lakeside Hack  \u00b7  quick hit, interrupts a Heavy, +8% crit", moveHint(Move.STRIKE, hack))
+        assertEquals("Machete Frenzy  \u00b7  never misses, bleeds 3 turns \u00d7 6%", moveHint(Move.SPECIAL, Kit.base(PetId.JASON)))
+        assertEquals("Dream Claws  \u00b7  never misses, drains 50%", moveHint(Move.SPECIAL, Kit.base(PetId.FREDDY)))
+    }
+
+    @Test
+    fun calloutsNameTheAttackUnderItsKindOfMove() {
+        val kit = Kit.base(PetId.FREDDY).copy(special = attackById("freddy_special_3")!!)
+        assertEquals("WELCOME TO PRIME TIME!", calloutText(Move.SPECIAL, kit))
+        assertEquals("SPECIAL", calloutCaption(Move.SPECIAL))
+        assertEquals("CLAW SWIPE!", calloutText(Move.STRIKE, kit))
+        assertEquals("BLOCK", calloutText(Move.BLOCK, kit))
+        assertEquals(null, calloutCaption(Move.BLOCK))
+        // The longest name still fits a fighter's half of a 4:3 screen (0.4 of 720dp), at no less than 15sp.
+        val longest = Attacks.maxBy { it.name.length }.name.uppercase() + "!"
+        val size = calloutSize(longest, 288.dp)
+        assertTrue(size.value >= 15f)
+        assertTrue("it fits", 40f + longest.length * 0.56f * size.value <= 288f)
     }
 }
 

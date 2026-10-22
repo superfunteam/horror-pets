@@ -299,7 +299,7 @@ class MainActivity : ComponentActivity() {
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
             Screen.Loading, is Screen.FakeDeath -> null
             Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
-            Screen.Home -> state.game.selected?.name?.lowercase()
+            Screen.Home, is Screen.Learn, Screen.Moves -> state.game.selected?.name?.lowercase()
             is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
         }
 
