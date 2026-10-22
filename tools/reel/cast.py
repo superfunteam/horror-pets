@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import wave
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from . import fx
@@ -79,6 +81,26 @@ def voice(name: str) -> Path:
 
 def sfx(name: str) -> Path:
     return ROOT / f"audio-final/sfx/{name}.wav"
+
+
+# How loud the game's fight sounds play over the song, which they are not mastered for: about 6 dB over it where
+# they land (specials are fuller, and need less).
+SFX_GAIN = {"hit": 2.0, "heavy_hit": 1.4, "crit": 1.9, "miss": 2.2, "ko": 1.8}
+SPECIAL_GAIN = 1.2
+
+
+def sfx_gain(name: str) -> float:
+    return SPECIAL_GAIN if name.startswith("special_") else SFX_GAIN[name]
+
+
+@cache
+def punch(path: Path) -> float:
+    """When the WAV at [path] is loudest: seconds to the peak of its 10 ms envelope."""
+    with wave.open(str(path)) as w:
+        rate, channels = w.getframerate(), w.getnchannels()
+        x = np.frombuffer(w.readframes(w.getnframes()), np.int16).reshape(-1, channels).astype(float).mean(1)
+    n = max(1, rate // 100)
+    return float(np.argmax(np.convolve(np.abs(x), np.ones(n) / n, "same"))) / rate
 
 
 # The killers' sounds in their intros: the trailer's own clips in audio/trailer/<pet>.mp3 (supplied for the trailer;

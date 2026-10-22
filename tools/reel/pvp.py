@@ -30,9 +30,11 @@ VS_JASON, VS_FREDDY, VS_LEN = 30.3, 29.0, 5.0
 FIGHT_SLAM = 1.13 + 1.89  # FIGHT! lands this long after the VS card starts, in Jason's
 # The blows traded, in Jason's recording (Freddy's runs LAG behind): Jason cuts Freddy, Freddy's claws drain Jason.
 TRADES = [(84.7, 86.9), (92.6, 95.4), (108.6, 110.8)]
+TRADE_BLOWS = [86.22, 94.73, None]  # when each trade's blow lands, in Jason's recording (the game's hit sound plays)
 # In Jason's K.O. recording (Freddy's runs a second behind): the last exchange (both call their moves, Jason lands a
 # combo, Freddy whiffs) until K.O. lands, and the results.
 KO_EXCHANGE, KO_LANDS, RESULTS = (6.6, 11.3), 10.75, (13.3, 16.8)
+KO_BLOWS = ((8.22, "heavy_hit"), (9.8, "miss"))  # in that recording: Jason's combo lands, Freddy's swing misses
 TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends!" (tools/generate_video_voice.py)
 TAP_KILL = 1.04  # "KILL" in the line, which lands on the tap
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
@@ -74,6 +76,10 @@ class OnlinePvp:
         stretch = (KO_EXCHANGE[1] - KO_EXCHANGE[0]) / (2 * b)
         self.ko_hit = self.ko + (KO_LANDS - KO_EXCHANGE[0]) / stretch  # when K.O. hits the screens
         played = TRADES[:turns]
+        # When the blows land on the screens, and the game's sound for each: the trades, the combo, the whiff, the K.O.
+        self.blows = [(self.fight_at + k * b + (lands - s) * b / (e - s), "hit")
+                      for k, ((s, e), lands) in enumerate(zip(played, TRADE_BLOWS)) if lands is not None]
+        self.blows += [(self.ko + (lands - KO_EXCHANGE[0]) / stretch, name) for lands, name in KO_BLOWS]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
         self.feeds = tuple(
             [feed(f"home-{who}-phone.mp4", 0, self.tap, 1.5, 1.5 + self.tap),
@@ -181,5 +187,8 @@ class OnlinePvp:
 
     def cues(self) -> list[Cue]:
         fight = self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN
-        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1),
+        hits = [Cue(t, cast.sfx(name), cast.sfx_gain(name), ducking=False) for t, name in self.blows]
+        ko = Cue(self.ko_hit, cast.sfx("ko"), cast.sfx_gain("ko"), length=self.results_at + 0.4 - self.ko_hit,
+                 fade_out=0.3, ducking=False)
+        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1), *hits, ko,
                 Cue(self.ko_hit, cast.voice("ko"), 1.1)]

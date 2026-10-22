@@ -19,7 +19,8 @@ RATE = 48000
 @dataclass(frozen=True)
 class Cue:
     """A sound starting [t] seconds into a scene, at [gain]: from [skip] seconds into the file, for at most [length]
-    seconds, sped up by [tempo] (pitch kept), faded in and out. A [music] cue ducks under the others."""
+    seconds, sped up by [tempo] (pitch kept), faded in and out. A [music] cue ducks under the others, unless they are
+    not [ducking] (the fights' hits, a beat apart, would pump the song)."""
     t: float
     path: Path
     gain: float = 1.0
@@ -29,6 +30,7 @@ class Cue:
     fade_in: float = 0.0
     fade_out: float = 0.0
     music: bool = False
+    ducking: bool = True
 
 
 class Scene(Protocol):
@@ -91,22 +93,23 @@ def mix(cues: list[Cue], duration: float, dest: Path) -> Path:
     """[cues] mixed into a stereo WAV exactly [duration] long: the music ducked under everything else (the announcer),
     and a limiter so stacked hits do not clip."""
     args = [FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-t", f"{duration:.4f}", "-i", f"anullsrc=r={RATE}:cl=stereo"]
-    chains, music, rest = [], [], []
+    chains, music, ducking, rest = [], [], [], []
     for i, c in enumerate(cues, start=1):
         args += ["-i", str(c.path)]
         chains.append(f"{_chain(i, c)}[c{i}]")
-        (music if c.music else rest).append(f"[c{i}]")
+        (music if c.music else ducking if c.ducking else rest).append(f"[c{i}]")
 
     def bus(base: str, labels: list[str], name: str) -> str:
         # Mixed over the silent bed, so each bus is exactly [duration] long.
         return f"{base}{''.join(labels)}amix=inputs={len(labels) + 1}:normalize=0:duration=first[{name}]"
 
-    if music and rest:
-        chains += ["[0:a]asplit[bm][bv]", bus("[bm]", music, "m"), bus("[bv]", rest, "v"), "[v]asplit[vk][vo]",
+    if music and ducking:
+        chains += ["[0:a]asplit=3[bm][bv][br]", bus("[bm]", music, "m"), bus("[bv]", ducking, "v"),
+                   bus("[br]", rest, "r"), "[v]asplit[vk][vo]",
                    "[m][vk]sidechaincompress=threshold=0.1:ratio=3:attack=8:release=200[md]",
-                   "[md][vo]amix=inputs=2:normalize=0,alimiter=limit=0.8:level=disabled[out]"]
+                   "[md][vo][r]amix=inputs=3:normalize=0,alimiter=limit=0.8:level=disabled[out]"]
     else:
-        chains += [bus("[0:a]", music + rest, "a"), "[a]alimiter=limit=0.8:level=disabled[out]"]
+        chains += [bus("[0:a]", music + ducking + rest, "a"), "[a]alimiter=limit=0.8:level=disabled[out]"]
     subprocess.run(args + ["-filter_complex", ";".join(chains), "-map", "[out]", "-c:a", "pcm_s16le", str(dest)], check=True)
     return dest
 
