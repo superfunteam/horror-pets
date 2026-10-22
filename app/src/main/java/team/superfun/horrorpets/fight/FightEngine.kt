@@ -74,6 +74,10 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *   interrupt), and a BLOCK against it does nothing (no [FightEvent.Blocked], no counter).
  * - RUN (player only): the fight ends at once with `winner = CPU` and `playerRan = true`. No
  *   events, no dice, and `turn` and `playerHistory` are left as they were.
+ * - POTION (player only, while [FightState.playerPotions] lasts): no attack. The player heals
+ *   `round(maxHp * (0.5 + 0.5 * roll))` (never past max HP) before the CPU's move lands, so a potion can
+ *   save the player from a KO. Against it the CPU's STRIKE, HEAVY or SPECIAL attacks (nothing to interrupt
+ *   or block), and its BLOCK does nothing. It costs a potion and leaves the meters alone.
  *
  * ## Damage, crits, misses, meter
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
@@ -95,10 +99,12 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  *
  * PLAYER's attack (if any) is rolled before the CPU's. An attack that does not happen (an absorbed
  * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing) draws nothing, and RUN draws nothing.
+ * A POTION draws one double, the heal roll, in PLAYER's place (before the CPU's attack).
  *
  * ## Events and results
  * Events come in a fixed order: everything PLAYER's move caused, then everything the CPU's move
- * caused, then [FightEvent.Ko]. One side's group reads: [FightEvent.Blocked] (blocking sides only),
+ * caused, then [FightEvent.Ko]. A potion's group is just its [FightEvent.Heal]. One side's group reads:
+ * [FightEvent.Blocked] (blocking sides only),
  * the Hit or Miss, [FightEvent.Interrupted] (a STRIKE that cut off a HEAVY), then
  * [FightEvent.SpecialReady].
  *
@@ -109,12 +115,14 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * `playerHistory`.
  *
  * @throws IllegalStateException if the fight already has a winner.
- * @throws IllegalArgumentException if the CPU plays RUN, or either side plays SPECIAL with a meter
- *   below 100.
+ * @throws IllegalArgumentException if the CPU plays RUN or POTION, the player plays POTION with none
+ *   left, or either side plays SPECIAL with a meter below 100.
  */
 fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): TurnResult {
     check(s.winner == null) { "The fight is already over: ${s.winner} won" }
     require(cpuMove != Move.RUN) { "Only the player can run" }
+    require(cpuMove != Move.POTION) { "Only the player drinks potions" }
+    require(playerMove != Move.POTION || s.playerPotions > 0) { "No potions left" }
     requireSpecialReady(Side.PLAYER, s.player, playerMove)
     requireSpecialReady(Side.CPU, s.cpu, cpuMove)
 
@@ -122,10 +130,11 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         return TurnResult(s.copy(winner = Side.CPU, playerRan = true), emptyList())
     }
 
-    val player = act(Side.PLAYER, s.player, s.cpu, playerMove, cpuMove, rng)
+    val player = if (playerMove == Move.POTION) drink(s.player, rng) else act(Side.PLAYER, s.player, s.cpu, playerMove, cpuMove, rng)
     val cpu = act(Side.CPU, s.cpu, s.player, cpuMove, playerMove, rng)
 
-    val playerHp = (s.player.hp - cpu.damage).coerceAtLeast(0)
+    // A potion's heal lands before the CPU's move does.
+    val playerHp = (s.player.hp + player.healed - cpu.damage).coerceAtLeast(0)
     val cpuHp = (s.cpu.hp - player.damage).coerceAtLeast(0)
     val winner = when {
         playerHp > 0 && cpuHp > 0 -> null
@@ -142,6 +151,7 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         turn = s.turn + 1,
         playerHistory = s.playerHistory + playerMove,
         winner = winner,
+        playerPotions = s.playerPotions - if (playerMove == Move.POTION) 1 else 0,
     )
     return TurnResult(next, events)
 }
@@ -152,8 +162,15 @@ private fun requireSpecialReady(side: Side, f: Fighter, move: Move) {
     }
 }
 
-/** What one side's move did this turn: its events, the damage it dealt, and its meter afterwards. */
-private class Action(val events: List<FightEvent>, val damage: Int, val meter: Int)
+/** What one side's move did this turn: its events, the damage it dealt, its meter afterwards, and what it healed. */
+private class Action(val events: List<FightEvent>, val damage: Int, val meter: Int, val healed: Int = 0)
+
+/** The player drinks a potion: one roll for how much of their max HP it gives back, capped at what is missing. */
+private fun drink(me: Fighter, rng: Random): Action {
+    val share = FightTuning.POTION_HEAL_MIN + (FightTuning.POTION_HEAL_MAX - FightTuning.POTION_HEAL_MIN) * rng.nextDouble()
+    val healed = (me.maxHp * share).roundToInt().coerceAtMost(me.maxHp - me.hp).coerceAtLeast(0)
+    return Action(listOf(FightEvent.Heal(Side.PLAYER, healed)), damage = 0, meter = me.meter, healed = healed)
+}
 
 private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove: Move, rng: Random): Action {
     val events = mutableListOf<FightEvent>()
@@ -166,7 +183,7 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
         Move.HEAVY -> otherMove != Move.STRIKE // interrupted by a strike
         Move.SPECIAL -> true
         Move.BLOCK -> counter
-        Move.RUN -> false
+        Move.POTION, Move.RUN -> false
     }
 
     var damage = 0

@@ -141,6 +141,12 @@ class RosterAssetsTest {
     }
 
     @Test
+    fun thePotionHasItsArtAndSound() {
+        assertTrue(file("sprites-final/fight/potion.webp").isFile)
+        assertTrue(file("audio-final/sfx/potion.wav").isFile)
+    }
+
+    @Test
     fun thePlayGloveHasItsArtVoiceAndSounds() {
         for (path in PLAY_HAND_ART) assertTrue(path, file(path.replaceFirst("sprites/", "sprites-final/")).isFile)
         for (line in PLAY_VOICE_LINES) assertTrue(line, file("audio-final/voice/$line.wav").isFile)

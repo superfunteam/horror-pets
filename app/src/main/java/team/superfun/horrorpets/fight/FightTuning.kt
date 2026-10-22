@@ -43,6 +43,11 @@ object FightTuning {
     const val METER_PER_HIT = 25
     const val METER_MAX = 100
 
+    // Potions: the player's, so many a fight, each healing a random share of max HP between these two
+    const val POTIONS_PER_FIGHT = 2
+    const val POTION_HEAL_MIN = 0.5
+    const val POTION_HEAL_MAX = 1.0
+
     // Opponent: level is the player's +- OPPONENT_LEVEL_SPREAD (at least 1), strength the player's
     // +- OPPONENT_STRENGTH_SPREAD (clamped), a fixed hunger (for HP) and a fixed mood (for crits).
     const val OPPONENT_LEVEL_SPREAD = 1

@@ -74,8 +74,8 @@ import team.superfun.horrorpets.ui.theme.TextLo
 
 // ---- the command window: the fight's moves as an RPG battle menu, down the left of the screen ----
 
-/** The command window's width: SPECIAL, the widest command, after the cursor's gutter, inside the frame. */
-internal val CommandWindowWidth = 124.dp
+/** The command window's width: "POTION ×2", the widest command, after the cursor's gutter, inside the frame. */
+internal val CommandWindowWidth = 128.dp
 
 /** The help window under the command window, and the gap between the two. */
 internal val HelpHeight = 34.dp
@@ -90,6 +90,9 @@ private val CursorGutter = 32.dp
 
 private val WindowChamfer = 11.dp
 private val SpecialGold = Color(0xFFF5C543)
+
+/** The potion's green: its command, its count, its callout and its +HP numbers. */
+internal val PotionGreen = Color(0xFF6BEA4B)
 private val LitBand = Brush.horizontalGradient(
     0f to Blood.copy(alpha = 0.95f),
     0.55f to Blood.copy(alpha = 0.55f),
@@ -102,8 +105,12 @@ internal fun moveHint(move: Move, pet: PetId): String = when (move) {
     Move.HEAVY -> "Big hit  ·  breaks a Block, but a Strike cuts it off"
     Move.BLOCK -> "Stops a Strike and counters  ·  a Heavy breaks it"
     Move.SPECIAL -> "${specialName(pet)}  ·  never misses"
+    Move.POTION -> "Heals half to all your HP  ·  uses your turn"
     Move.RUN -> "Forfeit the fight  ·  costs a little mood"
 }
+
+/** The help window's text for the potion when the player is already at full health: it would be wasted. */
+internal const val POTION_FULL_HINT = "Already at full health  ·  save it"
 
 /** A [moveHint] as the help window shows it: in capitals, with each `·` between its parts in Amber. */
 internal fun helpText(hint: String): AnnotatedString = buildAnnotatedString {
@@ -114,14 +121,17 @@ internal fun helpText(hint: String): AnnotatedString = buildAnnotatedString {
 }
 
 /**
- * The moves in a framed "COMMAND" window: `STRIKE HEAVY BLOCK [SPECIAL]`, a rule, `RUN`. Up and Down move the
- * machete cursor (it follows focus) and OK picks; under a finger a tap picks. SPECIAL is there only with a
- * full meter, and glows gold until picked. [onFocused] hears the move the cursor is on (or, under a finger,
+ * The moves in a framed "COMMAND" window: `STRIKE HEAVY BLOCK [SPECIAL] [POTION ×n]`, a rule, `RUN`. Up and Down
+ * move the machete cursor (it follows focus) and OK picks; under a finger a tap picks. SPECIAL is there only with
+ * a full meter, and glows gold until picked. POTION is there while [potions] last, in green with the count, and
+ * dimmed while it would heal nothing ([potionUsable] off: the player is at full health). [onFocused] hears the move the cursor is on (or, under a finger,
  * the one last pressed), for the help window.
  */
 @Composable
 internal fun CommandWindow(
     specialReady: Boolean,
+    potions: Int,
+    potionUsable: Boolean,
     requesters: Map<Move, FocusRequester>,
     canFocus: Boolean,
     onFocused: (Move) -> Unit,
@@ -155,10 +165,13 @@ internal fun CommandWindow(
             add(Move.HEAVY)
             add(Move.BLOCK)
             if (specialReady) add(Move.SPECIAL)
+            if (potions > 0) add(Move.POTION)
         }
         for (move in moves) {
             key(move) {
-                CommandRow(move, rowHeight, requesters.getValue(move), canFocus, onFocused, onPick)
+                CommandRow(move, rowHeight, requesters.getValue(move), canFocus, onFocused, onPick) { lit ->
+                    if (move == Move.POTION) PotionLabel(potions, usable = potionUsable, lit = lit) else CommandLabel(move, lit)
+                }
             }
         }
         Box(
@@ -168,7 +181,7 @@ internal fun CommandWindow(
                 .height(1.dp)
                 .background(Amber.copy(alpha = 0.3f)),
         )
-        CommandRow(Move.RUN, rowHeight - 6.dp, requesters.getValue(Move.RUN), canFocus, onFocused, onPick)
+        CommandRow(Move.RUN, rowHeight - 6.dp, requesters.getValue(Move.RUN), canFocus, onFocused, onPick) { lit -> CommandLabel(Move.RUN, lit) }
     }
 }
 
@@ -180,6 +193,7 @@ private fun CommandRow(
     canFocus: Boolean,
     onFocused: (Move) -> Unit,
     onPick: (Move) -> Unit,
+    label: @Composable (lit: Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     // A finger pressing a command shows its help, as the cursor does (a remote's OK only presses the focused one).
@@ -194,7 +208,27 @@ private fun CommandRow(
             .onFocusChanged { if (it.isFocused) onFocused(move) }
             .focusRequester(requester)
             .focusProperties { this.canFocus = canFocus },
-    ) { lit -> CommandLabel(move, lit) }
+    ) { lit -> label(lit) }
+}
+
+/** POTION in green with how many are left (`×2`), dimmed while it would heal nothing. */
+@Composable
+private fun PotionLabel(potions: Int, usable: Boolean, lit: Boolean) {
+    val color = when {
+        lit -> TextHi
+        usable -> PotionGreen
+        else -> PotionGreen.copy(alpha = 0.35f)
+    }
+    Row(verticalAlignment = Alignment.Bottom) {
+        // Untracked, with a small count, so "POTION ×2" fits the window as SPECIAL does.
+        BasicText("POTION", style = displayStyle(24.sp, color = color, tracking = 0f), maxLines = 1)
+        BasicText(
+            "×$potions",
+            Modifier.padding(start = 2.dp, bottom = 2.dp),
+            style = displayStyle(14.sp, color = color, tracking = 0f),
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable

@@ -127,6 +127,13 @@ private const val CALLOUT_AT = 0.95f
 /** The body's centre, for the shield ring and the special effects, this far up the cell. */
 private const val BODY_AT = 0.45f
 
+/** A potion bursts this far up the drinker's cell (about the top of its head), and is this tall in flight. */
+private const val POTION_LANDS_AT = 0.85f
+private const val POTION_SIZE = 0.3f
+
+/** The potion's picture (made by tools/generate_potion.py). */
+private const val POTION_ART = "sprites/fight/potion.webp"
+
 // ---- timing, in ms ----
 
 private const val CALLOUT_MS = 600
@@ -142,6 +149,11 @@ private const val DRAIN_MS = 450
 private const val TRAIL_DELAY_MS = 380L
 private const val TRAIL_MS = 560
 private const val METER_MS = 360
+private const val HEAL_MS = 600
+
+/** The potion's flight onto the drinker, and its poof. */
+private const val POTION_FLIGHT_MS = 620
+private const val POTION_POOF_MS = 650
 private const val MENU_MS = 200
 
 /** How long a sprite may take beyond its own length before the turn moves on without it. */
@@ -226,6 +238,7 @@ fun FightScreen(
     val cpuId = fight.cpu.id
     val sink = LocalSoundSink.current
     val arena = remember(loader, cpuId, arenaRoll) { arenaScene(loader, cpuId, arenaRoll) }
+    val potionImage = remember(loader) { loader.prop(POTION_ART) }
     val tint = remember(arena) { hexColor(arena.tint) }
     val stage = remember {
         FightStage(
@@ -257,9 +270,17 @@ fun FightScreen(
     // the menu is hidden, never under the player's eyes. Not cleared when the fight ends either: the menu
     // is fading out then, and a row vanishing mid-fade flickers.
     val specialReady by remember { derivedStateOf { stage.player.meter.value >= FightTuning.METER_MAX - 0.5f } }
+    // A potion is offered while any are left, and is worth drinking only below full health (as the bar shows it).
+    val potions = fight.playerPotions
+    val maxHp = fight.player.maxHp
+    val potionUsable by remember(maxHp) { derivedStateOf { stage.player.hp.value < maxHp - 0.5f } }
 
     fun focusMenu(move: Move) {
-        val target = if (move == Move.SPECIAL && !specialReady) Move.STRIKE else move
+        val target = when {
+            move == Move.SPECIAL && !specialReady -> Move.STRIKE
+            move == Move.POTION && potions == 0 -> Move.STRIKE
+            else -> move
+        }
         // Not attached yet (or any more) only means there is nothing to focus.
         runCatching { requesters.getValue(target).requestFocus() }
     }
@@ -359,6 +380,7 @@ fun FightScreen(
                     }
                 }
                 SpecialVfx(stage.special, progress = { stage.specialT.value })
+                PotionLayer(stage.toss, potionImage, sizePx = cellH * POTION_SIZE)
             }
         }
 
@@ -416,6 +438,8 @@ fun FightScreen(
             }
             CommandWindow(
                 specialReady = specialReady,
+                potions = potions,
+                potionUsable = potionUsable,
                 requesters = requesters,
                 canFocus = !askRun,
                 onFocused = { focusedMove = it },
@@ -424,6 +448,8 @@ fun FightScreen(
                         if (move == Move.RUN) {
                             returnTo = Move.RUN
                             askRun = true
+                        } else if (move == Move.POTION && !potionUsable) {
+                            sink.sfx("refuse") // at full health a potion would be wasted
                         } else {
                             lastMove = move
                             onMove(move)
@@ -435,7 +461,8 @@ fun FightScreen(
                     .padding(bottom = HelpHeight + HelpGap)
                     .then(menuIn),
             )
-            HelpWindow(moveHint(focusedMove, playerId), Modifier.align(Alignment.BottomStart).then(menuIn))
+            val hint = if (focusedMove == Move.POTION && !potionUsable) POTION_FULL_HINT else moveHint(focusedMove, playerId)
+            HelpWindow(hint, Modifier.align(Alignment.BottomStart).then(menuIn))
         }
 
         KoSlam(visible = stage.koShown, progress = { stage.ko.value }, lift = { stage.koLift.value }, liftPx = h * KO_LIFT)
@@ -663,6 +690,9 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     val koLift = Animatable(0f)
     var koShown by mutableStateOf(false)
     var special by mutableStateOf<SpecialFx?>(null)
+
+    /** The potion in the air or bursting, while a Drink beat plays. */
+    var toss by mutableStateOf<PotionToss?>(null)
     val specialT = Animatable(0f)
     val menu = Animatable(if (turnPending) 0f else 1f)
     var playing by mutableStateOf(turnPending)
@@ -720,6 +750,7 @@ private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> =
     if (turn.playerMove == Move.BLOCK) add(player.pet to Anim.WAIT)
     if (turn.cpuMove == Move.BLOCK) add(cpu.pet to Anim.WAIT)
     for (beat in beatsOf(turn.lastEvents, fight.winner)) {
+        if (beat is Beat.Drink) add(rig(beat.side).pet to Anim.JUMP)
         if (beat !is Beat.Lunge) continue
         val r = rig(beat.attacker)
         add(r.pet to (if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT))
@@ -788,6 +819,9 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
             if (tailSide == beat.attacker || special != null) tail?.join() else if (tail?.isActive == true) delay(140)
             tail = lunge(this, beat, riders, guarding, loader, sounds, play)
             tailSide = beat.attacker
+        } else if (beat is Beat.Drink) {
+            tail?.join()
+            drink(this, beat, loader, sounds, play)
         } else {
             rider(this, beat, landedOn = null)
             delay(450)
@@ -936,7 +970,7 @@ private fun FightStage.impactOf(
                 if (interrupted) add("INTERRUPTED")
             }
             val blow = {
-                float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "${event.damage}", labels, d.side)
+                float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "\u2212${event.damage}", labels, d.side)
                 hurt(scope, d, strength = 1f)
                 drain(scope, d, event.damage)
                 when {
@@ -1014,8 +1048,52 @@ private fun FightStage.rider(scope: CoroutineScope, beat: Beat, landedOn: Side?)
             delay(380)
             float(FloatKind.READY, "SPECIAL READY", emptyList(), beat.side)
         }
-        is Beat.Lunge -> Unit
+        is Beat.Lunge, is Beat.Drink -> Unit
     }
+}
+
+/**
+ * A potion is tossed onto [beat]'s side: it arcs in from that side's edge of the screen, spinning, with a whoosh;
+ * it bursts on the drinker's head in a green poof, the drinker lights up and jumps for joy, a green +HP number
+ * floats up and the HP bar fills. Returns when the poof has cleared, so the opponent's move comes after it.
+ */
+private suspend fun FightStage.drink(
+    scope: CoroutineScope,
+    beat: Beat.Drink,
+    loader: AssetLoader,
+    sounds: TurnSounds,
+    play: (FightSounds) -> Unit,
+) {
+    val r = rig(beat.side)
+    val center = bodyCenter(beat.side)
+    val head = Offset(center.x, floor - cellHeight() * r.body * POTION_LANDS_AT)
+    val edge = if (beat.side == Side.PLAYER) -cellHeight() * 0.4f else width + cellHeight() * 0.4f
+    val toss = PotionToss(from = Offset(edge, floor - cellHeight() * 0.15f), to = head, spin = if (beat.side == Side.PLAYER) 1f else -1f)
+    this.toss = toss
+    play(FightSounds(listOf("hand_whoosh"), emptyList()))
+    toss.flight.animateTo(1f, tween(POTION_FLIGHT_MS, easing = LinearEasing))
+    play(sounds.of(FightEvent.Heal(beat.side, beat.amount)))
+    flash(scope, PotionGreen, alpha = 0.2f, ms = 350)
+    scope.launch {
+        r.flash.snapTo(0.55f)
+        r.flash.animateTo(0f, tween(450))
+    }
+    heal(scope, r, beat.amount)
+    float(FloatKind.HEAL, "+${beat.amount}", emptyList(), beat.side)
+    scope.launch {
+        r.play(Anim.JUMP, timeoutFor(loader, r, Anim.JUMP))
+        if (r.pose.anim == Anim.JUMP) r.show(Anim.IDLE)
+    }
+    toss.poof.animateTo(1f, tween(POTION_POOF_MS, easing = LinearEasing))
+    if (this.toss === toss) this.toss = null
+}
+
+/** [d]'s HP bar fills by [amount]; its trail rides up with it (hidden under the fill), ready for the next hit. */
+private fun heal(scope: CoroutineScope, d: FighterRig, amount: Int) {
+    val target = d.hpTarget + amount
+    d.hpTarget = target
+    scope.launch { d.hp.animateTo(target, tween(HEAL_MS, easing = FastOutSlowInEasing)) }
+    scope.launch { d.trail.animateTo(target, tween(HEAL_MS, easing = FastOutSlowInEasing)) }
 }
 
 private fun hurt(scope: CoroutineScope, d: FighterRig, strength: Float) {

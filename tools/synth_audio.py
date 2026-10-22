@@ -665,6 +665,18 @@ def sfx_all() -> dict[str, np.ndarray]:
     shimmer = highpass(noise(ul, int(1.0 * SR)), 6000) * env_adsr(int(1.0 * SR), 0.2, 0.3, 0.4, 0.5) * 0.15
     place(fan, shimmer, 0.3)
     s["unlock"] = reverb(ul, fan, 1.8, 0.35)
+    pt = rng_for("potion")  # the fight's potion, on its own stream
+    pot = np.zeros(int(0.9 * SR))
+    place(pot, clang(pt, 1900, 0.35) * 0.35, 0.0)  # the glass flask lands
+    poof = bandpass(noise(pt, int(0.45 * SR)), 300, 2500) * env_adsr(int(0.45 * SR), 0.01, 0.08, 0.5, 0.3)
+    place(pot, poof * 0.8, 0.03)
+    for k in range(7):  # it bubbles, then sparkles
+        bm = int(0.06 * SR)
+        hz = pt.uniform(500, 1100) * np.linspace(1.0, 1.6, bm)
+        place(pot, sine(hz, bm) * env_exp(bm, 0.02) * 0.5, 0.08 + k * 0.045)
+    for k, nm in enumerate(["E6", "G#6", "B6", "E7"]):
+        place(pot, bell(note_hz(nm), 0.5, ((1, 1), (2.0, 0.25))) * 0.22, 0.32 + k * 0.06)
+    s["potion"] = reverb(pt, pot, 1.2, 0.25)
     s["boing"] = sine(180 * (1 + 0.35 * np.sin(2 * np.pi * 9 * t) * np.exp(-t / 0.25)) + 120 * np.exp(-t / 0.05), mm) \
         * env_exp(mm, 0.25)
     boom_n = int(2.0 * SR)
