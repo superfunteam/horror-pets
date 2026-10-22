@@ -82,3 +82,26 @@ def test_the_phones_never_pass_through_each_other(seq):
         left, right = pvp.shot(i / 60).phones
         assert left.position[0] == pytest.approx(-right.position[0])
         assert right.position[0] >= clear_x(right.rotation[1], 0) - 1e-6, i / 60
+
+
+def test_the_camera_glides_into_the_tv_without_turning_back(seq):
+    _, crt = start_of(seq, CrtIntro)
+    ts = [k / 60 for k in range(round(crt.rush[1] * 60) + 1)]
+    boxes = [crt.view(crt.progress(t)) for t in ts]
+    for (a0, b0, c0, d0), (a1, b1, c1, d1) in zip(boxes, boxes[1:]):
+        assert a1 >= a0 - 1e-6 and b1 >= b0 - 1e-6 and c1 <= c0 + 1e-6 and d1 <= d0 + 1e-6  # only ever closing in
+    w, h = crt.room.size
+    assert all(x0 >= -0.5 and y0 >= -0.5 and x1 <= w + 0.5 and y1 <= h + 0.5 for x0, y0, x1, y1 in boxes)
+    speeds = [(crt.progress(b) - crt.progress(a)) * 60 for a, b in zip(ts, ts[1:])]
+    assert max(abs(v1 - v0) for v0, v1 in zip(speeds, speeds[1:])) < 0.1 * max(speeds)  # no jolts
+    assert crt.progress(crt.rush[1]) == pytest.approx(1.0)
+
+
+def test_the_blows_land_on_their_frames_and_the_bell_rings_after_the_ko(seq):
+    _, fights = start_of(seq, FightToEvolve)
+    pvp_at, pvp = start_of(seq, OnlinePvp)
+    for c in [*fights.cues(), *pvp.cues()]:
+        if not c.ducking:  # a blow: its loudest moment on the frame it lands
+            assert "video/sfx" in str(c.path)
+    bell = next(c for c in pvp.cues() if c.path.name == "bell.mp3")
+    assert bell.t >= pvp.results_at and bell.t >= pvp.ko_hit + 0.8

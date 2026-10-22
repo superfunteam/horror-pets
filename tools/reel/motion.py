@@ -46,6 +46,10 @@ def in_out_sine(u: float) -> float:
     return -(math.cos(math.pi * u) - 1) / 2
 
 
+def in_out_cubic(u: float) -> float:
+    return 4 * u ** 3 if u < 0.5 else 1 - (-2 * u + 2) ** 3 / 2
+
+
 def ramp(t: float, t0: float, t1: float, ease: Ease = linear) -> float:
     """How far through [t0, t1] t is, eased: 0 before, 1 after."""
     return ease(clamp01((t - t0) / (t1 - t0)))

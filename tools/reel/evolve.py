@@ -112,24 +112,24 @@ class FightToEvolve:
         # (beats long, recording, from, to, zoom, when the blow lands in the recording, the game's sounds for it):
         # the montage, cut on the beat.
         montage = [
-            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, 14.57, ("heavy_hit",)),  # Chucky's combo, a guard
+            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, 14.57, ("punch_heavy",)),  # Chucky's combo, a guard
             # break (wider for its callout)
             (1, "hud-ghostface-freddy.mp4", 28.6, 29.5, 1.0, 28.85, ("crit",)),  # Ghostface's combo crit (its callout
             # runs the width of the screen)
-            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, 7.53, ("heavy_hit",)),  # Jason's machete on Pinhead
-            (1, "hud-freddy-jason.mp4", 29.7, 30.7, 1.35, 30.07, ("hit",)),  # Freddy's claws draining Jason
+            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, 7.53, ("punch_heavy",)),  # Jason's machete on Pinhead
+            (1, "hud-freddy-jason.mp4", 29.7, 30.7, 1.35, 30.07, ("punch",)),  # Freddy's claws draining Jason
             (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35, 35.47, ("crit",)),  # Leatherface's saw, a crit
             # Specials: Pinhead's chains (wide, to fit them),
-            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, 44.03, ("special_pinhead", "heavy_hit")),
-            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, 33.62, ("special_chucky", "heavy_hit")),  # Chucky's voodoo,
-            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, 34.58, ("special_ghostface", "heavy_hit")),  # his knives,
+            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, 44.03, ("super",)),
+            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, 33.62, ("super",)),  # Chucky's voodoo,
+            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, 34.58, ("super",)),  # his knives,
             # Leatherface's saw dance
-            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, 30.32, ("special_leatherface", "heavy_hit")),
+            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, 30.32, ("super",)),
         ]
         ko = montage_bars * 4 - round(drop / beat) - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
         # Freddy's special draining Jason to a K.O.
-        montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35, 78.3, ("ko",)))
+        montage.append((ko, "hud-freddy-jason.mp4", 77.6, 79.3, 1.35, 78.3, ("knockout",)))
         # Under the title, Leatherface and Michael square off on the street the fights open on; the hits start at the drop.
         self.cuts, at = [Cut(0.0, drop, Standoff("leatherface", "michael", "haddonfield"))], drop
         self.blows: list[tuple[float, float, tuple[str, ...]]] = []  # (when it lands, when its cut ends, its sounds)
@@ -243,20 +243,14 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        """The announcer over the cards, and the game's own sounds on every blow: a special's sound played from just
-        before its loudest moment, which lands with the blow, cut off with its shot; the K.O.'s ringing out into
-        the cards. None of them duck the song."""
+        """The announcer over the cards, and a beat-'em-up thud on every blow, its loudest moment on the frame the
+        blow lands; the K.O.'s ringing out into the cards. None of them duck the song."""
         cues = [Cue(self.cards_at + 0.1, ATTACKS, 1.15)]
-        for lands, cut_end, sounds in self.blows:
+        for lands, _, sounds in self.blows:
             for name in sounds:
-                path = cast.sfx(name)
-                gain = cast.sfx_gain(name)
-                if name.startswith("special_"):
-                    skip = max(0.0, cast.punch(path) - 0.06)
-                    cues.append(Cue(lands - 0.06, path, gain, skip=skip, length=cut_end - lands + 0.12, fade_out=0.08,
-                                    ducking=False))
-                elif name == "ko":
-                    cues.append(Cue(lands, path, gain, length=self.cards_at + 0.35 - lands, fade_out=0.3, ducking=False))
-                else:
-                    cues.append(Cue(lands, path, gain, ducking=False))
+                path = cast.blow(name)
+                at = lands - cast.punch(path)
+                length = self.cards_at + 0.35 - at if name == "knockout" else None
+                cues.append(Cue(at, path, cast.BLOW_GAIN[name], length=length, fade_out=0.3 if length else 0.0,
+                                ducking=False))
         return cues

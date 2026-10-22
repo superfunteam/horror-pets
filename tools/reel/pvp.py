@@ -34,7 +34,9 @@ TRADE_BLOWS = [86.22, 94.73, None]  # when each trade's blow lands, in Jason's r
 # In Jason's K.O. recording (Freddy's runs a second behind): the last exchange (both call their moves, Jason lands a
 # combo, Freddy whiffs) until K.O. lands, and the results.
 KO_EXCHANGE, KO_LANDS, RESULTS = (6.6, 11.3), 10.75, (13.3, 16.8)
-KO_BLOWS = ((8.22, "heavy_hit"), (9.8, "miss"))  # in that recording: Jason's combo lands, Freddy's swing misses
+KO_BLOWS = ((8.22, "punch_heavy"), (9.8, "whiff"))  # in that recording: Jason's combo lands, Freddy's swing misses
+BELL = cast.TRAILER_AUDIO / "bell.mp3"  # the fight's over: rung on the results (supplied for the trailer)
+KO_SAID = 0.85  # the announcer's "K.O.!" is said by this long after it lands, before the bell
 TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends!" (tools/generate_video_voice.py)
 TAP_KILL = 1.04  # "KILL" in the line, which lands on the tap
 HALF_W, HALF_D = 8.0, 0.58  # half a phone's width, and half its depth with the camera bar (backs touch 1.16 apart)
@@ -77,7 +79,7 @@ class OnlinePvp:
         self.ko_hit = self.ko + (KO_LANDS - KO_EXCHANGE[0]) / stretch  # when K.O. hits the screens
         played = TRADES[:turns]
         # When the blows land on the screens, and the game's sound for each: the trades, the combo, the whiff, the K.O.
-        self.blows = [(self.fight_at + k * b + (lands - s) * b / (e - s), "hit")
+        self.blows = [(self.fight_at + k * b + (lands - s) * b / (e - s), "punch")
                       for k, ((s, e), lands) in enumerate(zip(played, TRADE_BLOWS)) if lands is not None]
         self.blows += [(self.ko + (lands - KO_EXCHANGE[0]) / stretch, name) for lands, name in KO_BLOWS]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
@@ -187,8 +189,7 @@ class OnlinePvp:
 
     def cues(self) -> list[Cue]:
         fight = self.tap + FIGHT_SLAM * (self.fight_at - self.tap) / VS_LEN
-        hits = [Cue(t, cast.sfx(name), cast.sfx_gain(name), ducking=False) for t, name in self.blows]
-        ko = Cue(self.ko_hit, cast.sfx("ko"), cast.sfx_gain("ko"), length=self.results_at + 0.4 - self.ko_hit,
-                 fade_out=0.3, ducking=False)
-        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1), *hits, ko,
-                Cue(self.ko_hit, cast.voice("ko"), 1.1)]
+        hits = [Cue(t - cast.punch(cast.blow(name)), cast.blow(name), cast.BLOW_GAIN[name], ducking=False)
+                for t, name in [*self.blows, (self.ko_hit, "knockout")]]
+        return [Cue(self.tap - TAP_KILL, TAP_LINE, 1.15), Cue(fight, cast.voice("fight"), 1.1), *hits,
+                Cue(self.ko_hit, cast.voice("ko"), 1.1), Cue(max(self.results_at, self.ko_hit + KO_SAID), BELL, 1.0)]

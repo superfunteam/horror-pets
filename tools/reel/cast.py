@@ -83,14 +83,13 @@ def sfx(name: str) -> Path:
     return ROOT / f"audio-final/sfx/{name}.wav"
 
 
-# How loud the game's fight sounds play over the song, which they are not mastered for: about 6 dB over it where
-# they land (specials are fuller, and need less).
-SFX_GAIN = {"hit": 2.0, "heavy_hit": 1.4, "crit": 1.9, "miss": 2.2, "ko": 1.8}
-SPECIAL_GAIN = 1.2
+# The fights' blows: beat-'em-up thuds made for the trailer (tools/generate_video_sfx.py; the game's own fight sounds
+# ring like bells under the song), and how loud each plays over it: about 6 dB over it where they land.
+BLOW_GAIN = {"punch": 2.7, "punch_heavy": 1.6, "crit": 1.25, "whiff": 2.1, "super": 1.0, "knockout": 1.95}
 
 
-def sfx_gain(name: str) -> float:
-    return SPECIAL_GAIN if name.startswith("special_") else SFX_GAIN[name]
+def blow(name: str) -> Path:
+    return ROOT / f"video/sfx/{name}.wav"
 
 
 @cache

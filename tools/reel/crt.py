@@ -17,7 +17,7 @@ from PIL import Image, ImageChops, ImageFilter
 
 from . import cast, fx
 from .footage import Clip
-from .motion import in_cubic, in_out_sine, lerp, out_cubic, pulse, ramp
+from .motion import in_cubic, in_out_cubic, in_out_sine, lerp, out_cubic, pulse, ramp
 from .render import FPS, H, W, Cue
 from .title import SHOUT, SHOUT_FIRST, SHOUT_TURBO, SPOTS, TitleCard
 
@@ -27,6 +27,7 @@ SFX = cast.ROOT / "video/sfx"
 TITLE = Clip("tv-title.mp4", 3.0, 9.0)  # the title screen, PRESS START blinking, before it was pressed
 PRESS_BOX = (0.36, 0.76, 0.64, 0.86)  # where PRESS START sits on the title screen, as fractions of it
 Z0 = 1.55  # how close the camera starts to the TV
+CREEP = 0.07  # how far of the way in (by scale) the camera creeps before it rushes
 SHOUT_DELAY = 0.12  # the shout's first word lands this long after start is pressed
 BLINK = 0.3  # how long PRESS START blinks before the cut to the layered title
 
@@ -50,6 +51,15 @@ class CrtIntro:
         self.pic = (x0, cy - pw * 9 / 32, x1, cy + pw * 9 / 32)
         self.base = W / self.room.width
         self.z_full = W / (pw * self.base)
+        # The camera's one move, from where it starts (framing the room at Z0) to the picture filling the frame: a
+        # straight push in on the one point both framings put in the same place, the view narrowing at an even rate,
+        # so nothing in the room ever changes direction on screen.
+        x0, y0, x1, y1 = self.start_view()
+        self.w0, self.w1 = x1 - x0, pw
+        fx_ = (x0 * self.w1 - self.pic[0] * self.w0) / (self.w1 - self.w0)
+        fy_ = (y0 * self.w1 - self.pic[1] * self.w0) / (self.w1 - self.w0)
+        self.focus = (fx_, fy_)  # in the room
+        self.at = ((fx_ - x0) / self.w0, (fy_ - y0) / (y1 - y0))  # where it sits in the frame, throughout
         rng = random.Random(3)
         self.snow = [Image.fromarray(np.array([[rng.randrange(256) for _ in range(160)] for _ in range(90)], np.uint8), "L")
                      for _ in range(6)]
@@ -57,20 +67,30 @@ class CrtIntro:
     def prepare(self) -> None:
         TITLE.extract()
 
-    def zoom(self, t: float) -> float:
-        z = lerp(Z0, Z0 + 0.12, ramp(t, 0, self.rush[0], in_out_sine))
-        return lerp(z, self.z_full, ramp(t, *self.rush, in_cubic))
-
-    def view(self, z: float) -> tuple[float, float, float, float]:
-        """The part of the room the camera sees at zoom [z], closing on the picture as it zooms."""
-        s = self.base * z
+    def start_view(self) -> tuple[float, float, float, float]:
+        """The part of the room the camera sees first: Z0 in, edged toward the picture, inside the room."""
+        s = self.base * Z0
         vw, vh = W / s, H / s
-        u = min(1.0, (z - 1) / (self.z_full - 1) * 1.6)
+        u = min(1.0, (Z0 - 1) / (self.z_full - 1) * 1.6)
         cx = lerp(self.room.width / 2, (self.pic[0] + self.pic[2]) / 2, u)
         cy = lerp(self.room.height / 2, (self.pic[1] + self.pic[3]) / 2, u)
         cx = min(max(cx, vw / 2), self.room.width - vw / 2)
         cy = min(max(cy, vh / 2), self.room.height - vh / 2)
         return cx - vw / 2, cy - vh / 2, cx + vw / 2, cy + vh / 2
+
+    def progress(self, t: float) -> float:
+        """How far in the camera is, 0 to 1 (the picture filling the frame): a slow creep that runs into the rush
+        without a pause, speeding up through it and easing to a stop on the picture."""
+        r0, r1 = self.rush
+        rate = CREEP / r0
+        return rate * min(t, r1) + (1 - rate * r1) * ramp(t, r0, r1, in_out_cubic)
+
+    def view(self, p: float) -> tuple[float, float, float, float]:
+        """The part of the room the camera sees [p] of the way in."""
+        w = self.w0 * (self.w1 / self.w0) ** p
+        h = w * H / W
+        x0, y0 = self.focus[0] - self.at[0] * w, self.focus[1] - self.at[1] * h
+        return x0, y0, x0 + w, y0 + h
 
     def static(self, t: float, w: int, h: int, level: float) -> Image.Image:
         """Faint snow: dark, low contrast, [level] (0..1) of full strength."""
@@ -122,12 +142,12 @@ class CrtIntro:
             out = self.title.frame(t - self.cut)
             return fx.flash(out, (255, 255, 255), max(0.9 * pulse(t, self.cut, 0.2),
                                                        0.8 * ramp(t, self.duration - 0.15, self.duration)))
-        z = self.zoom(t)
+        p = self.progress(t)
         crt = 1 - ramp(t, self.rush[0], self.rush[1] - 0.05, out_cubic)
-        if z >= self.z_full - 1e-6:  # the picture fills the frame: no room left to draw
+        if p >= 1 - 1e-6:  # the picture fills the frame: no room left to draw
             out = self.picture(t, W, H, crt)
         else:
-            box = self.view(z)
+            box = self.view(p)
             s = W / (box[2] - box[0])
             out = self.room.resize((W, H), Image.BILINEAR, box=box)
             tube = self.mask.resize((W, H), Image.BILINEAR, box=box)
