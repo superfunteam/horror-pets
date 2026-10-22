@@ -114,20 +114,20 @@ class FightToEvolve:
         # (beats long, recording, from, to, zoom, who's hit, when the blow lands in the recording, its sounds): the
         # montage, cut on the beat, the blows trading back and forth before the specials.
         montage = [
-            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, RIGHT, 14.57, ("punch_heavy",)),  # Chucky's combo on
+            (1, "hud-chucky-ghostface.mp4", 14.25, 15.05, 1.2, RIGHT, 14.57, ("slash",)),  # Chucky's combo on
             # Ghostface, a guard break (wider for its callout)
-            (1, "hud-ghostface-freddy.mp4", 16.25, 17.15, 1.35, LEFT, 16.52, ("punch",)),  # Freddy's claws back at
+            (1, "hud-ghostface-freddy.mp4", 16.25, 17.15, 1.35, LEFT, 16.52, ("claw",)),  # Freddy's claws back at
             # Ghostface, draining him
-            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, RIGHT, 7.53, ("punch_heavy",)),  # Jason's machete on Pinhead
-            (1, "hud-freddy-jason.mp4", 36.95, 37.85, 1.2, LEFT, 37.18, ("crit",)),  # Jason's crit back on Freddy (wider:
+            (1, "hud-jason-pinhead.mp4", 7.35, 8.25, 1.35, RIGHT, 7.53, ("chop",)),  # Jason's machete on Pinhead
+            (1, "hud-freddy-jason.mp4", 36.95, 37.85, 1.2, LEFT, 37.18, ("chop", "crit")),  # Jason's crit back on Freddy (wider:
             # Freddy stands far left)
-            (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35, RIGHT, 35.47, ("crit",)),  # Leatherface's saw, a crit
+            (1, "hud-leatherface-michael.mp4", 35.2, 36.1, 1.35, RIGHT, 35.47, ("saw", "crit")),  # Leatherface's saw, a crit
             # Specials: Pinhead's chains (wide, to fit them),
-            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, RIGHT, 44.03, ("super",)),
-            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, RIGHT, 33.62, ("super",)),  # Chucky's voodoo,
-            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, RIGHT, 34.58, ("super",)),  # his knives,
+            (2, "hud-pinhead-jason.mp4", 43.9, 45.3, 1.1, RIGHT, 44.03, ("chains", "super")),
+            (1, "hud-chucky-ghostface.mp4", 33.4, 34.6, 1.35, RIGHT, 33.62, ("voodoo",)),  # Chucky's voodoo,
+            (1, "hud-ghostface-freddy.mp4", 34.4, 35.6, 1.35, RIGHT, 34.58, ("stabs",)),  # his knives,
             # Leatherface's saw dance
-            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, RIGHT, 30.32, ("super",)),
+            (1, "hud-leatherface-michael.mp4", 30.0, 31.3, 1.35, RIGHT, 30.32, ("saw", "super")),
         ]
         ko = montage_bars * 4 - round(drop / beat) - sum(m[0] for m in montage)
         assert ko >= 2, "the montage needs at least two beats for the K.O."
@@ -246,8 +246,9 @@ class FightToEvolve:
         return canvas.convert("RGB")
 
     def cues(self) -> list[Cue]:
-        """The announcer over the cards, and a beat-'em-up thud on every blow, its loudest moment on the frame the
-        blow lands; the K.O.'s ringing out into the cards. None of them duck the song."""
+        """The announcer over the cards, and on every blow the sound of what landed it (a slash, a chop, a claw, a
+        chainsaw...), its loudest moment on the frame the blow lands; the K.O.'s ringing out into the cards. None of
+        them duck the song."""
         cues = [Cue(self.cards_at + 0.1, ATTACKS, 1.15)]
         for lands, _, sounds in self.blows:
             for name in sounds:

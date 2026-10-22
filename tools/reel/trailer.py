@@ -76,5 +76,7 @@ def make() -> Sequence:
     # skipped so they fight on the last drop; and the outro gets the last drop again, running out to the song's end.
     edit = [(0.0, 0.0), (at["CharacterIntro"], bar(8)), (at["FightToEvolve"], bar(15)),
             (at["Environments"], bar(15) + fights.duration - 2 * BAR), (tap, bar(24)), (at["OnlinePvp"] + pvp.fight_at - BAR, bar(31)),
-            (at["Outro"], bar(32))]
+            # The song ends a bar after the K.O.'s drop, so the score screen goes back to the build before it, which
+            # runs straight on into the outro on the drop.
+            (at["OnlinePvp"] + pvp.results_at, bar(32) - (pvp.duration - pvp.results_at))]
     return Sequence(scenes, (*song_cues(edit), Cue(bar(4) + 0.25, cast.voice("choose_your_killer"), 1.1)))

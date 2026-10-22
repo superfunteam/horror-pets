@@ -47,6 +47,21 @@ BLOWS = {  # (prompt, seconds): the fights' hits, played on the frame each lands
               f"in one massive booming impact, {DRY}", 0.9),
     "knockout": ("The final knockout punch in a 90s arcade fighting game: one huge, loud, crunchy punch impact, a hard "
                  f"smack and a deep booming body thud, {DRY}", 1.0),
+    # Each killer's weapon landing, for variety between the punches.
+    "slash": ("A fast knife slash landing in a 90s arcade fighting game: a quick swish and a wet, fleshy slice-thwack, "
+              f"short and punchy, {DRY}", 0.6),
+    "chop": ("A heavy machete chop landing in a 90s arcade fighting game: a short whoosh and a deep, meaty chunk-thud, "
+             f"{DRY}", 0.6),
+    "claw": ("Razor claws raking across a body in a 90s arcade fighting game: a fast triple scrape-slash with a meaty "
+             f"thwack, {DRY}", 0.6),
+    "saw": ("A chainsaw biting into a body in a 90s arcade fighting game: a short, angry chainsaw snarl that rips with "
+            f"a heavy thud, {DRY}", 0.9),
+    "chains": ("Heavy hooked chains lashing a body in a 90s arcade fighting game: a whip-crack of rattling chain and a "
+               f"hard smack, {DRY}", 0.8),
+    "voodoo": ("A dark voodoo curse blasting a body in a 90s arcade fighting game: a crackling magic zap and a deep, "
+               f"punchy whomp, {DRY}", 0.8),
+    "stabs": ("A rapid flurry of knife stabs landing in a 90s arcade fighting game: four quick, wet stabbing thwacks in "
+              f"a row, {DRY}", 0.8),
 }
 SOUNDS |= BLOWS
 FILTER = "loudnorm=I=-16:TP=-1.0:LRA=7"

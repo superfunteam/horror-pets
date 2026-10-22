@@ -85,7 +85,8 @@ def sfx(name: str) -> Path:
 
 # The fights' blows: beat-'em-up thuds made for the trailer (tools/generate_video_sfx.py; the game's own fight sounds
 # ring like bells under the song), and how loud each plays over it: about 6 dB over it where they land.
-BLOW_GAIN = {"punch": 2.7, "punch_heavy": 1.6, "crit": 1.25, "whiff": 2.1, "super": 1.0, "knockout": 1.95}
+BLOW_GAIN = {"punch": 2.7, "punch_heavy": 1.6, "crit": 1.25, "whiff": 2.1, "super": 1.0, "knockout": 1.95,
+             "slash": 2.1, "chop": 2.2, "claw": 2.5, "saw": 1.7, "chains": 3.0, "voodoo": 1.9, "stabs": 2.0}
 
 
 def blow(name: str) -> Path:

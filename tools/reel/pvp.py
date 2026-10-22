@@ -30,11 +30,12 @@ VS_JASON, VS_FREDDY, VS_LEN = 30.3, 29.0, 5.0
 FIGHT_SLAM = 1.13 + 1.89  # FIGHT! lands this long after the VS card starts, in Jason's
 # The blows traded, in Jason's recording (Freddy's runs LAG behind): Jason cuts Freddy, Freddy's claws drain Jason.
 TRADES = [(84.7, 86.9), (92.6, 95.4), (108.6, 110.8)]
-TRADE_BLOWS = [86.22, 94.73, None]  # when each trade's blow lands, in Jason's recording (the game's hit sound plays)
+# When each trade's blow lands, in Jason's recording, and its sound: Jason's machete, Freddy's claws.
+TRADE_BLOWS = [(86.22, "chop"), (94.73, "claw"), (None, None)]
 # In Jason's K.O. recording (Freddy's runs a second behind): the last exchange (both call their moves, Jason lands a
 # combo, Freddy whiffs) until K.O. lands, and the results.
 KO_EXCHANGE, KO_LANDS, RESULTS = (6.6, 11.3), 10.75, (13.3, 16.8)
-KO_BLOWS = ((8.22, "punch_heavy"), (9.8, "whiff"))  # in that recording: Jason's combo lands, Freddy's swing misses
+KO_BLOWS = ((8.22, "chop"), (9.8, "whiff"))  # in that recording: Jason's combo lands, Freddy's swing misses
 BELL = cast.TRAILER_AUDIO / "bell.mp3"  # the fight's over: rung on the results (supplied for the trailer)
 KO_SAID = 0.85  # the announcer's "K.O.!" is said by this long after it lands, before the bell
 TAP_LINE = cast.ROOT / "video/voice/tap.wav"  # "Tap to KILL your friends, in local PvP or online play!"
@@ -83,8 +84,8 @@ class OnlinePvp:
         self.ko_hit = self.ko + (KO_LANDS - KO_EXCHANGE[0]) / stretch  # when K.O. hits the screens
         played = TRADES[:turns]
         # When the blows land on the screens, and the game's sound for each: the trades, the combo, the whiff, the K.O.
-        self.blows = [(self.fight_at + k * b + (lands - s) * b / (e - s), "punch")
-                      for k, ((s, e), lands) in enumerate(zip(played, TRADE_BLOWS)) if lands is not None]
+        self.blows = [(self.fight_at + k * b + (lands - s) * b / (e - s), sound)
+                      for k, ((s, e), (lands, sound)) in enumerate(zip(played, TRADE_BLOWS)) if lands is not None]
         self.blows += [(self.ko + (lands - KO_EXCHANGE[0]) / stretch, name) for lands, name in KO_BLOWS]
         # Jason's phone (left) and Freddy's (right): the same moments, each recording's own times.
         self.feeds = tuple(
