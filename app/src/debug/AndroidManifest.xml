@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Debug builds only: puts the adb puppet ("Puppet mode" in the README) in place as the app starts. It serves no
+             data; a provider is simply created before any Activity. Release builds have neither it nor the puppet. -->
+        <provider
+            android:name=".puppet.PuppetInstaller"
+            android:authorities="${applicationId}.puppet"
+            android:exported="false" />
+    </application>
+
+</manifest>

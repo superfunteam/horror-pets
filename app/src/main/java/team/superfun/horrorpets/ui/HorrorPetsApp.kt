@@ -21,8 +21,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import kotlin.random.Random
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.audio.SoundSink
+import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -51,10 +54,17 @@ private const val SCREEN_FADE_MS = 280
  * Screens are keyed by their type, so a screen whose state changes in place (a fight turn) stays
  * mounted, while moving between screens cross-fades. The view model's sound queues are drained into
  * [sounds] as they fill, and screens reach the same sink through [LocalSoundSink] for the sounds they
- * time themselves.
+ * time themselves. [scriptedPicks] are moves picked for the player by a debug build's puppet (see
+ * `FightScreen`); a release build's never has any.
  */
 @Composable
-fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onExit: () -> Unit) {
+fun HorrorPetsApp(
+    vm: GameViewModel,
+    loader: AssetLoader,
+    sounds: SoundSink,
+    onExit: () -> Unit,
+    scriptedPicks: Flow<Move> = emptyFlow(),
+) {
     val state by vm.state.collectAsState()
 
     // Back can arrive between a state change and the recomposition that shows it (Menu then Back in
@@ -199,6 +209,7 @@ fun HorrorPetsApp(vm: GameViewModel, loader: AssetLoader, sounds: SoundSink, onE
                     onAnimFinished = vm::onAnimFinished,
                     focusEntry = focusEntry,
                     isBusy = { vm.state.value.busy },
+                    scriptedPicks = scriptedPicks,
                 )
 
                 is Screen.Unlocked -> UnlockedScreen(

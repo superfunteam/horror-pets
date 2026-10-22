@@ -73,6 +73,40 @@ catches up:
 adb shell pm clear team.superfun.horrorpets
 ```
 
+### Puppet mode (debug builds)
+
+Drive the game from adb, for recording footage without playing by hand. It lives in `app/src/debug/` only: a
+release build has no puppet code and ignores all of this. Send a line of commands, separated by `;`, as the `cmd`
+extra of a broadcast while the game runs, or of a cold start (run after the save loads). Quote the whole adb command
+so the device's shell keeps the `;`:
+
+```sh
+adb -s emulator-5554 shell "am start -S -n team.superfun.horrorpets/.MainActivity --es cmd 'pet freddy; fight pinhead'"
+adb -s emulator-5554 shell "am broadcast -a team.superfun.horrorpets.PUPPET --es cmd 'meter full; move special'"
+adb -s emulator-5554 shell "am broadcast -a team.superfun.horrorpets.PUPPET --es cmd 'autoplay on; wait home; fight jason'"
+adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and each screen as it comes up
+```
+
+| Command | What it does |
+| --- | --- |
+| `unlock_all` | Every killer joins the stable. |
+| `pet <killer>` | That killer (`jason`, `freddy`, `pinhead`, `ghostface`, `chucky`, `michael`, `leatherface`) becomes the active pet, joining the stable if needed, and Home comes up. |
+| `level <n>` | The active pet's level (1 to 99); Home then offers its new attacks on the learn screens. `--ei debug_level <n>` on a cold start still does the same. |
+| `learn_all` | The active pet learns what its level unlocks and equips the best attack in each slot, with no learn screens. |
+| `fight <killer>` | Straight into a CPU fight against that killer, through the VS card. |
+| `autoplay on\|off` | Fights (CPU and PvP) pick the player's moves: 0.8 s after the menu is up, SPECIAL when the meter is full, POTION under 30% HP, else the answer to the CPU's tell (BLOCK a STRIKE, STRIKE a HEAVY, HEAVY a BLOCK), else STRIKE and HEAVY in turn. Results, unlock and learn cards continue after 2.5 s (a learn screen learns). |
+| `move <strike\|heavy\|block\|special\|potion\|run>` | Picks that move now, if the fight allows it. A `run` runs without asking. |
+| `meter full` | Fills the player's special meter (CPU fights only: a PvP fight must play the same on both apps). |
+| `feed`, `play`, `train` | That care action, going Home first. |
+| `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch). |
+| `wait <seconds>`, `wait home` | Holds the rest of the line: for that long, or until Home is up and idle (a fight and its cards over). |
+| `status` | Logs the screen, the active pet and whether autoplay is on. |
+
+Each command waits for the action playing (a turn, a feed) to end first. A command that is refused (logged as
+`refused:` with the reason) drops the rest of its line, and a new line replaces one still waiting. Moves are picked
+through the fight menu, so the cursor goes to each before it is taken. These change the save like play does, so
+use an emulator whose save you do not mind changing.
+
 ### Regenerating assets
 
 The finished art and audio are committed (`sprites-final/`, `scenes-final/`, `audio-final/`) and Gradle bundles them into the APK.

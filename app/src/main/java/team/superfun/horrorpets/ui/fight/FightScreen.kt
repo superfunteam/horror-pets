@@ -59,6 +59,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -163,6 +165,9 @@ private const val POTION_FLIGHT_MS = 620
 private const val POTION_POOF_MS = 650
 private const val MENU_MS = 200
 
+/** A scripted pick (see `FightScreen`'s scriptedPicks) shows the cursor on its move this long before taking it. */
+private const val SCRIPTED_CURSOR_MS = 350L
+
 /** How long a sprite may take beyond its own length before the turn moves on without it. */
 private const val ANIM_SLACK_MS = 1_200L
 
@@ -229,6 +234,11 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  * [focusEntry] is the router's entry key
  * (see `RequestFocusOnEntry`); null (the screen is fading out) turns off Back. [isBusy] reads the view
  * model's `busy` live, so a key that arrives before the screen has recomposed is still turned down.
+ *
+ * [scriptedPicks] are moves picked for the player by a debug build's puppet (see
+ * `team.superfun.horrorpets.puppet.Puppet`), for footage that looks played: the cursor goes to the move, holds
+ * there a moment and takes it with the select tick, as a remote would. A pick that arrives while the menu is not
+ * taking moves is dropped. A RUN runs without asking.
  */
 @Composable
 fun FightScreen(
@@ -240,6 +250,7 @@ fun FightScreen(
     onAnimFinished: (Long) -> Unit,
     focusEntry: Any? = Unit,
     isBusy: () -> Boolean = { false },
+    scriptedPicks: Flow<Move> = emptyFlow(),
 ) {
     val fight = screen.fight
     val playerId = fight.player.id
@@ -316,6 +327,37 @@ fun FightScreen(
 
     LaunchedEffect(refocus) {
         refocus?.let { focusMenu(it.move) }
+    }
+
+    // The scripted picks are collected for the life of the screen, so they read the menu's state as it is now.
+    val takesMoves by rememberUpdatedState { !turnActive && canAct() && !askRun }
+    val latestOnMove by rememberUpdatedState(onMove)
+    LaunchedEffect(scriptedPicks) {
+        scriptedPicks.collect { picked ->
+            if (!takesMoves()) return@collect
+            focusMenu(picked)
+            delay(SCRIPTED_CURSOR_MS)
+            if (!takesMoves()) return@collect
+            sink.sfx("ui_select")
+            lastMove = picked
+            latestOnMove(picked)
+        }
+    }
+
+    // Only a turn moves the special meter in play, and its playback brings the bar along. A debug build's puppet can
+    // fill it between turns too (`meter full`): then the bar, and SPECIAL in the menu with it, follow. A change that
+    // comes with a new turn is left to that turn's playback, which may not have started yet when it lands.
+    val playerMeter = fight.player.meter.toFloat()
+    var meterTurn by remember { mutableIntStateOf(fight.turn) }
+    LaunchedEffect(playerMeter, fight.turn) {
+        if (fight.turn != meterTurn) {
+            meterTurn = fight.turn
+            return@LaunchedEffect
+        }
+        val rig = stage.player
+        if (turnActive || rig.meterTarget == playerMeter) return@LaunchedEffect
+        rig.meterTarget = playerMeter
+        rig.meter.animateTo(playerMeter, tween(METER_MS))
     }
 
     // PvP: the menu steps aside once this player has locked in, until the turn plays (which brings it back).

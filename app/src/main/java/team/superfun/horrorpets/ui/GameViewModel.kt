@@ -872,13 +872,19 @@ class GameViewModel(
         persist(game)
     }
 
-    /** Debug builds only (see `MainActivity`): sets the selected pet's level, to try the attacks it unlocks. */
-    fun debugSetLevel(level: Int) {
+    /**
+     * Debug builds only: the puppet's way in (see `team.superfun.horrorpets.puppet.Puppet`), to set up a scene that
+     * play would take a while to reach. Applies [edit] to the state, then routes a Home to the fake death or learn
+     * screen it is due (as every way Home does) and saves the game if it changed. Refused while an action plays (its
+     * animations still have to report in) or the save is still loading. Returns whether it applied.
+     */
+    internal fun debugEdit(edit: (UiState) -> UiState): Boolean {
         val s = _state.value
-        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
-        val game = s.game.withPet(pet.copy(level = level.coerceIn(1, Tuning.MAX_LEVEL), xp = 0))
-        _state.value = s.copy(game = game).routeHome()
-        persist(game)
+        if (s.busy || s.screen == Screen.Loading) return false
+        val edited = edit(s).routeHome()
+        _state.value = edited
+        if (edited.game != s.game) persist(edited.game)
+        return true
     }
 
     /** Back from MOVES. */
