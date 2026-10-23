@@ -168,7 +168,7 @@ fun OrganDropGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
     val latestOnOver by rememberUpdatedState(onOver)
     val play = remember { OrganDropPlay(env.clock, env.sounds, env.score, Random.Default) }
     var organs by remember { mutableStateOf<List<ImageBitmap>?>(null) }
-    // The first organ is in the air as the game begins, so the game doesn't wait on the art: it shows once loaded.
+    // The game doesn't wait on the art (the first organ shows at the top 0.4 s in): the organs show once it is loaded.
     LaunchedEffect(play) { organs = withContext(Dispatchers.IO) { ORGAN_ART.map(env.loader::prop) } }
     LaunchedEffect(play) { play.playOut { latestOnOver(it) } }
     // A key held as the app went away may never come up: whatever is held is let go as the game stops and starts again.
@@ -718,11 +718,3 @@ internal class OrganDropPlay(
 /** [from] moved [by] toward [to], stopping there. */
 private fun toward(from: Float, to: Float, by: Float): Float =
     if (abs(to - from) <= by) to else from + sign(to - from) * by
-
-private suspend fun GameClock.waitUntil(ms: Long) = waitMs(ms - nowMs)
-
-/** Fast, then easing in to 1 at [u] = 1 (clamped). */
-private fun easeOut(u: Float): Float {
-    val rest = 1f - u.coerceIn(0f, 1f)
-    return 1f - rest * rest
-}

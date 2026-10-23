@@ -24,7 +24,7 @@ const val START_X = 0.5f
 
 /**
  * The first organ reaches the catch line this long into the game, having shown at the top a beat (400 ms) in: it falls
- * for [fallMs] of 0.
+ * for `fallMs(0)` (see [fallMs]).
  */
 const val FIRST_LAND_MS = 1_600L
 

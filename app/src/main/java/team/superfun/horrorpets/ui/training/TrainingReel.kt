@@ -173,10 +173,11 @@ private const val NAME_GHOST_SPREAD = 0.22f
 private val NameOutline = Color(0xFF0B0709)
 
 /**
- * TRAIN's reel: a strip of film frames, one for each game on offer ([options]), each the pet's [scene] dimmed with a
- * picture of the game and its name. It runs past the gate flat out, smeared (`reel_spin` playing on a loop), slows
- * for 2.4 s and lands on [landOn] with `reel_stop` and a flash; "GET READY..." and the pet's [best] in it show, and
- * [REEL_READY_MS] later [onReady] starts the game. It plays on the training [clock], so it holds while that is paused.
+ * TRAIN's reel: a strip of film frames, one for each game on the [spin]'s strip (the games on offer), each the pet's
+ * [scene] dimmed with a picture of the game and its name. It runs past the gate flat out, smeared (`reel_spin` playing
+ * on a loop), slows for 2.4 s and lands on the game picked with `reel_stop` and a flash; "GET READY..." and the pet's
+ * [best] in it show, and [REEL_READY_MS] later [onReady] starts the game. It plays on the training [clock] (the shell's
+ * film runs on the same [spin]), so it holds while that is paused.
  *
  * Its art loads first (the scene, the props, the smeared frames): [onLoaded] says when, and the spin starts then. The
  * shell keeps the clock paused until then, so the spin is at 0 when it starts. The frame in the gate fills the play
@@ -184,8 +185,7 @@ private val NameOutline = Color(0xFF0B0709)
  */
 @Composable
 internal fun TrainingReel(
-    options: List<TrainingGame>,
-    landOn: TrainingGame,
+    spin: ReelSpin,
     loader: AssetLoader,
     scene: SceneSpec,
     best: Int,
@@ -194,7 +194,6 @@ internal fun TrainingReel(
     onReady: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spin = remember(options, landOn) { ReelSpin.of(options, landOn) }
     val sounds = LocalSoundSink.current
     val latestOnLoaded by rememberUpdatedState(onLoaded)
     val latestOnReady by rememberUpdatedState(onReady)
@@ -319,8 +318,6 @@ internal fun TrainingReel(
 }
 
 private const val TAG = "HorrorPets"
-
-private suspend fun GameClock.waitUntil(ms: Long) = waitMs(ms - nowMs)
 
 /** A frame's game name: outlined over a red glow when sharp, and ghosted down the frame by [spread] as it smears. */
 private fun DrawScope.drawName(name: TextLayoutResult, at: Offset, sharp: Float, glow: Shadow, rim: Stroke, spread: Float) {

@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
@@ -192,6 +193,8 @@ private fun TrainingRun(
     val reelShown by remember {
         derivedStateOf { !paidOnEntry && (!gameOn || clock.nowMs < gameStartMs + REEL_FADE_MS) }
     }
+    // The reel is opaque until the game starts under it (then it fades): the scene behind isn't drawn till then.
+    val reelCovers = !paidOnEntry && !gameOn && result == null
 
     // While held (away, then the GET READY beat) the game's clock is frozen, so it gets no presses either.
     Box(
@@ -202,13 +205,15 @@ private fun TrainingRun(
             .focusable(),
     ) {
         RunningFilm(run = { if (gameOn || paidOnEntry) spin.total.toFloat() else spin.position(clock.nowMs) }) {
-            SceneBackdrop(loader, scene) { floorY -> SideEffect { env.floorY = floorY } }
+            // Composed all along (it loads and fades in, and finds the floor), only not drawn under the reel.
+            SceneBackdrop(loader, scene, Modifier.drawWithContent { if (!reelCovers) drawContent() }) { floorY ->
+                SideEffect { env.floorY = floorY }
+            }
             if (gameShown) TrainingGameView(screen.game, env, finish)
             // Gone under the card, even mid-fade (a game ended at once) or mid-spin (the debug puppet's score).
             if (reelShown && result == null) {
                 TrainingReel(
-                    options = screen.options,
-                    landOn = screen.game,
+                    spin = spin,
                     loader = loader,
                     scene = scene,
                     best = env.best,

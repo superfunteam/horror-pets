@@ -246,11 +246,12 @@ class QuickDrawPlayTest {
 
     @Test
     fun theRingKeepsToItsPlace() {
-        // 16:9, the floor three quarters down: in the middle, its centre 0.37 of the height above the floor.
-        val wide = DrawRingSpot.of(w = 1500f, h = 1000f, floorY = 750f)
-        assertEquals(750f, wide.cx, 1e-3f)
-        assertEquals(380f, wide.cy, 1e-3f)
-        assertEquals(187.5f, wide.outer, 1e-3f) // an eighth of the width, under 0.19 of the height
+        // A TV's frame between the film's edges (3:2), the floor three quarters down: in the middle, its centre 0.37 of
+        // the height above the floor.
+        val tv = DrawRingSpot.of(w = 1500f, h = 1000f, floorY = 750f)
+        assertEquals(750f, tv.cx, 1e-3f)
+        assertEquals(380f, tv.cy, 1e-3f)
+        assertEquals(187.5f, tv.outer, 1e-3f) // an eighth of the width, under 0.19 of the height
         // A phone's wide frame: 0.19 of the height.
         assertEquals(190f, DrawRingSpot.of(w = 1900f, h = 1000f, floorY = 750f).outer, 1e-3f)
         // A floor high up the frame: the time ring stays on screen.

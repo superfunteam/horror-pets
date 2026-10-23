@@ -32,10 +32,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
@@ -62,11 +58,8 @@ import team.superfun.horrorpets.game.training.drawWindowMs
 import team.superfun.horrorpets.game.training.judgeDraw
 import team.superfun.horrorpets.game.training.key
 import team.superfun.horrorpets.game.training.nextCall
-import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.TrainingGame
-import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
-import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.home.HOME_PET_HEIGHT
 import team.superfun.horrorpets.ui.theme.Blood
@@ -148,8 +141,8 @@ fun QuickDrawGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         Modifier
             .fillMaxSize()
             .focusRequester(env.focus)
-            .noKeyRepeats()
-            .trainingKeys { key, down ->
+            // A press is one press, however long it's held.
+            .trainingKeys(repeats = false) { key, down ->
                 if (down) play.press(key)
                 true
             }
@@ -167,37 +160,13 @@ fun QuickDrawGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
 
         if (mate != null) {
             // Both face the camera, standing apart on the scene's floor.
-            DrawKiller(env, env.pet.id, play.pet, petHeight, 0L, Modifier.placeAt(x = { w * PET_X }, y = { env.floorY }))
-            DrawKiller(env, mate.id, play.mate, petHeight, MATE_IDLE_OFFSET_MS, Modifier.placeAt(x = { w * MATE_X }, y = { env.floorY }))
+            TrainingKiller(env, env.pet.id, play.pet, petHeight, 0L, Modifier.placeAt(x = { w * PET_X }, y = { env.floorY }))
+            TrainingKiller(env, mate.id, play.mate, petHeight, MATE_IDLE_OFFSET_MS, Modifier.placeAt(x = { w * MATE_X }, y = { env.floorY }))
         }
         DrawRingView(play, spot, env.clock)
         DrawCallout(play, Modifier.placeAt(x = { w / 2f }, y = { spot.cy + spot.reach + h * CALLOUT_GAP }, pivotY = 0f))
         DrawHud(play, env)
     }
-}
-
-/** A held key's repeats (more downs) never reach the game: in Quick Draw a press is one press, however long it's held. */
-private fun Modifier.noKeyRepeats(): Modifier = onPreviewKeyEvent {
-    it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount > 0 && trainingKeyOf(it.key) != null
-}
-
-/** One of the two killers, [pet], idling, swinging and flinching as [actor] has it. */
-@Composable
-private fun DrawKiller(env: TrainingEnv, pet: PetId, actor: DrawActor, heightPx: Float, idleOffsetMs: Long, modifier: Modifier) {
-    val tint = remember { hexColor(env.scene.tint) }
-    SpriteView(
-        loader = env.loader,
-        pet = pet,
-        anim = actor.anim,
-        heightPx = heightPx,
-        tint = tint,
-        tintStrength = env.scene.tintStrength,
-        shadowOpacity = env.scene.shadowOpacity,
-        loopOffsetMs = idleOffsetMs,
-        playKey = actor.playKey,
-        onFinished = actor.onFinished,
-        modifier = modifier,
-    )
 }
 
 /** The HUD, its status line the streak. */
@@ -391,29 +360,6 @@ private fun DrawScope.drawRingPart(ring: DrawRingShapes, call: DrawCall, lit: Bo
 internal enum class DrawPhase { READY, CALL, OVER }
 
 /**
- * One of a training game's killers (Quick Draw's two, Hide and Eek!'s): its animation, and its play count so that the
- * same one plays again. Main thread only.
- */
-@Stable
-internal class DrawActor {
-    var anim by mutableStateOf(Anim.IDLE)
-        private set
-    var playKey by mutableIntStateOf(0)
-        private set
-    private var holds = false
-
-    /** A swing or a flinch ends back at idle, unless it [holds] its last frame (the game is over). */
-    val onFinished: () -> Unit = { if (!holds) anim = Anim.IDLE }
-
-    /** Plays [next], from the start even if it is playing now; [hold] keeps its last frame up when it ends. */
-    fun act(next: Anim, hold: Boolean = false) {
-        anim = next
-        holds = hold
-        playKey++
-    }
-}
-
-/**
  * A game of Quick Draw as it goes: [playOut] plays it on the [clock], the remote's presses ([press]) and the finger's
  * taps ([tap]) answer the calls, and the composables draw what it holds. Each draw plays `hit` (`crit` every
  * [CRIT_EVERY]th) and keeps [score] at the streak; a loss plays `refuse`. Main thread only.
@@ -457,8 +403,8 @@ internal class QuickDrawPlay(
         private set
 
     /** Your killer and the mate. */
-    val pet = DrawActor()
-    val mate = DrawActor()
+    val pet = TrainingActor()
+    val mate = TrainingActor()
 
     /** Where the ring is, once measured, for the taps. */
     var ring: DrawRingSpot? = null

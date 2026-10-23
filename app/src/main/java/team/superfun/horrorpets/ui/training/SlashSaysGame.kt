@@ -282,7 +282,7 @@ private fun SlashDots(play: SlashSaysPlay, dotR: Float, clock: GameClock) {
                             phase == SlashPhase.MISSED && i == play.missed -> flashLight(now - play.missedAtMs)
                             else -> 0f
                         }
-                        val pop = popIn(now - play.dealtAtMs - i * POP_STAGGER_MS)
+                        val pop = popIn(now - play.dealtAtMs - i * POP_STAGGER_MS, POP_IN_MS)
                         drawSlashDot(dots[i], r * pop, SlashDotColors[slot], light, glows[slot])
                     }
 
@@ -635,18 +635,6 @@ private fun flashLight(sinceMs: Long): Float {
     val cycle = FLASH_ON_MS + FLASH_OFF_MS
     if (sinceMs >= FLASHES * cycle) return 1f
     return if (sinceMs % cycle < FLASH_ON_MS) 1f else 0f
-}
-
-/** A dot's size [sinceMs] after it was dealt: up from nothing over [POP_IN_MS], overshooting a little. */
-private fun popIn(sinceMs: Long): Float {
-    val u = (sinceMs / POP_IN_MS.toFloat()).coerceIn(0f, 1f) - 1f
-    return 1f + 2.70158f * u * u * u + 1.70158f * u * u
-}
-
-/** Fast, then easing in to 1 at [u] = 1 (clamped). */
-private fun easeOut(u: Float): Float {
-    val rest = 1f - u.coerceIn(0f, 1f)
-    return 1f - rest * rest
 }
 
 private fun Offset.toPair(): Pair<Float, Float> = x to y

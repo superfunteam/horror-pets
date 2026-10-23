@@ -85,6 +85,9 @@ class GameClock {
         }
     }
 
+    /** Suspends until the game time is [ms] (at once when it already is). Cancellable. */
+    suspend fun waitUntil(ms: Long) = waitMs(ms - nowMs)
+
     /** Resumes every wait that is over at [ms]. */
     private fun wake(ms: Long) {
         if (waiters.isEmpty()) return

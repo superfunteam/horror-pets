@@ -13,7 +13,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -32,6 +31,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.random.Random
+import kotlinx.coroutines.delay
 import team.superfun.horrorpets.ui.common.hash01
 
 /** Each black film edge, as a share of the screen's width: the trailer reel's 150 px at 1920. */
@@ -82,8 +82,10 @@ fun FilmFrame(run: Float, content: @Composable BoxScope.() -> Unit) {
     // The film frame the grain and flicker are on; only the overlay's draw reads it.
     val filmFrame = remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        val start = withFrameMillis { it }
-        while (true) withFrameMillis { filmFrame.intValue = ((it - start) / FILM_FRAME_MS).toInt() }
+        while (true) {
+            delay(FILM_FRAME_MS)
+            filmFrame.intValue++
+        }
     }
     // The run at the last draw, for how far the holes moved since: their streak.
     val lastRun = remember { FloatArray(1) { Float.NaN } }

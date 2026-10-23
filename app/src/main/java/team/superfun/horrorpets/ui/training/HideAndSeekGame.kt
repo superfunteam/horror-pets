@@ -64,7 +64,6 @@ import team.superfun.horrorpets.game.training.shuffleFor
 import team.superfun.horrorpets.game.training.tombDesign
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.TrainingGame
-import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
@@ -225,30 +224,12 @@ fun HideAndSeekGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         SeekStones(play, row, tombs, stoneFilter, env.clock)
         if (mate != null) SeekMate(env, mate.id, play, row, petHeight, h * MATE_IN_FRONT)
         // Facing the camera at the left edge, its feet on the scene's floor.
-        SeekKiller(env, env.pet.id, play.pet, watcher.height, 0L, Modifier.placeAt(x = { watcher.x }, y = { env.floorY }))
+        TrainingKiller(env, env.pet.id, play.pet, watcher.height, 0L, Modifier.placeAt(x = { watcher.x }, y = { env.floorY }))
         SeekPointer(play, row, env.clock)
         SeekCallout(play, mateName, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
-        SeekHud(play, env, mateName)
+        // Without a mate the game ends at once: no HUD (its touch help would name nobody).
+        if (mate != null) SeekHud(play, env, mateName)
     }
-}
-
-/** One of the killers, [pet], acting as [actor] has it. */
-@Composable
-private fun SeekKiller(env: TrainingEnv, pet: PetId, actor: DrawActor, heightPx: Float, idleOffsetMs: Long, modifier: Modifier) {
-    val tint = remember { hexColor(env.scene.tint) }
-    SpriteView(
-        loader = env.loader,
-        pet = pet,
-        anim = actor.anim,
-        heightPx = heightPx,
-        tint = tint,
-        tintStrength = env.scene.tintStrength,
-        shadowOpacity = env.scene.shadowOpacity,
-        loopOffsetMs = idleOffsetMs,
-        playKey = actor.playKey,
-        onFinished = actor.onFinished,
-        modifier = modifier,
-    )
 }
 
 /**
@@ -260,7 +241,7 @@ private fun SeekKiller(env: TrainingEnv, pet: PetId, actor: DrawActor, heightPx:
 private fun SeekMate(env: TrainingEnv, mate: PetId, play: HideAndSeekPlay, row: TombRow, heightPx: Float, inFront: Float) {
     val at = play.mateAt ?: return
     val clock = env.clock
-    SeekKiller(
+    TrainingKiller(
         env,
         mate,
         play.mate,
@@ -338,7 +319,7 @@ private fun SeekStones(play: HideAndSeekPlay, row: TombRow, tombs: List<ImageBit
                             shadow,
                             Offset(row.x(pos), row.footY),
                             height,
-                            scale = popIn(now - play.dealtAtMs - pos * POP_STAGGER_MS),
+                            scale = popIn(now - play.dealtAtMs - pos * POP_STAGGER_MS, POP_IN_MS),
                             lift = lift * LIFT * height,
                             tip = lift * TIP,
                             filter = filter,
@@ -572,8 +553,8 @@ internal class HideAndSeekPlay(
     private var revealedAtMs by mutableLongStateOf(NEVER)
 
     /** Your killer and the mate. */
-    val pet = DrawActor()
-    val mate = DrawActor()
+    val pet = TrainingActor()
+    val mate = TrainingActor()
 
     /** Where the stones are, once measured, for the taps. */
     var row: TombRow? = null
@@ -731,20 +712,6 @@ internal class HideAndSeekPlay(
         dealtAtMs = atMs
         phase = SeekPhase.HIDE
     }
-}
-
-private suspend fun GameClock.waitUntil(ms: Long) = waitMs(ms - nowMs)
-
-/** A stone's size [sinceMs] after it was dealt: up from nothing over [POP_IN_MS], overshooting a little. */
-private fun popIn(sinceMs: Long): Float {
-    val u = (sinceMs / POP_IN_MS.toFloat()).coerceIn(0f, 1f) - 1f
-    return 1f + 2.70158f * u * u * u + 1.70158f * u * u
-}
-
-/** Fast, then easing in to 1 at [u] = 1 (clamped). */
-private fun easeOut(u: Float): Float {
-    val rest = 1f - u.coerceIn(0f, 1f)
-    return 1f - rest * rest
 }
 
 /** Slow, then fast, to 1 at [u] = 1 (clamped). */

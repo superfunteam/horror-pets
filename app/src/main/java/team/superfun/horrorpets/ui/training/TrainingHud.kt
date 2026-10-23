@@ -34,6 +34,7 @@ import team.superfun.horrorpets.ui.common.KeyCap
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.isTouchInput
+import team.superfun.horrorpets.ui.common.keyCapHeight
 import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.fight.OutlinedText
 import team.superfun.horrorpets.ui.theme.Amber
@@ -116,10 +117,8 @@ private fun HelpStrip(help: List<HelpItem>, touchHelp: String, modifier: Modifie
 /** A direction's key: an arrow drawn in dark on a square gold cap, the same height as a [KeyCap]. */
 @Composable
 private fun ArrowCap(key: TrainingKey) {
-    // A KeyCap is its 13 sp label's line (1.2 em in Barlow Condensed) plus 2 dp above and below.
-    val side = with(LocalDensity.current) { (13.sp * 1.2f).toDp() } + 4.dp
     Box(
-        Modifier.size(side).drawBehind {
+        Modifier.size(keyCapHeight()).drawBehind {
             val cut = 5.dp.toPx()
             drawPath(
                 Path().apply {

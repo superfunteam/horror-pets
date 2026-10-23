@@ -26,24 +26,29 @@ fun trainingKeyOf(key: Key): TrainingKey? = when (key) {
 /**
  * Whether a game sees [key] going [down] (or up) on its [repeat]th repeat (0 for the press itself): all but a held OK's
  * repeats, so OK goes down once a press from any key. `MainActivity` drops the remote's OK repeats, but Space and a
- * gamepad's A keep repeating while held. A held direction keeps repeating, for the games that run while it is held.
+ * gamepad's A keep repeating while held. A held direction keeps repeating, for the games that run while it is held,
+ * unless the game takes no [repeats]: then no held key repeats, and a press is one press however long it's held.
  */
-internal fun reachesGame(key: TrainingKey, down: Boolean, repeat: Int): Boolean =
-    !(key == TrainingKey.OK && down && repeat > 0)
+internal fun reachesGame(key: TrainingKey, down: Boolean, repeat: Int, repeats: Boolean = true): Boolean =
+    !down || repeat == 0 || (repeats && key != TrainingKey.OK)
 
 /**
  * Hands a game its keys while it (or something inside it) has focus: [onKey] gets each training key going down and
  * coming up, and says whether it used it. OK goes down once a press, whichever key it is (see [reachesGame]: a held
- * OK's repeats are swallowed); a held direction's repeats arrive as more downs. Other keys pass on untouched.
+ * OK's repeats are swallowed); a held direction's repeats arrive as more downs, unless the game takes no [repeats].
+ * Other keys pass on untouched.
  */
-fun Modifier.trainingKeys(onKey: (key: TrainingKey, down: Boolean) -> Boolean): Modifier = onKeyEvent { event ->
+fun Modifier.trainingKeys(
+    repeats: Boolean = true,
+    onKey: (key: TrainingKey, down: Boolean) -> Boolean,
+): Modifier = onKeyEvent { event ->
     val key = trainingKeyOf(event.key) ?: return@onKeyEvent false
     val down = when (event.type) {
         KeyEventType.KeyDown -> true
         KeyEventType.KeyUp -> false
         else -> return@onKeyEvent false
     }
-    if (!reachesGame(key, down, event.nativeKeyEvent.repeatCount)) return@onKeyEvent true
+    if (!reachesGame(key, down, event.nativeKeyEvent.repeatCount, repeats)) return@onKeyEvent true
     onKey(key, down)
 }
 

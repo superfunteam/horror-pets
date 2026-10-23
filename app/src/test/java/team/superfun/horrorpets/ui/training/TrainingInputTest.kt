@@ -54,6 +54,17 @@ class TrainingInputTest {
     }
 
     @Test
+    fun aGameTakingNoRepeatsSeesOneDownAPress() {
+        // Quick Draw: a press is one press, however long it's held.
+        for (key in TrainingKey.entries) {
+            assertTrue("$key", reachesGame(key, down = true, repeat = 0, repeats = false))
+            assertFalse("$key", reachesGame(key, down = true, repeat = 1, repeats = false))
+            assertFalse("$key", reachesGame(key, down = true, repeat = 9, repeats = false))
+            assertTrue("$key", reachesGame(key, down = false, repeat = 0, repeats = false))
+        }
+    }
+
+    @Test
     fun whileHeldNoTrainingKeyGoesDown() {
         for (key in listOf(Key.DirectionUp, Key.DirectionLeft, Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.ButtonA)) {
             assertTrue("$key", swallowedWhileHeld(key, KeyEventType.KeyDown, held = true))
