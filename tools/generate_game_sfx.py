@@ -1,7 +1,8 @@
 """Generate the training mini games' sound effects with ElevenLabs sound generation into audio-final/sfx/ (16-bit PCM
 mono WAV, 44.1 kHz): the slot reel's spin and the clunk it stops with, Slash Says' blade swish, the gravestone shuffle's
 stone scrape, the catch's squish, the drop's splat and the game-over sting. (The eight dot tones are synthesized, by
-tools/synth_audio.py.)
+tools/synth_audio.py.) Then the pantry's: the board's knock, the cook's poof, the squelch of a refused cook, a sound
+per way to cook, the killer's happy gulp and gross spit, and the favorite's fanfare.
 
 Each is generated --takes times into art-work/sfx/ (gitignored). Like generate_video_sfx.py, a take must not ring (see
 tonality: a clunk or a swish that rings sounds like a bell under the game's music) and the loudest take that doesn't wins;
@@ -41,8 +42,24 @@ SOUNDS = {  # (prompt, seconds)
     "splat": (f"A cartoon gloopy splat on a floor: something wet and heavy landing with a soft slap, {DRY}", 0.6),
     "game_over": ("A short spooky arcade game-over sting: a descending synth wail that sinks and fades, 8-bit game "
                   "console sound effect, no music, no voices", 1.2),
+    # The pantry (cooking on FEED): putting things on the board, the cook's poof, a refused cook, one sound per way to
+    # cook, the killer's verdict and its favorite.
+    "pantry_pick": (f"A small item set down on a wooden cutting board: one short, soft, hollow wooden knock, {DRY}", 0.3),
+    "pantry_poof": (f"A cartoon puff of smoke: a soft airy poof with a tiny pop, like a magic trick, {DRY}", 0.6),
+    "pantry_squelch": (f"A gross wet cartoon squelch and blorp, something disgusting that won't mix, short, {DRY}", 0.5),
+    "cook_grill": (f"Meat slapped onto a hot grill: a short loud sizzle that fades, {DRY}", 1.0),
+    "cook_campfire": (f"A campfire flaring up: a short whoosh of flame and crackling wood, {DRY}", 1.0),
+    "cook_pot": (f"A pot of water boiling hard: a short burst of rolling bubbles and a rattling lid, {DRY}", 1.0),
+    "cook_cauldron": (f"A witch's cauldron bubbling: thick, deep, gloopy bubbles popping, slimy, {DRY}", 1.0),
+    "cook_sun": ("A bright magical shimmer of sunshine: a short rising sparkle, cartoon game sound effect, no music, no "
+                 "voices", 0.8),
+    "eat_happy": ("A cartoon gulp followed by a satisfied lip smack, no words, no music, dry and close, no reverb", 0.6),
+    "eat_gross": ("A cartoon gag and spit: a disgusted retching blech and a wet spit, no words, no music, dry and close, "
+                  "no reverb", 0.8),
+    "favorite_fanfare": ("A short triumphant arcade fanfare jingle, cheerful and celebratory, 8-bit game console sound "
+                         "effect, no voices", 1.5),
 }
-TONAL_SOUNDS = {"game_over"}  # meant to ring, so never rejected for it
+TONAL_SOUNDS = {"game_over", "cook_sun", "favorite_fanfare"}  # meant to ring, so never rejected for it
 MIN_SECONDS = 0.5  # the API's shortest sound; a shorter ask is made this long (the kept take starts at its sound)
 
 
