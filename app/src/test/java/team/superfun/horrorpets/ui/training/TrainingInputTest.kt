@@ -75,4 +75,52 @@ class TrainingInputTest {
         // Back is never held back: it still leaves.
         assertFalse(swallowedWhileHeld(Key.Back, KeyEventType.KeyDown, held = true))
     }
+
+    @Test
+    fun noGameIsPressedOrTouchedUntilTheReelHasFadedOffIt() {
+        // The reel hands over at 4800 ms of training time: the game is composed and has focus under the fading reel,
+        // and a player still pressing OK from "GET READY..." must not lose Quick Draw at 0 with TOO SOON before READY
+        // is seen.
+        val start = 4_800L
+        fun held(now: Long, paused: Boolean = false, over: Boolean = false) =
+            inputHeld(paused, reelFading(gameOn = true, nowMs = now, startMs = start), over)
+        val pressedKeys =
+            listOf(Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.ButtonA, Key.DirectionLeft, Key.DirectionRight)
+
+        for (now in start until start + REEL_FADE_MS) {
+            assertTrue("held $now ms in", held(now))
+            for (key in pressedKeys) {
+                assertTrue("$key at $now", swallowedWhileHeld(key, KeyEventType.KeyDown, held(now)))
+            }
+            // Back is never held back, and a key let go still gets through.
+            assertFalse(swallowedWhileHeld(Key.Back, KeyEventType.KeyDown, held(now)))
+            assertFalse(swallowedWhileHeld(Key.DirectionCenter, KeyEventType.KeyUp, held(now)))
+        }
+        // The fade over, the game has its keys and touches.
+        assertFalse(held(start + REEL_FADE_MS))
+        assertFalse(held(start + REEL_FADE_MS + 2_000L))
+        assertFalse(swallowedWhileHeld(Key.DirectionCenter, KeyEventType.KeyDown, held(start + REEL_FADE_MS)))
+    }
+
+    @Test
+    fun theReelFadesOnlyOnceAGameHasBegunUnderIt() {
+        // Before the hand-over there is no game under the reel to hold anything from.
+        assertFalse(reelFading(gameOn = false, nowMs = 0L, startMs = 0L))
+        assertFalse(reelFading(gameOn = false, nowMs = 3_000L, startMs = 0L))
+        assertTrue(reelFading(gameOn = true, nowMs = 4_800L, startMs = 4_800L))
+        assertTrue(reelFading(gameOn = true, nowMs = 4_800L + REEL_FADE_MS - 1L, startMs = 4_800L))
+        assertFalse(reelFading(gameOn = true, nowMs = 4_800L + REEL_FADE_MS, startMs = 4_800L))
+    }
+
+    @Test
+    fun theHoldIsTheAppAwayOrTheReelFadingUntilTheGameIsOver() {
+        assertFalse(inputHeld(paused = false, reelFading = false, over = false))
+        assertTrue("away, or the GET READY beat", inputHeld(paused = true, reelFading = false, over = false))
+        assertTrue("the reel fading", inputHeld(paused = false, reelFading = true, over = false))
+        assertTrue(inputHeld(paused = true, reelFading = true, over = false))
+        // Once its card is up the card has the keys (and swallows the touches itself), whatever else is going on.
+        for (paused in listOf(false, true)) {
+            for (fading in listOf(false, true)) assertFalse(inputHeld(paused, fading, over = true))
+        }
+    }
 }

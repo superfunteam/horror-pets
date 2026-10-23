@@ -45,6 +45,17 @@ import team.superfun.horrorpets.ui.theme.Ink
 internal val TrainingGold = Color(0xFFF5C543)
 
 /**
+ * How [TrainingHud] sets its title and status (sizes in sp, letter spacing in em): the title [HUD_TITLE_SP] in a
+ * [HUD_TITLE_LINE_SP] line, and under it the status, [HUD_STATUS_SP] in the face's own 1.2 em line. A game laying a
+ * callout out against the HUD's corner takes its measures from these.
+ */
+internal const val HUD_TITLE_SP = 32f
+internal const val HUD_TITLE_LINE_SP = 34f
+internal const val HUD_TITLE_TRACKING = 0.03f
+internal const val HUD_STATUS_SP = 17f
+internal const val HUD_STATUS_TRACKING = 0.06f
+
+/**
  * The best a game's HUD shows as it is played: the pet's [best] before the game, or the [score] so far once it beats
  * that, so a new best counts up in the corner as it is set, as the results card will have it.
  */
@@ -64,11 +75,20 @@ fun TrainingHud(title: String, status: String, best: Int, help: List<HelpItem>, 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val safe = safeInset()
         Column(Modifier.align(Alignment.TopStart).padding(start = safe.horizontal, top = safe.vertical)) {
-            GlowText(title.uppercase(), displayStyle(32.sp, tracking = 0.03f, lineHeight = 34.sp))
+            GlowText(
+                title.uppercase(),
+                displayStyle(HUD_TITLE_SP.sp, tracking = HUD_TITLE_TRACKING, lineHeight = HUD_TITLE_LINE_SP.sp),
+            )
             if (status.isNotBlank()) {
                 BasicText(
                     status.uppercase(),
-                    style = displayStyle(17.sp, FontWeight.Bold, color = TrainingGold, tracking = 0.06f, halo = true),
+                    style = displayStyle(
+                        HUD_STATUS_SP.sp,
+                        FontWeight.Bold,
+                        color = TrainingGold,
+                        tracking = HUD_STATUS_TRACKING,
+                        halo = true,
+                    ),
                     maxLines = 1,
                 )
             }

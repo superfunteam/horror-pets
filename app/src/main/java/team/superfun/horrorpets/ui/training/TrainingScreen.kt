@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,7 +52,13 @@ import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.theme.Ink
 
 /** Once the reel hands over, it fades off the game this fast. */
-private const val REEL_FADE_MS = 300L
+internal const val REEL_FADE_MS = 300L
+
+/**
+ * Whether the reel is still fading off a game that [gameOn] started at [startMs] (training clock time) at [nowMs]: from
+ * the game's first frame for [REEL_FADE_MS]. The game is composed under it all that while.
+ */
+internal fun reelFading(gameOn: Boolean, nowMs: Long, startMs: Long): Boolean = gameOn && nowMs < startMs + REEL_FADE_MS
 
 /**
  * Back from being away (the TV's Home button, a call, the screen off): "GET READY" this long, then the game goes on.
@@ -69,7 +76,8 @@ private const val RESUME_BEAT_MS = 1_000L
  *   results card is up. It has been running since the reel started (`nowMs` is already about 4800 as a game begins),
  *   so a game measures its time from its own start: `nowMs` as it begins. While held, the shell also keeps every
  *   training key's press and every touch from the game; [GameClock.paused] says when it stops and starts again (for a
- *   game holding a key that may never come up);
+ *   game holding a key that may never come up). The shell holds them too for the first 300 ms or so of the game, while
+ *   the reel fades off it, though the clock runs: a game takes no input before its player has seen it;
  * - [sounds], where it plays its sounds: until the results card, the training screen's key presses make no UI ticks
  *   but the ones a game plays;
  * - [focus]: the game puts `Modifier.focusRequester(focus)` on a focusable element from its first composition, with
@@ -192,9 +200,9 @@ private fun TrainingRun(
         if (gameShown && focusEntry != null && screen.result == null) focus.requestFocus()
     }
 
-    val reelShown by remember {
-        derivedStateOf { !paidOnEntry && (!gameOn || clock.nowMs < gameStartMs + REEL_FADE_MS) }
-    }
+    // Read in the composition, so that only its flip recomposes (not the clock's every frame).
+    val fading by remember { derivedStateOf { reelFading(gameOn, clock.nowMs, gameStartMs) } }
+    val reelShown = !paidOnEntry && (!gameOn || fading)
     // The reel is opaque until the game starts under it (then it fades): the scene behind isn't drawn till then.
     val reelCovers = !paidOnEntry && !gameOn && result == null
 
@@ -203,12 +211,14 @@ private fun TrainingRun(
     // the remote's first Back in a game (and left the game deaf to keys after it).
     val holdsFocus = !gameShown && result == null
 
-    // While held (away, then the GET READY beat) the game's clock is frozen, so it gets no presses either.
+    // While held (away, then the GET READY beat) the game's clock is frozen, so it gets no presses either. Nor does it
+    // while the reel fades off it: it is composed, with focus, under a reel that has no input of its own.
+    val held = inputHeld(away.paused, fading, over = result != null)
     Box(
         Modifier
             .fillMaxSize()
             .focusRequester(rootFocus)
-            .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held = away.paused && result == null) }
+            .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held) }
             .focusProperties { canFocus = holdsFocus }
             .focusable(),
     ) {
@@ -238,6 +248,8 @@ private fun TrainingRun(
                     },
                 )
             }
+            // Over the game and the fading reel, under GET READY and the card: while held, no touch reaches the game.
+            if (held) Spacer(Modifier.fillMaxSize().swallowTouches())
             if (away.beat && result == null) GetReady()
             if (result != null) ResultsCard(screen.game, result, { onDone(session) }, focusEntry)
         }
@@ -259,10 +271,10 @@ private fun TrainingGameView(game: TrainingGame, env: TrainingEnv, onOver: (Int)
     }
 }
 
-/** "GET READY" over the held game as the app comes back; the game gets no touch through it. */
+/** "GET READY" over the held game as the app comes back (the shell's hold keeps the touches off the game). */
 @Composable
 private fun GetReady() {
-    Box(Modifier.fillMaxSize().swallowTouches().background(Ink.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Ink.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
         GlowText("GET READY", displayStyle(46.sp, color = TrainingGold, tracking = 0.06f, lineHeight = 48.sp))
     }
 }

@@ -53,8 +53,16 @@ fun Modifier.trainingKeys(
 }
 
 /**
- * Whether the shell keeps a key event of [type] for [key] from the game while the game is [held] (the app away, then
- * the "GET READY" beat): every training key going down. Keys let go still get through, so a game tracking held keys
+ * Whether the shell holds the game's input (keys by [swallowedWhileHeld], touches by [swallowTouches]): while the app
+ * is [paused] (away, or the "GET READY" beat after) and while the reel is still fading off the game ([reelFading]: the
+ * game is composed and has focus under it, but its player hasn't seen it yet). Not once the game is [over] and its card
+ * is up, which has the keys and takes the touches itself.
+ */
+internal fun inputHeld(paused: Boolean, reelFading: Boolean, over: Boolean): Boolean = (paused || reelFading) && !over
+
+/**
+ * Whether the shell keeps a key event of [type] for [key] from the game while the game is [held] (see [inputHeld]: the
+ * app away, then the "GET READY" beat, and the reel fading off the game): every training key going down. Keys let go still get through, so a game tracking held keys
  * sees one released during the hold; Back is never kept.
  */
 internal fun swallowedWhileHeld(key: Key, type: KeyEventType, held: Boolean): Boolean =

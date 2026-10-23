@@ -143,7 +143,7 @@ private const val SWAP_DEPTH = 0.12f
 private const val SWAP_SCALE = 0.1f
 
 /** A stone checked lifts this much of its height and tips back this many degrees. */
-private const val LIFT = 0.16f
+internal const val LIFT = 0.16f
 private const val TIP = -9f
 
 /** The mate stands this many play heights in front of its stone's foot. */
@@ -163,6 +163,17 @@ private const val POINTER_BOB = 0.012f
  */
 private const val TAP_ABOVE = 0.3f
 private const val TAP_BELOW = 0.15f
+
+/**
+ * The callout ("WHERE'S <MATE>?", "FOUND <MATE>!") is set in [SEEK_CALLOUT_SP] sp in a [SEEK_CALLOUT_LINE_SP] line, top
+ * centre, its top [SEEK_CALLOUT_TOP] under the safe inset: below the HUD's title and status line in the corner (their
+ * 34 sp and 17 sp x 1.2 lines, 54.4 dp on a TV, ending 3.6 dp above it), so that however wide a name makes it, it
+ * never meets them; and above the pointer, which on the widest play areas is the closest thing under it.
+ */
+internal const val SEEK_CALLOUT_SP = 30f
+internal const val SEEK_CALLOUT_LINE_SP = 32f
+internal const val SEEK_CALLOUT_TRACKING = 0.06f
+internal val SEEK_CALLOUT_TOP = 58.dp
 
 /** No time yet: a time to come that hasn't been set. */
 private const val NEVER = Long.MAX_VALUE
@@ -226,7 +237,8 @@ fun HideAndSeekGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         // Facing the camera at the left edge, its feet on the scene's floor.
         TrainingKiller(env, env.pet.id, play.pet, watcher.height, 0L, Modifier.placeAt(x = { watcher.x }, y = { env.floorY }))
         SeekPointer(play, row, env.clock)
-        SeekCallout(play, mateName, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
+        val calloutTop = safeInset().vertical + SEEK_CALLOUT_TOP
+        SeekCallout(play, mateName, Modifier.align(Alignment.TopCenter).padding(top = calloutTop))
         // Without a mate the game ends at once: no HUD (its touch help would name nobody).
         if (mate != null) SeekHud(play, env, mateName)
     }
@@ -282,7 +294,13 @@ private fun SeekCallout(play: HideAndSeekPlay, mateName: String, modifier: Modif
         SeekPhase.MISSED -> "WRONG STONE!"
         else -> return
     }
-    GlowText(callout, displayStyle(30.sp, color = TrainingGold, tracking = 0.06f, lineHeight = 32.sp), modifier)
+    val style = displayStyle(
+        SEEK_CALLOUT_SP.sp,
+        color = TrainingGold,
+        tracking = SEEK_CALLOUT_TRACKING,
+        lineHeight = SEEK_CALLOUT_LINE_SP.sp,
+    )
+    GlowText(callout, style, modifier)
 }
 
 /**
@@ -361,11 +379,11 @@ private fun SeekPointer(play: HideAndSeekPlay, row: TombRow, clock: GameClock) {
         Modifier
             .fillMaxSize()
             .drawWithCache {
-                val length = size.height * POINTER_LENGTH
-                val arrow = arrowPath(Offset.Zero, length, 90f)
-                val rim = Stroke(length * 0.14f, join = StrokeJoin.Round)
-                val y = row.top - size.height * POINTER_GAP - length / 2f
-                val bob = size.height * POINTER_BOB
+                val spot = PointerSpot(row, size.height)
+                val arrow = arrowPath(Offset.Zero, spot.length, 90f)
+                val rim = Stroke(spot.rim, join = StrokeJoin.Round)
+                val y = spot.y
+                val bob = spot.bob
                 onDrawBehind {
                     if (play.phase != SeekPhase.PICK) return@onDrawBehind
                     val now = clock.nowMs
@@ -377,6 +395,24 @@ private fun SeekPointer(play: HideAndSeekPlay, row: TombRow, clock: GameClock) {
                 }
             },
     )
+}
+
+/**
+ * Where the pointer is over [row] in a play area [h] px tall, in px: an arrow pointing down, [length] long, its middle
+ * [y] down the play area at rest and bobbing [bob] either way, outlined by a [rim] wide stroke.
+ */
+@Immutable
+internal class PointerSpot(row: TombRow, h: Float) {
+    val length = h * POINTER_LENGTH
+    val y = row.top - h * POINTER_GAP - length / 2f
+    val bob = h * POINTER_BOB
+    val rim = length * 0.14f
+
+    /** The highest the pointer ever draws: its tip at the top of the bob, and the rim's half width past it. */
+    val top: Float get() = y - bob - length / 2f - rim / 2f
+
+    /** How far its head reaches either side of its middle, at most (0.48 of its length), with the rim's half. */
+    val halfWidth: Float get() = length / 2f + rim / 2f
 }
 
 /** A [tombShadow] is [SHADOW_R] px in radius, to be scaled to its stone. */

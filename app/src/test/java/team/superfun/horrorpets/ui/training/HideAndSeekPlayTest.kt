@@ -2,6 +2,11 @@ package team.superfun.horrorpets.ui.training
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import java.awt.Font
+import java.awt.font.FontRenderContext
+import java.awt.font.TextAttribute
+import java.io.File
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,6 +23,9 @@ import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.game.training.TrainingKey
 import team.superfun.horrorpets.game.training.afterSwap
 import team.superfun.horrorpets.game.training.mateAfter
+import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.common.DESIGN_HEIGHT_DP
+import team.superfun.horrorpets.ui.common.safeInset
 
 /** Hide and Eek!'s play, on a [GameClock] fed frames by hand. */
 @OptIn(ExperimentalCoroutinesApi::class) // runCurrent
@@ -347,6 +355,91 @@ class HideAndSeekPlayTest {
             assertTrue("$name: waving, it reaches $edge from the frame's left edge", edge > 0f)
             assertTrue("$name: a small onlooker, ${watcher.height}", watcher.height <= 0.34f * h + 1e-3f)
         }
+    }
+
+    /** The face the HUD's title and the callout are set in: Barlow Condensed ExtraBold, from the bundled file. */
+    private val displayFace: Font by lazy {
+        val file = listOf("src/main/res/font", "app/src/main/res/font")
+            .map { File(it, "barlow_condensed_extrabold.ttf") }
+            .first { it.exists() }
+        Font.createFont(Font.TRUETYPE_FONT, file)
+    }
+
+    /**
+     * How wide [text] is set in the display face at [sp] sp (times the phone's [fontScale]) with [tracking] em between
+     * the letters, in dp: the glyphs' advances with kerning, as Android sets them, plus the spacing after every letter.
+     * Measured with the bundled font file; it gives the widths measured for the final review (180 dp for the title, and
+     * 212, 238, 273 and 302 for the callouts naming JASON, MICHAEL, GHOSTFACE and LEATHERFACE).
+     */
+    private fun textWidth(text: String, sp: Float, tracking: Float, fontScale: Float): Float {
+        val size = sp * fontScale
+        val attributes = mapOf(TextAttribute.SIZE to size, TextAttribute.KERNING to TextAttribute.KERNING_ON)
+        val advance = displayFace.deriveFont(attributes).getStringBounds(text, FontRenderContext(null, true, true)).width
+        return advance.toFloat() + tracking * size * text.length
+    }
+
+    @Test
+    fun theCalloutClearsTheHudsTitleAndTheStonesAtEveryAspect() {
+        // The play area between the film's edges, laid out on the 540 dp canvas, every scene's floor 0.7531 of the way
+        // down. A TV sets text at 1x; a phone's font scale goes up to 1.15x, setting every text larger (stones don't
+        // scale). Each screen: its aspect and the largest font scale it is checked at (a 20:9 phone's pointer is up at
+        // 122 dp, which a callout at 1.15x grazes).
+        val h = DESIGN_HEIGHT_DP
+        val screens = listOf(
+            Triple("4:3", 4f / 3f, 1.15f),
+            Triple("3:2", 1.5f, 1.15f),
+            Triple("16:10", 1.6f, 1.15f),
+            Triple("16:9", 16f / 9f, 1.15f),
+            Triple("20:9", 20f / 9f, 1f),
+        )
+        val problems = mutableListOf<String>()
+        for ((name, aspect, largest) in screens) {
+            for (fontScale in listOf(1f, 1.15f).filter { it <= largest }) {
+                val w = h * aspect * (1f - 2f * FILM_EDGE_FRACTION)
+                val where = "$name at ${fontScale}x"
+                val safeX = safeInset(w, 0f, 0f)
+                val safeY = safeInset(h, 0f, 0f)
+
+                // The HUD's title, top left, and the round under it in its 1.2 em line (the callout is up while the
+                // player picks, and in the rounds that follow). The status is Bold, which is set here in ExtraBold:
+                // a little wider.
+                val titleW = textWidth("HIDE AND EEK!", HUD_TITLE_SP, HUD_TITLE_TRACKING, fontScale)
+                val title = Rect(safeX, safeY, safeX + titleW, safeY + HUD_TITLE_LINE_SP * fontScale)
+                val roundW = textWidth("ROUND 99", HUD_STATUS_SP, HUD_STATUS_TRACKING, fontScale)
+                val round = Rect(safeX, title.bottom, safeX + roundW, title.bottom + HUD_STATUS_SP * fontScale * 1.2f)
+
+                // Over each stone the pointer, at the top of its bob, and the stone, as high as it lifts when checked.
+                val row = TombRow.of(w, h, floorY = 0.7531f * h)
+                val pointer = PointerSpot(row, h)
+                val obstacles = buildList {
+                    add("the title" to title)
+                    add("the round" to round)
+                    for (stone in 0 until 3) {
+                        val x = row.x(stone)
+                        val reach = pointer.halfWidth
+                        add("the pointer over stone $stone" to Rect(x - reach, pointer.top, x + reach, row.top))
+                        val lifted = row.top - LIFT * row.stoneH
+                        add("stone $stone" to Rect(x - row.halfWidth, lifted, x + row.halfWidth, row.footY))
+                    }
+                }
+
+                // Every mate's callout, both forms: the text's box, out by the 2 dp outline GlowText draws round it,
+                // and clear of each obstacle by as much again.
+                val top = safeY + SEEK_CALLOUT_TOP.value
+                for (mate in PetId.entries) {
+                    val name = mate.displayName.uppercase()
+                    for (text in listOf("WHERE'S $name?", "FOUND $name!")) {
+                        val width = textWidth(text, SEEK_CALLOUT_SP, SEEK_CALLOUT_TRACKING, fontScale)
+                        val line = SEEK_CALLOUT_LINE_SP * fontScale
+                        val callout = Rect((w - width) / 2f, top, (w + width) / 2f, top + line).inflate(2f)
+                        for ((what, box) in obstacles) {
+                            if (callout.overlaps(box.inflate(2f))) problems += "$where: \"$text\" meets $what"
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue("the callout meets:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
     @Test
