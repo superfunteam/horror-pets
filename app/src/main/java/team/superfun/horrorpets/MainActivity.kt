@@ -29,7 +29,6 @@ import kotlin.math.max
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.Anim
@@ -59,6 +58,7 @@ import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 import team.superfun.horrorpets.update.AndroidUpdateHost
 import team.superfun.horrorpets.update.UPDATES_TAG
 import team.superfun.horrorpets.update.UpdateController
+import team.superfun.horrorpets.update.showInstallConfirmation
 
 class MainActivity : ComponentActivity() {
     private val loader: AssetLoader by lazy { assetLoader(this) }
@@ -130,14 +130,22 @@ class MainActivity : ComponentActivity() {
         // A recreated Activity gets the launch's intent again, whose commands have already run.
         if (savedInstanceState == null) Puppet.current.onIntent(intent)
 
-        // Once the title is up, look for a newer release (once per launch: the controller outlives a recreation).
-        lifecycleScope.launch {
-            vm.state.first { it.screen == Screen.Title }
-            updates.checkOnce()
-        }
+        // Look for a newer release as the app starts, so the answer is usually in by the time the title is up (once
+        // per launch: the controller outlives a recreation). Its window only ever shows over the title.
+        updates.checkOnce()
         // A debug build's puppet can ask for another check (check_update).
         lifecycleScope.launch {
             Puppet.current.updateChecks.collect { updates.checkNow() }
+        }
+        // Android's installer wants the player to confirm an update: its screen is shown from here, while the game is in
+        // front, and only while the update window is still installing (not after LATER).
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                updates.step.collect {
+                    val confirm = updates.takeConfirmation() ?: return@collect
+                    if (!showInstallConfirmation(this@MainActivity, confirm)) updates.confirmationFailed()
+                }
+            }
         }
 
         // The music follows the screen. Collecting only while started means a stopped game stays quiet;

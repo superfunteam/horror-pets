@@ -4,13 +4,17 @@ package team.superfun.horrorpets.update
 
 import android.content.pm.PackageInstaller
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.DEV_VERSION_NAME
@@ -20,11 +24,15 @@ import team.superfun.horrorpets.assets.AssetFixtures
 private val V060_JSON = AssetFixtures.text("release-latest-v0.6.0.json")
 private val V060 = parseLatestRelease(V060_JSON)!!
 
+/** Android's confirmation screen, as the fake installer hands it over (an Intent in the app). */
+private val CONFIRM = Any()
+
 /** A stand-in for the device: GitHub's answer, the disk, the installer. Gates hold a step until a test opens them. */
 private class FakeHost : UpdateHost {
     /** GitHub's answer, or null for no connection. */
     var json: String? = V060_JSON
     var fetches = 0
+    var fetchGate: CompletableDeferred<Unit>? = null
     val cleanUps = mutableListOf<Release?>()
 
     var free = Long.MAX_VALUE
@@ -34,6 +42,16 @@ private class FakeHost : UpdateHost {
     var downloads = 0
     var downloadGate: CompletableDeferred<Unit>? = null
     var downloadFailure: Exception? = null
+
+    /**
+     * A cancelled download fails with an IOException, not a CancellationException, as a real one does: the cancel
+     * hangs up the connection, and the read waiting on it throws "Socket closed".
+     */
+    var socketClosedOnCancel = false
+
+    /** The last download's progress callback, to report through late, as a download's own thread can. */
+    var lastProgress: ((Long) -> Unit)? = null
+
     var verifyGate: CompletableDeferred<Unit>? = null
     var verifyProblem: UpdateProblem? = null
 
@@ -41,11 +59,12 @@ private class FakeHost : UpdateHost {
     val installs = mutableListOf<Release>()
     var installFailure: Exception? = null
 
-    /** Where Android's verdict on the last install goes. */
-    var verdict: ((Int) -> Unit)? = null
+    /** Where Android's verdict on the last install goes, with its confirmation screen when it has one. */
+    var verdict: ((Int, Any?) -> Unit)? = null
 
     override suspend fun latestReleaseJson(): String {
         fetches++
+        fetchGate?.await()
         return json ?: throw IOException("offline")
     }
 
@@ -55,24 +74,35 @@ private class FakeHost : UpdateHost {
 
     override suspend fun isDownloaded(release: Release) = release in ready
 
-    override fun freeBytes() = free
+    override suspend fun freeBytes() = free
 
     override suspend fun download(release: Release, onProgress: (Long) -> Unit) {
         downloads++
+        lastProgress = onProgress
         onProgress(release.size / 2)
-        downloadGate?.await()
+        try {
+            downloadGate?.await()
+        } catch (e: CancellationException) {
+            if (socketClosedOnCancel) throw IOException("Socket closed")
+            throw e
+        }
         downloadFailure?.let { throw it }
         onProgress(release.size)
     }
 
     override suspend fun verify(release: Release): UpdateProblem? {
-        verifyGate?.await()
+        try {
+            verifyGate?.await()
+        } catch (e: CancellationException) {
+            if (socketClosedOnCancel) throw IOException("Stream closed")
+            throw e
+        }
         return verifyProblem.also { if (it == null) ready += release }
     }
 
     override fun canInstall() = canInstall
 
-    override suspend fun install(release: Release, onResult: (Int) -> Unit) {
+    override suspend fun install(release: Release, onResult: (Int, Any?) -> Unit) {
         installFailure?.let { throw it }
         installs += release
         verdict = onResult
@@ -86,6 +116,13 @@ private class Rig(var running: String = "0.5.0") {
     val updates = UpdateController(host, runningVersion = { running }, scope = scope, log = { log += it })
 
     val step: UpdateStep get() = updates.step.value
+
+    /** Every step the window goes through from when [record] is called, in order. */
+    val history = mutableListOf<UpdateStep>()
+
+    fun record() {
+        scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) { updates.step.collect { history += it } }
+    }
 
     fun settle() = scope.advanceUntilIdle()
 
@@ -154,6 +191,19 @@ class UpdateControllerTest {
         rig.updates.checkOnce()
         rig.settle()
         assertEquals(1, rig.host.fetches)
+    }
+
+    @Test
+    fun anAnswerAfterThePlayerLeftTheTitleIsDropped() {
+        val rig = Rig()
+        rig.host.fetchGate = CompletableDeferred()
+        rig.updates.checkOnce() // as the app starts
+        rig.settle()
+        rig.updates.later() // the title went (start was pressed) before GitHub answered
+        rig.host.fetchGate!!.complete(Unit)
+        rig.settle()
+        assertEquals(UpdateStep.None, rig.step)
+        assertEquals("old downloads are still cleared", listOf<Release?>(V060), rig.host.cleanUps)
     }
 
     // ---- the offer ----------------------------------------------------------------------------
@@ -284,6 +334,56 @@ class UpdateControllerTest {
     }
 
     @Test
+    fun cancelWithTheConnectionHungUpStillGoesBackToTheOffer() {
+        val rig = Rig().offered()
+        rig.host.socketClosedOnCancel = true
+        rig.host.downloadGate = CompletableDeferred()
+        rig.updates.accept()
+        rig.settle()
+        rig.record()
+        rig.updates.cancel()
+        rig.settle()
+        assertEquals(UpdateStep.Offer(V060), rig.step)
+        assertTrue("never a failure: ${rig.history}", rig.history.none { it is UpdateStep.Failed })
+    }
+
+    @Test
+    fun cancelThenUpdateAtOnceRunsTheNewDownloadAlone() {
+        val rig = Rig().offered()
+        rig.host.socketClosedOnCancel = true
+        rig.host.downloadGate = CompletableDeferred()
+        rig.updates.accept()
+        rig.settle()
+        rig.record()
+        rig.updates.cancel()
+        rig.host.downloadGate = null // the next download goes straight through
+        rig.updates.accept()
+        rig.settle()
+        assertEquals(UpdateStep.Installing(V060), rig.step)
+        assertTrue("never a failure: ${rig.history}", rig.history.none { it is UpdateStep.Failed })
+        assertEquals(2, rig.host.downloads)
+        assertEquals(listOf(V060), rig.host.installs)
+    }
+
+    @Test
+    fun aCancelledDownloadsLateProgressNeverReachesTheNextOne() {
+        val rig = Rig().offered()
+        rig.host.downloadGate = CompletableDeferred()
+        rig.updates.accept()
+        rig.settle()
+        val lateReport = rig.host.lastProgress!!
+        rig.updates.cancel()
+        rig.host.downloadGate = CompletableDeferred() // the next one holds at half
+        rig.updates.accept()
+        rig.settle()
+        rig.record()
+        lateReport(V060.size - 1) // the old download's own thread, a moment late
+        rig.settle()
+        assertEquals(UpdateStep.Downloading(V060, V060.size / 2), rig.step)
+        assertTrue("only the new download's progress: ${rig.history}", rig.history.none { it == UpdateStep.Downloading(V060, V060.size - 1) })
+    }
+
+    @Test
     fun cancelWhileVerifyingGoesBackToTheOfferToo() {
         val rig = Rig().offered()
         rig.host.verifyGate = CompletableDeferred()
@@ -294,6 +394,20 @@ class UpdateControllerTest {
         rig.host.verifyGate!!.complete(Unit)
         rig.settle()
         assertEquals(UpdateStep.Offer(V060), rig.step)
+    }
+
+    @Test
+    fun cancelWhileVerifyingWithTheFileClosedUnderItStillGoesBackToTheOffer() {
+        val rig = Rig().offered()
+        rig.host.socketClosedOnCancel = true
+        rig.host.verifyGate = CompletableDeferred()
+        rig.updates.accept()
+        rig.settle()
+        rig.record()
+        rig.updates.cancel()
+        rig.settle()
+        assertEquals(UpdateStep.Offer(V060), rig.step)
+        assertTrue("never a failure: ${rig.history}", rig.history.none { it is UpdateStep.Failed })
     }
 
     @Test
@@ -355,12 +469,47 @@ class UpdateControllerTest {
     // ---- installing ---------------------------------------------------------------------------
 
     @Test
-    fun androidsConfirmationKeepsTheWindowInstalling() {
+    fun androidsConfirmationIsHandedOutOnceWhileInstalling() {
         val rig = Rig().offered()
         rig.updates.accept()
         rig.settle()
-        rig.host.verdict!!(PackageInstaller.STATUS_PENDING_USER_ACTION)
+        assertNull("nothing to confirm yet", rig.updates.takeConfirmation())
+        rig.host.verdict!!(PackageInstaller.STATUS_PENDING_USER_ACTION, CONFIRM)
+        assertEquals(UpdateStep.Installing(V060, CONFIRM), rig.step)
+        assertSame(CONFIRM, rig.updates.takeConfirmation())
         assertEquals(UpdateStep.Installing(V060), rig.step)
+        assertNull("taken once", rig.updates.takeConfirmation())
+    }
+
+    @Test
+    fun laterBeforeAndroidAsksMeansItNeverAsks() {
+        val rig = Rig().offered()
+        rig.updates.accept()
+        rig.settle()
+        rig.updates.later()
+        rig.host.verdict!!(PackageInstaller.STATUS_PENDING_USER_ACTION, CONFIRM)
+        assertEquals(UpdateStep.None, rig.step)
+        assertNull(rig.updates.takeConfirmation())
+    }
+
+    @Test
+    fun aConfirmationThatCannotBeShownIsAFailure() {
+        val rig = Rig().offered()
+        rig.updates.accept()
+        rig.settle()
+        rig.host.verdict!!(PackageInstaller.STATUS_PENDING_USER_ACTION, CONFIRM)
+        rig.updates.takeConfirmation()
+        rig.updates.confirmationFailed()
+        assertEquals(UpdateStep.Failed(V060, UpdateProblem.Installer), rig.step)
+    }
+
+    @Test
+    fun aConfirmationRequestWithoutAScreenIsAFailure() {
+        val rig = Rig().offered()
+        rig.updates.accept()
+        rig.settle()
+        rig.host.verdict!!(PackageInstaller.STATUS_PENDING_USER_ACTION, null)
+        assertEquals(UpdateStep.Failed(V060, UpdateProblem.Installer), rig.step)
     }
 
     @Test
@@ -368,7 +517,7 @@ class UpdateControllerTest {
         val rig = Rig().offered()
         rig.updates.accept()
         rig.settle()
-        rig.host.verdict!!(PackageInstaller.STATUS_FAILURE_ABORTED)
+        rig.host.verdict!!(PackageInstaller.STATUS_FAILURE_ABORTED, null)
         assertEquals(UpdateStep.Failed(V060, UpdateProblem.Install(PackageInstaller.STATUS_FAILURE_ABORTED)), rig.step)
 
         rig.updates.accept() // RETRY
@@ -383,7 +532,7 @@ class UpdateControllerTest {
         val rig = Rig().offered()
         rig.updates.accept()
         rig.settle()
-        rig.host.verdict!!(PackageInstaller.STATUS_SUCCESS)
+        rig.host.verdict!!(PackageInstaller.STATUS_SUCCESS, null)
         assertEquals(UpdateStep.None, rig.step)
     }
 
@@ -393,7 +542,7 @@ class UpdateControllerTest {
         rig.updates.accept()
         rig.settle()
         rig.updates.later()
-        rig.host.verdict!!(PackageInstaller.STATUS_FAILURE)
+        rig.host.verdict!!(PackageInstaller.STATUS_FAILURE, null)
         assertEquals(UpdateStep.None, rig.step)
     }
 
@@ -413,15 +562,27 @@ class UpdateControllerTest {
         val rig = Rig()
         rig.updates.accept()
         rig.updates.cancel()
-        rig.updates.later()
         rig.updates.settingsMissing()
+        rig.updates.confirmationFailed()
+        assertNull(rig.updates.takeConfirmation())
         rig.settle()
         assertEquals(UpdateStep.None, rig.step)
 
         rig.offered()
         rig.updates.cancel()
         rig.updates.settingsMissing()
+        rig.updates.confirmationFailed()
+        assertNull(rig.updates.takeConfirmation())
         assertEquals(UpdateStep.Offer(V060), rig.step)
+    }
+
+    @Test
+    fun laterWithNoWindowUpStillCountsForTheLaunch() {
+        val rig = Rig()
+        rig.updates.later() // the player left the title before the check began
+        rig.updates.checkOnce()
+        rig.settle()
+        assertEquals(UpdateStep.None, rig.step)
     }
 
     @Test

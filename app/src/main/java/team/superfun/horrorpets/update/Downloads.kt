@@ -52,11 +52,15 @@ fun copyDownload(input: InputStream, output: OutputStream, limit: Long, onProgre
     return total
 }
 
-/** The SHA-256 of everything in [input], as lowercase hex. */
-fun sha256Hex(input: InputStream): String {
+/**
+ * The SHA-256 of everything in [input], as lowercase hex. Between reads it stops with a [CancellationException] once
+ * [active] says no.
+ */
+fun sha256Hex(input: InputStream, active: () -> Boolean = { true }): String {
     val digest = MessageDigest.getInstance("SHA-256")
     val buffer = ByteArray(COPY_BUFFER_BYTES)
     while (true) {
+        if (!active()) throw CancellationException("hash cancelled")
         val n = input.read(buffer)
         if (n < 0) break
         digest.update(buffer, 0, n)

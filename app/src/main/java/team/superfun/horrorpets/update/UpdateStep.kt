@@ -29,8 +29,12 @@ sealed interface UpdateStep {
      */
     data class NeedsPermission(val release: Release, val manual: Boolean = false) : UpdateStep
 
-    /** Handed to Android's installer, which asks the player to confirm. */
-    data class Installing(val release: Release) : UpdateStep
+    /**
+     * Handed to Android's installer, which asks the player to confirm. [confirm] is its confirmation screen (an
+     * `Intent`), waiting for the game to show it (see `UpdateController.takeConfirmation`); null once shown, or before
+     * Android has asked.
+     */
+    data class Installing(val release: Release, val confirm: Any? = null) : UpdateStep
 
     /** It did not work out, for [problem]: RETRY or LATER. */
     data class Failed(val release: Release, val problem: UpdateProblem) : UpdateStep

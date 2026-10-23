@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.update
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -95,8 +96,10 @@ class AndroidUpdateHost(context: Context, private val userAgent: String) : Updat
      * From Android 8, what the system could make free for this app: free space plus other apps' caches, which
      * [download] has it clear as needed. Before that, plain free space.
      */
+    override suspend fun freeBytes(): Long = withContext(Dispatchers.IO) { freeBytesNow() }
+
     @SuppressLint("UsableSpace") // the fallback, before Android 8 or if the system will not say
-    override fun freeBytes(): Long {
+    private fun freeBytesNow(): Long {
         val cache = context.cacheDir
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -148,6 +151,8 @@ class AndroidUpdateHost(context: Context, private val userAgent: String) : Updat
                 }
             } catch (e: Throwable) {
                 part.delete()
+                // Hung up by a cancel: the read's "Socket closed" is the cancel, not a broken download.
+                ensureActive()
                 throw e
             } finally {
                 hangUp.cancel()
@@ -158,15 +163,27 @@ class AndroidUpdateHost(context: Context, private val userAgent: String) : Updat
 
     override suspend fun verify(release: Release): UpdateProblem? = withContext(Dispatchers.IO) {
         val part = partFile(release)
-        val size = part.length()
-        val sha256 = if (release.sha256 != null && size == release.size) part.inputStream().use(::sha256Hex) else null
-        ensureActive()
-        var problem = downloadProblem(release, size, sha256)
-        if (problem == null && !isOurs(part, release)) problem = UpdateProblem.BadDownload
-        // Only a download that passed gets the APK's own name (see isDownloaded).
-        if (problem == null && !part.renameTo(apkFile(release))) problem = UpdateProblem.BadDownload
-        if (problem != null) part.delete()
-        problem
+        // Only a download that passed gets the APK's own name (see isDownloaded); anything else, a cancel included,
+        // leaves nothing behind.
+        var kept = false
+        try {
+            val size = part.length()
+            val sha256 = if (release.sha256 != null && size == release.size) {
+                part.inputStream().use { sha256Hex(it, active = { isActive }) }
+            } else {
+                null
+            }
+            ensureActive()
+            var problem = downloadProblem(release, size, sha256)
+            if (problem == null && !isOurs(part, release)) problem = UpdateProblem.BadDownload
+            if (problem == null) {
+                kept = part.renameTo(apkFile(release))
+                if (!kept) problem = UpdateProblem.BadDownload
+            }
+            problem
+        } finally {
+            if (!kept) part.delete()
+        }
     }
 
     /** Whether the APK in [file] says it is this app at [release]'s version (or Android cannot read it at all). */
@@ -184,13 +201,13 @@ class AndroidUpdateHost(context: Context, private val userAgent: String) : Updat
     override fun canInstall(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
-    override suspend fun install(release: Release, onResult: (status: Int) -> Unit) {
+    override suspend fun install(release: Release, onResult: (status: Int, confirm: Any?) -> Unit) {
         val sessionId = withContext(Dispatchers.IO) { commitSession(release, onResult) }
         Log.i(UPDATES_TAG, "Handed ${release.version} to the installer (session $sessionId)")
     }
 
     /** Writes [release]'s APK into a new installer session and commits it; returns the session's id. */
-    private suspend fun commitSession(release: Release, onResult: (status: Int) -> Unit): Int = coroutineScope {
+    private suspend fun commitSession(release: Release, onResult: (status: Int, confirm: Any?) -> Unit): Int = coroutineScope {
         val apk = apkFile(release)
         val installer = context.packageManager.packageInstaller
         // An earlier try's session that never got anywhere only takes space.
@@ -231,32 +248,45 @@ class AndroidUpdateHost(context: Context, private val userAgent: String) : Updat
 }
 
 /**
- * Gets Android's installer's word on an update's session. STATUS_PENDING_USER_ACTION means it wants the player to
- * confirm: this opens its confirmation screen (the game is in front, so it may). Every status then goes on to the
- * waiting [onResult]. Not exported: only the session's own PendingIntent reaches it.
+ * Gets Android's installer's word on an update's session and passes it to the waiting [onResult]: the status and, with
+ * STATUS_PENDING_USER_ACTION, the confirmation screen it wants shown. It opens nothing itself: `MainActivity` shows
+ * the screen, while the game is in front and only while the update window is still installing. Not exported: only the
+ * session's own PendingIntent reaches it.
  */
 class InstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        var status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         Log.i(UPDATES_TAG, "Installer status $status: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
-            status = try {
-                if (confirm == null) throw ActivityNotFoundException("no confirmation intent")
-                context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                status
-            } catch (e: RuntimeException) { // ActivityNotFoundException, or a SecurityException from an odd build
-                Log.w(UPDATES_TAG, "Could not open the installer's confirmation", e)
-                PackageInstaller.STATUS_FAILURE
-            }
+        val confirm = if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
+        } else {
+            null
         }
-        onResult?.invoke(status)
+        onResult?.invoke(status, confirm)
     }
 
     companion object {
         /** Who is waiting for the verdict (set as a session is committed); called on the main thread. */
         @Volatile
-        var onResult: ((Int) -> Unit)? = null
+        var onResult: ((Int, Intent?) -> Unit)? = null
+    }
+}
+
+/**
+ * Shows Android's installer's confirmation screen ([confirm], from [UpdateController.takeConfirmation]) from
+ * [activity], over the game. False when it could not be shown.
+ */
+fun showInstallConfirmation(activity: Activity, confirm: Any): Boolean {
+    if (confirm !is Intent) return false
+    return try {
+        activity.startActivity(confirm)
+        true
+    } catch (e: ActivityNotFoundException) {
+        Log.w(UPDATES_TAG, "Could not show the installer's confirmation", e)
+        false
+    } catch (e: SecurityException) {
+        Log.w(UPDATES_TAG, "Could not show the installer's confirmation", e)
+        false
     }
 }
 

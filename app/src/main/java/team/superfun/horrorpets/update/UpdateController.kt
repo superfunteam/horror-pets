@@ -7,6 +7,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +29,7 @@ interface UpdateHost {
     suspend fun isDownloaded(release: Release): Boolean
 
     /** Free bytes where downloads go. */
-    fun freeBytes(): Long
+    suspend fun freeBytes(): Long
 
     /**
      * Downloads [release]'s APK, telling [onProgress] (on any thread) the bytes so far. Throws an [UpdateFailure], or
@@ -42,9 +45,10 @@ interface UpdateHost {
 
     /**
      * Hands [release]'s downloaded APK to Android's installer. Its verdict comes back later, on the main thread, to
-     * [onResult] (a `PackageInstaller.STATUS_...`). Throws when the installer could not be given it.
+     * [onResult]: a `PackageInstaller.STATUS_...` and, with STATUS_PENDING_USER_ACTION, the confirmation screen to
+     * show (an `Intent`; null with any other status). Throws when the installer could not be given it.
      */
-    suspend fun install(release: Release, onResult: (status: Int) -> Unit)
+    suspend fun install(release: Release, onResult: (status: Int, confirm: Any?) -> Unit)
 
     /** The controller is gone: forget its callbacks. */
     fun close() {}
@@ -79,10 +83,11 @@ interface UpdateActions {
 }
 
 /**
- * The in-app update, as a state machine: once per launch it asks GitHub for the latest release and, when that is newer
- * than this build, offers it in [step]; on UPDATE it downloads, verifies and installs it through [host]. Any failure of
- * the check itself (offline, rate-limited, a strange answer) offers nothing and says nothing. See [UpdateStep] for the
- * window's steps.
+ * The in-app update, as a state machine: once per launch, as the app starts, it asks GitHub for the latest release and,
+ * when that is newer than this build, offers it in [step] (which the title shows); on UPDATE it downloads, verifies and
+ * installs it through [host]. Any failure of the check itself (offline, rate-limited, a strange answer) offers nothing
+ * and says nothing. LATER is for the rest of the launch: an answer that comes in after it (the player left the title
+ * first, which closes the window too) offers nothing. See [UpdateStep] for the window's steps.
  *
  * [runningVersion] is this build's versionName, read at each check (a debug build's puppet can fake it). A dev build
  * never checks. [log] gets a line for each check and each failure.
@@ -103,6 +108,9 @@ class UpdateController(
     private var checked = false
     private var checking: Job? = null
 
+    /** LATER (or leaving the title): no offer for the rest of this launch, but for the puppet's [checkNow]. */
+    private var dismissed = false
+
     /** The download, verification or hand-over to the installer under way, if any. */
     private var work: Job? = null
 
@@ -112,7 +120,7 @@ class UpdateController(
 
     // ---- the check ----------------------------------------------------------------------------
 
-    /** The launch's check: the first call checks, any later one does nothing. */
+    /** The launch's check, as the app starts: the first call checks, any later one does nothing. */
     fun checkOnce() {
         if (checked) return
         checked = true
@@ -126,6 +134,7 @@ class UpdateController(
             log("Update check skipped: an update is under way")
             return
         }
+        dismissed = false
         check()
     }
 
@@ -160,7 +169,12 @@ class UpdateController(
             } catch (e: Exception) {
                 log("Could not clear old downloads: $e")
             }
-            if (!busy) _step.value = if (newer != null) UpdateStep.Offer(newer) else UpdateStep.None
+            if (busy) return@launch
+            if (dismissed) {
+                if (newer != null) log("Update not offered: the player has left the title, or said LATER")
+                return@launch
+            }
+            _step.value = if (newer != null) UpdateStep.Offer(newer) else UpdateStep.None
         }
     }
 
@@ -195,12 +209,23 @@ class UpdateController(
             return false
         }
         try {
-            host.download(release) { done ->
-                _step.update { if (it is UpdateStep.Downloading && it.release == release) it.copy(done = done) else it }
+            coroutineScope {
+                // The host reports from its own thread. Its reports reach the window through this job's child, on the
+                // main thread, so once the job is cancelled none can land: not on the offer, not on the next download.
+                val progress = MutableStateFlow(0L)
+                val bar = launch { progress.collect { done -> _step.value = UpdateStep.Downloading(release, done) } }
+                try {
+                    host.download(release) { progress.value = it }
+                } finally {
+                    bar.cancel()
+                }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // A cancel hangs up the connection, and the read waiting on it fails with an IOException, not a
+            // cancellation: that is no failure to show, the window has moved on (CANCEL, LATER).
+            currentCoroutineContext().ensureActive()
             log("Update download failed: $e")
             _step.value = UpdateStep.Failed(release, (e as? UpdateFailure)?.problem ?: UpdateProblem.Network)
             return false
@@ -211,6 +236,7 @@ class UpdateController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive() // as above: a cancel can surface as a closed file
             log("Update verification failed: $e")
             UpdateProblem.BadDownload
         }
@@ -230,17 +256,18 @@ class UpdateController(
         }
         _step.value = UpdateStep.Installing(release)
         try {
-            host.install(release) { status -> onInstallResult(release, status) }
+            host.install(release) { status, confirm -> onInstallResult(release, status, confirm) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive() // LATER while the APK was being handed over: nothing to show
             log("Could not hand the update to the installer: $e")
             _step.value = UpdateStep.Failed(release, UpdateProblem.Installer)
         }
     }
 
     override fun later() {
-        if (_step.value == UpdateStep.None) return
+        dismissed = true
         work?.cancel()
         _step.value = UpdateStep.None
     }
@@ -269,12 +296,17 @@ class UpdateController(
         work = scope.launch { installOrAsk(waiting.release) }
     }
 
-    /** Android's installer's verdict on [release]. Once the window has moved on (closed), it no longer matters. */
-    private fun onInstallResult(release: Release, status: Int) {
-        if (_step.value != UpdateStep.Installing(release)) return
+    /**
+     * Android's installer's verdict on [release], with its confirmation screen [confirm] when it wants the player to
+     * confirm. Once the window has moved on (LATER), it no longer matters: nothing is confirmed, nothing shown.
+     */
+    private fun onInstallResult(release: Release, status: Int, confirm: Any?) {
+        val installing = _step.value as? UpdateStep.Installing
+        if (installing?.release != release) return
         when (status) {
-            // Its confirmation screen is up (the host opened it); the verdict proper comes after.
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> Unit
+            // The game shows the screen (see takeConfirmation); the verdict proper comes after it.
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> _step.value =
+                if (confirm != null) installing.copy(confirm = confirm) else UpdateStep.Failed(release, UpdateProblem.Installer)
             // Normally Android has replaced this app (and ended its process) before this could arrive.
             PackageInstaller.STATUS_SUCCESS -> _step.value = UpdateStep.None
             else -> {
@@ -282,6 +314,24 @@ class UpdateController(
                 _step.value = UpdateStep.Failed(release, UpdateProblem.Install(status))
             }
         }
+    }
+
+    /**
+     * Android's confirmation screen to show now, taken once: the game shows it while it is in front, and only while the
+     * window is still installing. Null when there is none.
+     */
+    fun takeConfirmation(): Any? {
+        val installing = _step.value as? UpdateStep.Installing ?: return null
+        val confirm = installing.confirm ?: return null
+        _step.value = installing.copy(confirm = null)
+        return confirm
+    }
+
+    /** The confirmation screen from [takeConfirmation] could not be shown. */
+    fun confirmationFailed() {
+        val installing = _step.value as? UpdateStep.Installing ?: return
+        log("Could not show the installer's confirmation")
+        _step.value = UpdateStep.Failed(installing.release, UpdateProblem.Installer)
     }
 
     override fun onCleared() {

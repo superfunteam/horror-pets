@@ -70,6 +70,20 @@ class DownloadsTest {
     }
 
     @Test
+    fun aCancelStopsTheHash() {
+        var reads = 0
+        val endless = object : java.io.InputStream() {
+            override fun read(): Int = 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                reads++
+                return len
+            }
+        }
+        assertThrows(CancellationException::class.java) { sha256Hex(endless, active = { reads < 3 }) }
+        assertEquals(3, reads)
+    }
+
+    @Test
     fun sha256IsLowercaseHex() {
         assertEquals(RELEASE.sha256, sha256Hex(ByteArrayInputStream("abc".toByteArray())))
         assertEquals("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", sha256Hex(ByteArrayInputStream(ByteArray(0))))

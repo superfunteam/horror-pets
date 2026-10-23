@@ -85,9 +85,10 @@ private val StartGlow = Shadow(color = Blood, offset = Offset(0f, 0f), blurRadiu
  * open sky and a blinking PRESS START. OK or a tap starts ([onStart]); Back leaves the app ([onExit]). A little
  * CREDITS link sits in the corner (Down or Right gets to it on a remote, Up or Left back) and opens [CreditsDialog].
  *
- * When the launch's update check has found a newer release, [update] is its window's step and [UpdateDialog] comes up
- * over the title (after the credits, if they are open), its buttons doing [updateActions]. It only ever shows here:
- * leaving the title closes it, and an offer that comes in after the player has left waits for the next launch.
+ * When the launch's update check (started as the app starts) has found a newer release, [update] is its window's step
+ * and [UpdateDialog] comes up over the title (after the credits, if they are open), its buttons doing [updateActions].
+ * It only ever shows here: leaving the title is LATER, so it closes the window, and an answer that comes in after the
+ * player has left offers nothing this launch.
  */
 @Composable
 fun TitleScreen(
@@ -116,7 +117,8 @@ fun TitleScreen(
         if (!showUpdate && updateWasShown && focusEntry != null) runCatching { focus.requestFocus() }
         updateWasShown = showUpdate
     }
-    // The window belongs to the title: leaving the title (only the debug puppet can, with the window up) closes it.
+    // The window belongs to the title: leaving it is LATER. That closes the window (only the debug puppet can leave with
+    // it up), and an answer still on its way offers nothing this launch.
     LaunchedEffect(focusEntry) { if (focusEntry == null) updateActions.later() }
     GameBackHandler(enabled = focusEntry != null && !showCredits && !showUpdate, onBack = onExit)
     RequestFocusOnEntry(focus, focusEntry)
