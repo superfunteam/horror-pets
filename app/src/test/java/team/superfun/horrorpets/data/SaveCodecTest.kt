@@ -5,10 +5,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.GameState
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.Slot
+import team.superfun.horrorpets.model.pantryItemById
+import team.superfun.horrorpets.model.pantryItems
 
 class SaveCodecTest {
     private val defaults = GameState()
@@ -132,6 +136,108 @@ class SaveCodecTest {
         assertEquals(setOf("SLASH_SAYS", "ORGAN_DROP"), pet(PetId.JASON, json).trainedGames)
         // A wrongly typed field is one bad field: that pet resets to defaults and stays unlocked.
         assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"trainedGames":"SLASH_SAYS"}"""))
+    }
+
+    @Test
+    fun aFreshGameHasAnEmptyPantryAndNoFavoriteFound() {
+        assertTrue(defaults.pantry.isEmpty())
+        assertEquals(false, PetState(PetId.JASON).favoriteFound)
+    }
+
+    @Test
+    fun pantryRoundTrips() {
+        // Shelf order and repeats are kept: two eggs are two items.
+        val shelf = listOf("grill", "raw_steak", "egg", "egg", "camp_crystal_fish_fry", "pile_of_slop")
+        val state = GameState(pets = mapOf(PetId.JASON to PetState(PetId.JASON)), selected = PetId.JASON, pantry = shelf)
+        val back = SaveCodec.decode(SaveCodec.encode(state))
+        assertEquals(state, back)
+        assertEquals(shelf, back.pantry)
+        assertEquals(shelf.map { pantryItemById(it) }, back.pantryItems())
+        // An empty pantry is a pantry too, and a pantry needs no killers.
+        assertEquals(defaults, SaveCodec.decode(SaveCodec.encode(defaults)))
+        assertEquals(GameState(pantry = shelf), SaveCodec.decode(SaveCodec.encode(GameState(pantry = shelf))))
+    }
+
+    @Test
+    fun aSaveWithoutAPantryLoads() {
+        // A save from before the pantry: no key at all, and the version is still 2.
+        val decoded = SaveCodec.decode(v2(""""JASON":{"id":"JASON","level":5}""", selected = "JASON"))
+        assertTrue(decoded.pantry.isEmpty())
+        assertEquals(5, decoded.pets.getValue(PetId.JASON).level)
+        assertEquals(PetId.JASON, decoded.selected)
+        assertTrue(SaveCodec.decode("""{"version":2,"pantry":null}""").pantry.isEmpty())
+    }
+
+    @Test
+    fun unknownPantryIdsAreDropped() {
+        // An item a later build added, a made-up one, a wrongly cased id (ids are lowercase), an empty one and
+        // entries that are not strings at all: all dropped, the rest kept in shelf order.
+        val json = v2(
+            """"JASON":{"level":2}""",
+            selected = "JASON",
+            extra = ""","pantry":["grill","future_dish","egg","RAW_STEAK","",7,null,true,["milk"],{"id":"milk"},"milk","egg"]""",
+        )
+        val decoded = SaveCodec.decode(json)
+        assertEquals(listOf("grill", "egg", "milk", "egg"), decoded.pantry)
+        assertEquals(2, decoded.pets.getValue(PetId.JASON).level)
+        assertNotNull(SaveCodec.decodeOrNull(json))
+    }
+
+    @Test
+    fun anOversizedPantryIsTrimmed() {
+        // The first PANTRY_MAX items are kept, in order.
+        assertEquals(40, Tuning.PANTRY_MAX)
+        val ids = PantryItem.entries.map { it.id }
+        val tooMany = (ids + ids).take(Tuning.PANTRY_MAX + 20)
+        val json = """{"version":2,"pantry":${tooMany.joinToString(",", "[", "]") { "\"$it\"" }}}"""
+        assertEquals(tooMany.take(Tuning.PANTRY_MAX), SaveCodec.decode(json).pantry)
+        // Unknown ids do not take up room: the cap counts items that are kept.
+        val padded = List(Tuning.PANTRY_MAX) { "mystery" } + ids.take(Tuning.PANTRY_MAX + 5)
+        val paddedJson = """{"version":2,"pantry":${padded.joinToString(",", "[", "]") { "\"$it\"" }}}"""
+        assertEquals(ids.take(Tuning.PANTRY_MAX), SaveCodec.decode(paddedJson).pantry)
+        // Exactly full is left alone.
+        val full = ids.take(Tuning.PANTRY_MAX)
+        assertEquals(full, SaveCodec.decode(SaveCodec.encode(GameState(pantry = full))).pantry)
+    }
+
+    @Test
+    fun aWronglyTypedPantryKeepsThePets() {
+        // A pantry that is not a list reads as an empty shelf; it never costs the player their killers.
+        for (bad in listOf("\"grill\"", "{\"grill\":1}", "42", "true", "{}", "null")) {
+            val json = v2(""""JASON":{"level":3,"wins":4},"FREDDY":{"level":2}""", selected = "FREDDY", extra = ""","pantry":$bad,"lastSeenMs":1760000000000""")
+            val decoded = SaveCodec.decodeOrNull(json)
+            assertNotNull(bad, decoded)
+            decoded!!
+            assertTrue(bad, decoded.pantry.isEmpty())
+            assertEquals(bad, setOf(PetId.JASON, PetId.FREDDY), decoded.pets.keys)
+            assertEquals(bad, 3, decoded.pets.getValue(PetId.JASON).level)
+            assertEquals(bad, PetId.FREDDY, decoded.selected)
+            assertEquals(bad, 1_760_000_000_000L, decoded.lastSeenMs)
+        }
+    }
+
+    @Test
+    fun theRestOfTheSaveStillMustBeReadable() {
+        // The pantry is read on its own, but a wrongly typed version or lastSeenMs still makes the save unusable.
+        assertNull(SaveCodec.decodeOrNull("""{"version":2,"pantry":["grill"],"lastSeenMs":"yesterday"}"""))
+        assertNull(SaveCodec.decodeOrNull("""{"version":3,"pantry":["grill"]}"""))
+        assertEquals(defaults, SaveCodec.decode("""{"version":1,"pantry":["grill"]}"""))
+    }
+
+    @Test
+    fun favoriteFoundRoundTrips() {
+        val jason = PetState(PetId.JASON, favoriteFound = true)
+        val state = GameState(pets = mapOf(PetId.JASON to jason, PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.JASON)
+        val back = SaveCodec.decode(SaveCodec.encode(state))
+        assertEquals(state, back)
+        assertTrue(back.pets.getValue(PetId.JASON).favoriteFound)
+        assertEquals(false, back.pets.getValue(PetId.FREDDY).favoriteFound)
+        // A save from before the pantry: no key at all, so no favorite has been found.
+        val old = pet(PetId.JASON, """{"id":"JASON","level":5,"wins":2}""")
+        assertEquals(false, old.favoriteFound)
+        assertEquals(5, old.level)
+        // A wrongly typed flag is one bad field: that pet resets to defaults and stays unlocked.
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"favoriteFound":"yes"}"""))
     }
 
     @Test

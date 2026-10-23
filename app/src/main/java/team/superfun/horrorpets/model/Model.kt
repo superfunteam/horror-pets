@@ -30,6 +30,8 @@ enum class PetId(val displayName: String) {
  * [trainingBest] is its best score in each training game, by [TrainingGame.name] (a game it has not played is absent).
  * [trainedGames] is the training games it has finished at least once, by [TrainingGame.name], at any score; a new
  * killer needs both solo games here before its first fight (see `mustTrainBeforeFighting`).
+ * [favoriteFound] is whether it has been fed its favorite dish; once it has, that dish wears a heart on the pantry
+ * shelf while this killer is the one in the kitchen (see `feed`).
  */
 @Serializable
 data class PetState(
@@ -49,12 +51,17 @@ data class PetState(
     val known: Set<String> = emptySet(),
     val trainingBest: Map<String, Int> = emptyMap(),
     val trainedGames: Set<String> = emptySet(),
+    val favoriteFound: Boolean = false,
 )
 
 /**
  * The whole save. [pets] is the player's stable: only the killers they have unlocked (the starter they picked,
  * then each killer they beat), so a fresh game has none and no [selected] one. [selected] is always in [pets].
  * Version 2 introduced the stable; a version-1 save (every killer unlocked) is read as a fresh game.
+ *
+ * [pantry] is the player's one shelf for the whole stable: the [PantryItem.id] of everything on it, in shelf order
+ * (the same item can appear more than once). It is ids, not items, so a save written by a later build that knows
+ * more items still loads here; [pantryItems] is the shelf as items.
  */
 @Serializable
 data class GameState(
@@ -62,10 +69,14 @@ data class GameState(
     val pets: Map<PetId, PetState> = emptyMap(),
     val selected: PetId? = null,
     val lastSeenMs: Long? = null,
+    val pantry: List<String> = emptyList(),
 ) {
     /** Whether [id] is in the stable. */
     fun isUnlocked(id: PetId): Boolean = id in pets
 }
+
+/** The [GameState.pantry] as items, in shelf order. An id this build does not know is skipped. */
+fun GameState.pantryItems(): List<PantryItem> = pantry.mapNotNull(::pantryItemById)
 
 /**
  * What happened while the app was closed. [biggestStat] is the display label ("Hunger", "Fun" or

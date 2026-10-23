@@ -69,6 +69,42 @@ object Tuning {
     const val XP_TRAIN = 10
     const val XP_PLAY = 5
     const val XP_FEED = 0
+
+    // Feeding from the pantry (see `feed`): hunger changes (negative is fuller). A snack or meal it hates fills by half.
+    const val FEED_RAW_HUNGER = -20.0
+    const val FEED_SNACK_HUNGER = -35.0
+    const val FEED_MEAL_HUNGER = -55.0
+    const val FEED_BOTCH_HUNGER = -10.0
+    const val FEED_FAVORITE_HUNGER = -70.0
+
+    // Feeding: XP for a snack, a meal and the killer's favorite (doubled for a flavor it loves, none for one it hates)
+    const val XP_FEED_SNACK = 5
+    const val XP_FEED_MEAL = 15
+    const val XP_FEED_FAVORITE = 40
+
+    // Feeding: the dish's flavor stat (strength for savory, fun for sweet, the mood bonus for gross), doubled when loved
+    const val FLAVOR_RAW = 1.0
+    const val FLAVOR_SNACK = 3.0
+    const val FLAVOR_MEAL = 6.0
+    const val FLAVOR_FAVORITE = 10.0
+
+    // Feeding: the mood bonus a reaction adds
+    const val MOOD_LOVED = 10.0
+    const val MOOD_HATED = -10.0
+    const val MOOD_BOTCH = -15.0
+    const val MOOD_RAW_METHOD = -10.0
+    const val MOOD_FAVORITE = 25.0
+
+    // The pantry: the most items a save keeps, and what the top-up brings the shelf to on every visit
+    const val PANTRY_MAX = 40
+    const val PANTRY_MIN_RAW = 4
+    const val PANTRY_MIN_METHODS = 1
+    const val PANTRY_MIN_FOODS = 2
+
+    // The pantry's first handful (an empty shelf) and how often an open top-up draw is a way to cook
+    const val PANTRY_START_METHODS = 2
+    const val PANTRY_START_FOODS = 4
+    const val PANTRY_METHOD_ODDS = 0.4
 }
 
 internal fun clampStat(v: Double): Double = v.coerceIn(Tuning.STAT_MIN, Tuning.STAT_MAX)
