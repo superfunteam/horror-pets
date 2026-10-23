@@ -700,6 +700,12 @@ def sfx_all() -> dict[str, np.ndarray]:
         mm = int(0.18 * SR)
         place(rf, lowpass(saw(hz, mm), 1500) * env_adsr(mm, 0.01, 0.05, 0.8, 0.04), k * 0.2, 0.5)
     s["refuse"] = rf
+    # Slash Says' eight tones, one per ring slot: the C-major pentatonic from C5, soft bells. Appended last and built
+    # from no random stream, so the sounds above stay byte for byte what they were.
+    for k, nm in enumerate(["C5", "D5", "E5", "G5", "A5", "C6", "D6", "E6"]):
+        tone = bell(note_hz(nm), 0.45, ((1, 1), (2, 0.3), (3, 0.1), (4.2, 0.04)))
+        tone[-int(0.1 * SR):] *= np.linspace(1, 0, int(0.1 * SR))  # a soft tail, not a cut
+        s[f"tone_{k + 1}"] = tone
     return s
 
 

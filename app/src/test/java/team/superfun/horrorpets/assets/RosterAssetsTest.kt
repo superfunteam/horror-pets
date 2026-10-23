@@ -14,6 +14,10 @@ import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.fight.Moment
 import team.superfun.horrorpets.ui.home.PLAY_HAND_ART
 import team.superfun.horrorpets.ui.home.PLAY_VOICE_LINES
+import team.superfun.horrorpets.ui.training.ORGAN_ART
+import team.superfun.horrorpets.ui.training.TOMBSTONE_ART
+import team.superfun.horrorpets.ui.training.TRAINING_SFX
+import team.superfun.horrorpets.ui.training.tone
 
 /**
  * Adding a killer is an enum entry, a roster entry and its asset folders. This checks the folders: every
@@ -153,5 +157,37 @@ class RosterAssetsTest {
         for (sfx in listOf("hand_whoosh", "boop", "tickle", "jingle", "boing")) {
             assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
         }
+    }
+
+    @Test
+    fun everyTrainingAssetIsThere() {
+        for (path in TOMBSTONE_ART + ORGAN_ART) {
+            assertTrue(path, file(path.replaceFirst("sprites/", "sprites-final/")).isFile)
+        }
+        assertEquals(15, TRAINING_SFX.size)
+        for (sfx in TRAINING_SFX) {
+            val wav = file("audio-final/sfx/$sfx.wav")
+            assertTrue(sfx, wav.isFile)
+            assertEquals("$sfx: channels, rate, bits", Triple(1, 44_100, 16), wavFormat(wav.readBytes()))
+        }
+        assertEquals("tone_1", tone(0))
+        assertEquals("tone_8", tone(7))
+    }
+
+    /** A 16-bit PCM WAV's (channels, sample rate, bits per sample), from its fmt chunk. */
+    private fun wavFormat(wav: ByteArray): Triple<Int, Int, Int> {
+        val buf = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
+        check(String(wav, 0, 4, Charsets.US_ASCII) == "RIFF" && String(wav, 8, 4, Charsets.US_ASCII) == "WAVE")
+        var pos = 12
+        while (pos + 8 <= wav.size) {
+            val size = buf.getInt(pos + 4)
+            val body = pos + 8
+            if (String(wav, pos, 4, Charsets.US_ASCII) == "fmt ") {
+                check(buf.getShort(body).toInt() == 1) { "PCM only" }
+                return Triple(buf.getShort(body + 2).toInt(), buf.getInt(body + 4), buf.getShort(body + 14).toInt())
+            }
+            pos = body + size + (size and 1)
+        }
+        error("no fmt chunk")
     }
 }
