@@ -1,0 +1,10 @@
+{
+  "id": "kitchen",
+  "title": "The Pantry",
+  "file": "pantry/kitchen.webp",
+  "floorY": 0.7531,
+  "tintStrength": 0.12,
+  "shadowOpacity": 0.55,
+  "accent": "#FF7A3D",
+  "tint": "#59381E"
+}
