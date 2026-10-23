@@ -138,8 +138,9 @@ class OrganDropPlayTest {
         assertEquals(Anim.IDLE, rig.anim)
         assertEquals(rig.play.startMs + FIRST_LAND_MS, rig.play.landingNext!!.landAtMs)
 
-        // Every organ in the air is dealt and drawn, none showing late; more of them as it goes.
+        // Every organ in the air is dealt and drawn, none showing late; one at a time at first, more as it goes.
         val schedule = scheduleOf(rig, 60)
+        var mostInAirFirst = 0
         var mostInAir = 0
         val allShown = {
             val now = rig.clock.nowMs
@@ -150,9 +151,11 @@ class OrganDropPlayTest {
             val dealt = rig.play.falling.map { it.index }
             assertTrue("at $now: $inAir in the air, $dealt dealt", dealt.containsAll(inAir))
             for (i in inAir) assertEquals(schedule[i], rig.play.falling.first { it.index == i }.drop)
+            if (rig.play.caught < 5) mostInAirFirst = maxOf(mostInAirFirst, inAir.size)
             if (rig.play.caught >= 25) mostInAir = maxOf(mostInAir, inAir.size)
         }
         repeat(32) { catchNext(rig, allShown) }
+        assertEquals(1, mostInAirFirst)
         assertEquals(3, mostInAir)
 
         assertEquals(32, rig.play.caught)
@@ -167,6 +170,28 @@ class OrganDropPlayTest {
         assertTrue(rig.play.pluses.size <= 2)
         // Organs caught go once popped in: only a handful are ever kept.
         assertTrue(rig.play.falling.size <= 6)
+    }
+
+    @Test
+    fun theFirstOrganShowsAtTheTopABeatIntoTheGame() = runTest {
+        val rig = Rig(7)
+        start(rig)
+        val first = rig.play.landingNext!!
+        assertEquals(0, first.index)
+        // Not part way down as the game begins: not shown yet (nothing is drawn under 0), nor any other.
+        for (f in rig.play.falling) assertTrue(rig.play.fallOf(f, rig.clock.nowMs) < 0f)
+        advance(rig, 384L)
+        assertTrue(rig.play.fallOf(first, rig.clock.nowMs) < 0f)
+        // 0.4 s in it shows at the top, just out of sight above the top edge, and falls from there.
+        advance(rig, 16L)
+        assertEquals(rig.play.startMs + 400L, rig.clock.nowMs)
+        assertEquals(0f, rig.play.fallOf(first, rig.clock.nowMs), 0f)
+        assertTrue(rig.lane.y(0f) + rig.lane.organH / 2f <= 0f)
+        advance(rig, 600L)
+        assertEquals(0.5f, rig.play.fallOf(first, rig.clock.nowMs), 1e-6f)
+        // Alone: the next shows only once it has come down.
+        val second = rig.play.falling.first { it.index == 1 }
+        assertTrue(second.appearAtMs >= first.landAtMs)
     }
 
     @Test
@@ -427,9 +452,13 @@ class OrganDropPlayTest {
         assertEquals(0.5f, lane.xOf(750f), 1e-6f)
         assertEquals(DROP_RANGE.start, lane.xOf(0f), 0f)
         assertEquals(DROP_RANGE.endInclusive, lane.xOf(1500f), 0f)
-        // A half-size pet (Chucky) catches lower down, at its own chest.
+        // A catch's "+1" rises from just over the pet's head, well clear of its face.
+        assertEquals(780f - 460f * 0.93f, lane.headY, 1e-3f)
+        assertTrue(lane.headY < lane.catchY - lane.organH)
+        // A half-size pet (Chucky) catches lower down, at its own chest, its "+1" over its own head.
         val small = DropLane.of(w = 1500f, h = 1000f, floorY = 780f, bodyHeight = 230f)
         assertEquals(665f, small.catchY, 1e-3f)
+        assertEquals(780f - 230f * 0.93f, small.headY, 1e-3f)
     }
 
     private companion object {

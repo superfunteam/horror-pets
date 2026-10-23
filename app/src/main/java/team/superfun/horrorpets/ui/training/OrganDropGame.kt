@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +24,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.focusRequester
@@ -44,6 +46,8 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -71,6 +75,7 @@ import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hexColor
 import team.superfun.horrorpets.ui.common.placeAt
+import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.fight.PotionGreen
 import team.superfun.horrorpets.ui.home.HOME_PET_HEIGHT
@@ -129,9 +134,12 @@ private const val STREAK_BRIGHT = 0.24f
 private const val POP_SHRINK = 0.75f
 private const val POP_SINK = 0.2f
 
-/** The "+1": this many play heights tall, starting this many organ heights above the catch line, rising this far. */
+/**
+ * The "+1" is this many play heights tall, its foot starting just over the pet's head ([OVER_HEAD] up its cell as
+ * drawn, where the fight's callouts sit), and rises this many play heights.
+ */
 private const val PLUS_SIZE = 0.075f
-private const val PLUS_START = 0.55f
+private const val OVER_HEAD = 0.93f
 private const val PLUS_RISE = 0.09f
 
 /** Squashed on the floor, the organ is this much wider and this much as tall. */
@@ -148,12 +156,12 @@ private val DropHelp = listOf(HelpItem(listOf(TrainingKey.LEFT, TrainingKey.RIGH
 
 /**
  * Organ Drop: the pet runs along its scene's floor catching organs (heart, brain, eyeball, bone, hand, kidney) falling
- * from above the top, each turning a little with a faint speed streak above it. They come faster and closer together
- * as it goes ([fallMs], [landGapMs]), so more of them are in the air at once, every one within a run of where the last
- * came down ([nextDrop]). The remote's Left/Right run the pet while held ([KeyHold]); a finger held down anywhere runs
- * it toward the finger. An organ reaching the pet's chest within [CATCH_HALF] of it pops into it, a squish and a green
- * "+1"; the first that doesn't falls on to the floor, a splat and the pet's FAIL, and the score is the organs caught
- * (see [TrainingEnv] for what a game gets and owes the shell).
+ * from above the top, each turning a little with a faint speed streak above it. They come one at a time at first, then
+ * faster and closer together ([fallMs], [landGapMs]), more of them in the air at once, every one within a run of where
+ * the last came down ([nextDrop]). The remote's Left/Right run the pet while held ([KeyHold]); a finger held down
+ * anywhere runs it toward the finger. An organ reaching the pet's chest within [CATCH_HALF] of it pops into it, a
+ * squish and a green "+1" over its head; the first that doesn't falls on to the floor, a splat, "DROPPED IT!" and the
+ * pet's FAIL, and the score is the organs caught (see [TrainingEnv] for what a game gets and owes the shell).
  */
 @Composable
 fun OrganDropGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
@@ -204,6 +212,7 @@ fun OrganDropGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         // Its feet on the scene's floor, where the game has it across.
         DropPet(env, play, petHeight, Modifier.placeAt(x = { play.killerX(env.clock.nowMs) * w }, y = { env.floorY }))
         DropOrgans(play, lane, organs, organFilter, env.clock)
+        DropCallout(play, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
         DropHud(play, env.best)
     }
 }
@@ -224,6 +233,13 @@ private fun DropPet(env: TrainingEnv, play: OrganDropPlay, heightPx: Float, modi
         shadowOpacity = env.scene.shadowOpacity,
         modifier = modifier,
     )
+}
+
+/** At the top, in gold, once the organ that got past has hit the floor: "DROPPED IT!". */
+@Composable
+private fun DropCallout(play: OrganDropPlay, modifier: Modifier) {
+    if (play.phase != DropPhase.OVER) return
+    GlowText("DROPPED IT!", displayStyle(30.sp, color = TrainingGold, tracking = 0.06f, lineHeight = 32.sp), modifier)
 }
 
 /** The HUD, its status line the organs caught. */
@@ -320,13 +336,14 @@ private fun DrawScope.drawDrop(
 private val SLOWEST_FALL_MS = fallMs(0)
 private val FASTEST_FALL_MS = fallMs(1_000)
 
-/** A catch's "+1" ([plus], outlined by [rim]) at [now]: popping up over where the pet caught it, rising and fading. */
+/** A catch's "+1" ([plus], outlined by [rim]) at [now]: popping up over the pet's head, rising and fading. */
 private fun DrawScope.drawPlus(c: PlusOne, plus: TextLayoutResult, rim: Stroke, lane: DropLane, now: Long) {
     val u = (now - c.atMs) / PLUS_MS.toFloat()
     if (u < 0f || u >= 1f) return
     val pop = 0.7f + 0.3f * easeOut(u / 0.15f)
     val alpha = 1f - ((u - 0.6f) / 0.4f).coerceIn(0f, 1f)
-    val center = Offset(c.x * size.width, lane.catchY - lane.organH * PLUS_START - PLUS_RISE * size.height * easeOut(u))
+    val foot = lane.headY - PLUS_RISE * size.height * easeOut(u)
+    val center = Offset(c.x * size.width, foot - plus.size.height / 2f)
     val topLeft = Offset(center.x - plus.size.width / 2f, center.y - plus.size.height / 2f)
     scale(pop, pivot = center) {
         drawText(plus, color = Ink, topLeft = topLeft, alpha = alpha, drawStyle = rim)
@@ -399,7 +416,8 @@ private fun DrawScope.drawOrgan(
 /**
  * Where Organ Drop happens in the play area, in px: [width] across (the drops' and the pet's places are shares of it);
  * an organ shows centred at [topY] (out of sight above the top), reaches the catch line at [catchY] (the pet's chest),
- * and one that got past comes down centred at [restY], just over the floor at [floorY]. Each is [organH] tall.
+ * and one that got past comes down centred at [restY], just over the floor at [floorY]. Each is [organH] tall. A
+ * catch's "+1" rises from [headY], just over the pet's head.
  */
 @Immutable
 internal class DropLane(
@@ -409,6 +427,7 @@ internal class DropLane(
     val restY: Float,
     val floorY: Float,
     val organH: Float,
+    val headY: Float,
 ) {
     /** Where a finger at [px] across means, in play widths, kept to [DROP_RANGE]. */
     fun xOf(px: Float): Float = (px / width).coerceIn(DROP_RANGE)
@@ -422,7 +441,7 @@ internal class DropLane(
     companion object {
         /**
          * The lane for a [w] x [h] play area with its floor at [floorY], the pet [bodyHeight] tall as drawn: organs
-         * [ORGAN_HEIGHT] of the height, caught at the pet's chest.
+         * [ORGAN_HEIGHT] of the height, caught at the pet's chest, the "+1"s over its head.
          */
         fun of(w: Float, h: Float, floorY: Float, bodyHeight: Float): DropLane {
             val organH = h * ORGAN_HEIGHT
@@ -433,6 +452,7 @@ internal class DropLane(
                 restY = floorY - organH * REST_ABOVE_FLOOR,
                 floorY = floorY,
                 organH = organH,
+                headY = floorY - bodyHeight * OVER_HEAD,
             )
         }
     }
@@ -505,7 +525,7 @@ internal class OrganDropPlay(
     val pluses: List<PlusOne> get() = plusOnes
     private val plusOnes = ArrayList<PlusOne>()
 
-    /** The organ that got past, if one has: it crossed the catch line at [endAtMs] and hits the floor at [splatAtMs]. */
+    /** The organ that got past, if one has: it crossed the catch line at [endAtMs], hits the floor at [splatAtMs]. */
     var missed: Falling? = null
         private set
     var endAtMs = NEVER

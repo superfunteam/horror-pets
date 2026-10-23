@@ -22,7 +22,10 @@ const val ORGAN_KINDS = 6
 /** Where the killer stands as the game starts, across the play area: the middle. */
 const val START_X = 0.5f
 
-/** The first organ reaches the catch line this long into the game. */
+/**
+ * The first organ reaches the catch line this long into the game, having shown at the top a beat (400 ms) in: it falls
+ * for [fallMs] of 0.
+ */
 const val FIRST_LAND_MS = 1_600L
 
 /** Each drop lands this much short of the farthest the killer could run there from the last, in play widths. */
@@ -35,33 +38,38 @@ private const val REACH_MARGIN = 0.05f
 data class Drop(val organ: Int, val x: Float, val landMs: Long, val fallMs: Long)
 
 /**
- * How long drop [index] (from 0) takes to fall from the top to the catch line, in ms: 2600 for the first, 3% less each
- * drop after, down to 900 (from the 35th on).
+ * How long drop [index] (from 0) takes to fall from the top to the catch line, in ms: 1200 for the first, 1.5% less each
+ * drop after, down to 900 (from the 19th on).
  */
-fun fallMs(index: Int): Long = max(900L, (2_600 * 0.97.pow(index)).roundToLong())
+fun fallMs(index: Int): Long = max(900L, (1_200 * 0.985.pow(index)).roundToLong())
 
 /**
- * How long after the one before it drop [index] lands, in ms: 1400 at first, 4% less each drop, down to 420 (from the
- * 30th on). The falls shrink more slowly than the gaps between them, so more organs are in the air at once as it goes.
+ * How long after the one before it drop [index] lands, in ms: 1500 at first, 5% less each drop, down to 420 (from the
+ * 25th on). For the first seven drops the gap is no shorter than the fall, so each organ shows only once the one
+ * before it has come down: one at a time. The falls shrink more slowly than the gaps, so from the 8th on they overlap,
+ * more and more of them in the air at once (two at times, then three at times from about the 22nd).
  */
-fun landGapMs(index: Int): Long = max(420L, (1_400 * 0.96.pow(index)).roundToLong())
+fun landGapMs(index: Int): Long = max(420L, (1_500 * 0.95.pow(index)).roundToLong())
 
 /**
  * The drop after [prev] (none for the first), drop [index] of the game, dealt at random: the first lands
  * [FIRST_LAND_MS] in; each after it [landGapMs] after the one before. Each comes down somewhere the killer can run to
- * in time from where the last one landed (no farther than [RUN_SPEED] times the time between, less a small margin; the
- * first from [START_X]), in [DROP_RANGE], and is never the same organ as the last.
+ * in time from where the last one landed (the first from [START_X]): no farther than [RUN_SPEED] times the time it has
+ * to run for it, less a small margin. That is the time between the landings, or its fall when that is shorter (no one
+ * runs for an organ before it shows). In [DROP_RANGE], and never the same organ as the last.
  */
 fun nextDrop(prev: Drop?, index: Int, rng: Random): Drop {
     require(index >= 0) { "drops count from 0" }
     val from = prev?.x ?: START_X
     val landMs = if (prev == null) FIRST_LAND_MS else prev.landMs + landGapMs(index)
-    val reach = RUN_SPEED * (landMs - (prev?.landMs ?: 0L)) / 1_000f - REACH_MARGIN
+    val fall = fallMs(index)
+    val runMs = min(landMs - (prev?.landMs ?: 0L), fall)
+    val reach = RUN_SPEED * runMs / 1_000f - REACH_MARGIN
     val lo = max(DROP_RANGE.start, from - reach)
     val hi = min(DROP_RANGE.endInclusive, from + reach)
     val x = (lo + rng.nextFloat() * (hi - lo)).coerceIn(lo, hi)
     val organ = if (prev == null) rng.nextInt(ORGAN_KINDS) else (prev.organ + 1 + rng.nextInt(ORGAN_KINDS - 1)) % ORGAN_KINDS
-    return Drop(organ, x, landMs, fallMs(index))
+    return Drop(organ, x, landMs, fall)
 }
 
 /** Whether an organ coming down at [dropX] is caught by the killer at [killerX]: within [CATCH_HALF] either side. */
