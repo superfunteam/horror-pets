@@ -4,7 +4,8 @@ import team.superfun.horrorpets.model.PetState
 
 enum class CareAction { FEED, PLAY, TRAIN }
 
-enum class RefuseReason { TOO_FULL, TOO_HUNGRY }
+/** Why a care action or a fight was turned away: [NEEDS_TRAINING] is a new killer's first fight (see `mustTrainBeforeFighting`). */
+enum class RefuseReason { TOO_FULL, TOO_HUNGRY, NEEDS_TRAINING }
 
 sealed interface CareResult {
     data class Done(val pet: PetState, val levelsGained: Int) : CareResult

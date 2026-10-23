@@ -31,6 +31,7 @@ import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
+import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITES
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
@@ -47,12 +48,18 @@ private const val MINUTE = Tuning.MINUTE_MS
 /** A feint roll over every feint chance: the CPU tells its planned move truthfully. */
 private const val NO_FEINT = 0.99
 
+/**
+ * The training games a new player has to finish before their first fight (see mustTrainBeforeFighting). The fixtures
+ * below have all done them, so FIGHT is open unless a test builds a new player's stable to see it shut.
+ */
+private val TRAINED: Set<String> = FIGHT_PREREQUISITES.map { it.name }.toSet()
+
 private fun gameOf(
     selected: PetId? = PetId.JASON,
     lastSeenMs: Long? = T0,
     vararg pets: PetState,
 ) = GameState(
-    pets = PetId.entries.associateWith { id -> pets.firstOrNull { it.id == id } ?: PetState(id) },
+    pets = PetId.entries.associateWith { id -> pets.firstOrNull { it.id == id } ?: PetState(id, trainedGames = TRAINED) },
     selected = selected,
     lastSeenMs = lastSeenMs,
 )
@@ -65,7 +72,10 @@ private fun jason(
     xp: Int = 0,
     sceneIndex: Int = 0,
     fakeDeathPending: Boolean = false,
-) = PetState(PetId.JASON, hunger, funLevel, strength, level, xp, sceneIndex = sceneIndex, fakeDeathPending = fakeDeathPending)
+) = PetState(
+    PetId.JASON, hunger, funLevel, strength, level, xp,
+    sceneIndex = sceneIndex, fakeDeathPending = fakeDeathPending, trainedGames = TRAINED,
+)
 
 private class FakeClock(var now: Long) : Clock {
     override fun nowMs() = now
@@ -1018,6 +1028,148 @@ class GameViewModelTest {
         rig.vm.onStablePick(PetId.FREDDY)
         assertEquals(1, rig.jason.sceneIndex)
         assertEquals(0, rig.game.pets.getValue(PetId.FREDDY).sceneIndex)
+    }
+
+    // ---- train before the first fight ------------------------------------------------------------
+
+    /** A new player's stable: just the starter, who has never fought and never trained. */
+    private fun newPlayer(pet: PetState = PetState(PetId.JASON)) = loneStable(pet)
+
+    /** Plays [game] to its end with [score] and leaves the results card, as a player does. */
+    private fun Rig.trainThrough(game: TrainingGame, score: Int = 0) {
+        trainAt(game)
+        vm.onTrainingOver(session(), score)
+        vm.onTrainingDone(session())
+    }
+
+    @Test
+    fun aNewPlayerIsTurnedAwayFromTheFirstFight() {
+        val rig = Rig(newPlayer()).started()
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+        assertEquals(Anim.FAIL, rig.ui.petAnim!!.anim)
+        assertTrue(rig.ui.busy)
+        assertEquals(listOf("refuse"), rig.ui.sfx)
+
+        rig.vm.onFightPressed() // mashing during the refusal
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.finishAnim()
+        assertFalse(rig.ui.busy)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun bothSoloGamesOpenTheFirstFight() {
+        val rig = Rig(newPlayer()).started()
+        rig.trainThrough(TrainingGame.SLASH_SAYS, 3)
+        assertEquals(setOf("SLASH_SAYS"), rig.jason.trainedGames)
+        rig.vm.onFightPressed()
+        assertEquals("one of the two is not enough", RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.finishAllAnims()
+
+        rig.trainThrough(TrainingGame.ORGAN_DROP, 3)
+        assertEquals(setOf("SLASH_SAYS", "ORGAN_DROP"), rig.jason.trainedGames)
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+        assertNull(rig.ui.refuse)
+    }
+
+    @Test
+    fun theGamesAreRecordedAndSavedWithThePayout() {
+        val rig = Rig(newPlayer()).started()
+        rig.trainAt(TrainingGame.ORGAN_DROP)
+        rig.vm.onTrainingOver(rig.session(), 4)
+        assertEquals(setOf("ORGAN_DROP"), rig.jason.trainedGames)
+        rig.settle()
+        assertEquals(setOf("ORGAN_DROP"), rig.store.last.pets.getValue(PetId.JASON).trainedGames)
+        assertEquals(rig.game, rig.store.last)
+    }
+
+    @Test
+    fun anyEndedGameCountsEvenOneBackCutShortAtScoreZero() {
+        val rig = Rig(newPlayer()).started()
+        // Back mid-game reports the score so far, which can be nothing at all.
+        rig.trainThrough(TrainingGame.SLASH_SAYS, 0)
+        rig.trainThrough(TrainingGame.ORGAN_DROP, 0)
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+    }
+
+    @Test
+    fun quittingTheReelDoesNotCount() {
+        val rig = Rig(newPlayer()).started()
+        for (game in listOf(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP)) {
+            rig.trainAt(game)
+            rig.vm.onTrainingQuit(rig.session())
+        }
+        assertTrue(rig.jason.trainedGames.isEmpty())
+        rig.vm.onFightPressed()
+        assertEquals(RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+    }
+
+    @Test
+    fun playingTheSameSoloGameAgainDoesNotCoverTheOther() {
+        val rig = Rig(newPlayer()).started()
+        rig.trainThrough(TrainingGame.SLASH_SAYS, 5)
+        rig.trainThrough(TrainingGame.SLASH_SAYS, 6)
+        rig.vm.onFightPressed()
+        assertEquals(RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+    }
+
+    @Test
+    fun aMateGameDoesNotCountTowardTheFirstFight() {
+        val rig = Rig(GameState(pets = mapOf(PetId.JASON to PetState(PetId.JASON), PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.JASON, lastSeenMs = T0)).started()
+        rig.trainThrough(TrainingGame.QUICK_DRAW, 5)
+        rig.trainThrough(TrainingGame.HIDE_AND_SEEK, 5)
+        assertEquals(setOf("QUICK_DRAW", "HIDE_AND_SEEK"), rig.jason.trainedGames)
+        assertTrue("the mate trains nothing of its own", rig.game.pets.getValue(PetId.FREDDY).trainedGames.isEmpty())
+        rig.vm.onFightPressed()
+        assertEquals(RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun thePetOnShowIsTheOneThatMustHaveTrained() {
+        val rig = Rig(GameState(pets = mapOf(PetId.JASON to jason(), PetId.MICHAEL to PetState(PetId.MICHAEL)), selected = PetId.JASON, lastSeenMs = T0)).started()
+        rig.vm.onFightPressed()
+        assertEquals("Jason has trained", Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+        rig.vm.onSwitcherBack()
+
+        rig.vm.openStable()
+        rig.vm.onStablePick(PetId.MICHAEL)
+        rig.vm.onFightPressed()
+        assertEquals("Michael has not", RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
+    }
+
+    @Test
+    fun aPlayerWhoHasFoughtIsNeverGated() {
+        for (veteran in listOf(PetState(PetId.JASON, wins = 1), PetState(PetId.JASON, losses = 1))) {
+            val rig = Rig(newPlayer(veteran)).started()
+            rig.vm.onFightPressed()
+            assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+            assertNull(rig.ui.refuse)
+            assertTrue(rig.jason.trainedGames.isEmpty())
+        }
+        // A fight anywhere in the stable is enough, not only the selected pet's.
+        val stable = GameState(
+            pets = mapOf(PetId.JASON to PetState(PetId.JASON), PetId.FREDDY to PetState(PetId.FREDDY, wins = 2)),
+            selected = PetId.JASON,
+            lastSeenMs = T0,
+        )
+        val rig = Rig(stable).started()
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+    }
+
+    @Test
+    fun aStarvingNewPlayerIsToldItIsTooHungryFirst() {
+        val rig = Rig(newPlayer(PetState(PetId.JASON, hunger = 90.0))).started()
+        rig.vm.onFightPressed()
+        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(listOf("refuse"), rig.ui.sfx)
     }
 
     // ---- fight: entry ------------------------------------------------------------------------

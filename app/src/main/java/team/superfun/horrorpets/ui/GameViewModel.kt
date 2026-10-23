@@ -40,6 +40,7 @@ import team.superfun.horrorpets.game.canTrain
 import team.superfun.horrorpets.game.perform
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.game.training.eligibleGames
+import team.superfun.horrorpets.game.training.mustTrainBeforeFighting
 import team.superfun.horrorpets.game.training.pickMate
 import team.superfun.horrorpets.game.training.pickTrainingGame
 import team.superfun.horrorpets.model.AwaySummary
@@ -286,9 +287,10 @@ class GameViewModel(
 
     /**
      * Training [session]'s game ended with [score] (on its own, or Back cut it short): pays it out (see
-     * [applyTraining]), saves, and shows the results card, with the level-up sound when it was worth a level. Only the
-     * session on screen is paid, and only once, so a report that comes in again (Back on the frame the game ended) or
-     * from another session changes nothing.
+     * [applyTraining]), saves, and shows the results card, with the level-up sound when it was worth a level. The pet
+     * is also marked as having finished the game, at any score, which is what a new player's first fight asks of the
+     * solo games. Only the session on screen is paid, and only once, so a report that comes in again (Back on the
+     * frame the game ended) or from another session changes nothing.
      */
     fun onTrainingOver(session: Long, score: Int) {
         val s = _state.value
@@ -296,7 +298,7 @@ class GameViewModel(
         if (training.result != null) return
         val pet = s.game.selected?.let { s.game.pets[it] } ?: return
         val outcome = applyTraining(pet, training.game, score)
-        val game = s.game.withPet(outcome.pet)
+        val game = s.game.withPet(outcome.pet.copy(trainedGames = outcome.pet.trainedGames + training.game.name))
         val result = TrainingResult(
             score = score.coerceAtLeast(0),
             best = outcome.best,
@@ -360,12 +362,19 @@ class GameViewModel(
         if (game != s.game) persist(game)
     }
 
-    /** Opens the opponent switcher, or refuses when the selected pet is too hungry to fight. */
+    /**
+     * Opens the opponent switcher, or refuses when the selected pet is too hungry to fight (first) or, being a new
+     * player's, has not yet trained at both solo games (see [mustTrainBeforeFighting]).
+     */
     fun onFightPressed() {
         val s = _state.value
         val pet = s.homePet() ?: return
         if (!canFight(pet)) {
             refuse(s, RefuseReason.TOO_HUNGRY)
+            return
+        }
+        if (mustTrainBeforeFighting(s.game, pet)) {
+            refuse(s, RefuseReason.NEEDS_TRAINING)
             return
         }
         _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT), refuse = null)

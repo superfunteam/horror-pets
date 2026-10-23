@@ -29,7 +29,8 @@ nothing else.
 - **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
   your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
   killer trains (up to triple the strength and XP), and it keeps its best in each. Quick Draw and Hide and Eek! need a
-  stable mate, so they only come up once you have a second killer.
+  stable mate, so they only come up once you have a second killer. A new killer trains at both solo games (Slasher
+  Says and Organ Drop) before its first fight, or FIGHT says "Train more first!".
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all of its health back, in green (+34). Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
@@ -98,7 +99,7 @@ adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and e
 | `pet <killer>` | That killer (`jason`, `freddy`, `pinhead`, `ghostface`, `chucky`, `michael`, `leatherface`) becomes the active pet, joining the stable if needed, and Home comes up. |
 | `level <n>` | The active pet's level (1 to 99); Home then offers its new attacks on the learn screens. `--ei debug_level <n>` on a cold start still does the same. |
 | `learn_all` | The active pet learns what its level unlocks and equips the best attack in each slot, with no learn screens. |
-| `fight <killer>` | Straight into a CPU fight against that killer, through the VS card. |
+| `fight <killer>` | Straight into a CPU fight against that killer, through the VS card. It skips the "Train more first!" check, so it works on a fresh save. |
 | `autoplay on\|off` | Fights (CPU and PvP) pick the player's moves: 0.8 s after the menu is up, SPECIAL when the meter is full, POTION under 30% HP, else the answer to the CPU's tell (BLOCK a STRIKE, STRIKE a HEAVY, HEAVY a BLOCK), else STRIKE and HEAVY in turn. Results, unlock and learn cards continue after 2.5 s (a learn screen learns). |
 | `hud off\|on` | Fights (CPU and PvP) hide their HUD for clean footage: the bars, meters, turn badge and status chips, the command and help windows, and PvP's waiting banner. The fighters, callouts, damage numbers, the CPU's tell, cut-ins, the VS card, K.O. and the cards after still show. The hidden menu still takes `move` and autoplay picks. On by default; it lasts until changed, across fights. |
 | `move <strike\|heavy\|block\|special\|potion\|run>` | Picks that move now, if the fight allows it. A `run` runs without asking. |

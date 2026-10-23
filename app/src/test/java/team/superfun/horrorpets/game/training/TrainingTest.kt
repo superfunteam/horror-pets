@@ -181,4 +181,60 @@ class TrainingTest {
         assertEquals(7, higher.best)
         assertEquals(mapOf("QUICK_DRAW" to 9, "SLASH_SAYS" to 7), higher.pet.trainingBest)
     }
+
+    // ---- train before the first fight ----------------------------------------------------------
+
+    private fun trained(vararg games: TrainingGame, wins: Int = 0, losses: Int = 0, id: PetId = PetId.JASON) =
+        PetState(id, wins = wins, losses = losses, trainedGames = games.map { it.name }.toSet())
+
+    private fun gameOf(vararg pets: PetState) = GameState(pets = pets.associateBy { it.id }, selected = pets.first().id)
+
+    @Test
+    fun theFightPrerequisitesAreTheTwoSoloGames() {
+        assertEquals(setOf(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP), FIGHT_PREREQUISITES)
+        assertTrue("needing no mate, they are always on offer", FIGHT_PREREQUISITES.none { it.needsMate })
+    }
+
+    @Test
+    fun aFreshPetMustTrainAtBothSoloGamesBeforeItsFirstFight() {
+        val fresh = PetState(PetId.JASON)
+        assertTrue(mustTrainBeforeFighting(gameOf(fresh), fresh))
+
+        val one = trained(TrainingGame.SLASH_SAYS)
+        assertTrue("one of the two is not enough", mustTrainBeforeFighting(gameOf(one), one))
+        val other = trained(TrainingGame.ORGAN_DROP)
+        assertTrue(mustTrainBeforeFighting(gameOf(other), other))
+
+        val both = trained(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP)
+        assertFalse(mustTrainBeforeFighting(gameOf(both), both))
+    }
+
+    @Test
+    fun aGameWithAMateDoesNotCountTowardTheGate() {
+        val mates = trained(TrainingGame.QUICK_DRAW, TrainingGame.HIDE_AND_SEEK)
+        assertTrue(mustTrainBeforeFighting(gameOf(mates), mates))
+        val mixed = trained(TrainingGame.QUICK_DRAW, TrainingGame.HIDE_AND_SEEK, TrainingGame.SLASH_SAYS)
+        assertTrue(mustTrainBeforeFighting(gameOf(mixed), mixed))
+        val enough = trained(*TrainingGame.entries.toTypedArray())
+        assertFalse(mustTrainBeforeFighting(gameOf(enough), enough))
+    }
+
+    @Test
+    fun anyPetWithAWinOrALossMeansTheStableHasFought() {
+        assertFalse(gameOf(PetState(PetId.JASON)).hasEverFought())
+        assertTrue(gameOf(trained(wins = 1)).hasEverFought())
+        assertTrue(gameOf(trained(losses = 1)).hasEverFought())
+        // Any pet in the stable: a beaten killer joined by being beaten, and the veteran may not be the selected one.
+        val stable = gameOf(PetState(PetId.JASON), trained(wins = 2, id = PetId.FREDDY))
+        assertTrue(stable.hasEverFought())
+        assertFalse("no fight is no history", GameState().hasEverFought())
+    }
+
+    @Test
+    fun aPlayerWhoHasFoughtIsNeverGatedEvenUntrained() {
+        val veteran = trained(losses = 1)
+        assertFalse(mustTrainBeforeFighting(gameOf(veteran), veteran))
+        val fresh = PetState(PetId.JASON)
+        assertFalse("another pet's fight counts", mustTrainBeforeFighting(gameOf(fresh, trained(wins = 1, id = PetId.FREDDY)), fresh))
+    }
 }

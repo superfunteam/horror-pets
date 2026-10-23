@@ -605,6 +605,7 @@ fun HomeScreen(
 private fun refusalText(reason: RefuseReason, fight: Boolean): String = when (reason) {
     RefuseReason.TOO_FULL -> "Too full!"
     RefuseReason.TOO_HUNGRY -> if (fight) "Too hungry to fight" else "Too hungry to train"
+    RefuseReason.NEEDS_TRAINING -> "Train more first!"
 }
 
 /** A local (not view-model) animation; each instance is a distinct playback key. */

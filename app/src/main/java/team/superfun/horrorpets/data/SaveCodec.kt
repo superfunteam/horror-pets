@@ -59,7 +59,8 @@ object SaveCodec {
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
      * - hunger, fun and strength are in 0..100 and moodBonus in -30..30 (NaN becomes the field's default);
      * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative;
-     * - trainingBest keeps only the training games this build knows (by name), and no score is negative.
+     * - trainingBest keeps only the training games this build knows (by name), and no score is negative;
+     *   trainedGames keeps only the names of those games.
      */
     fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
@@ -117,6 +118,7 @@ object SaveCodec {
             losses = p.losses.coerceAtLeast(0),
             sceneIndex = p.sceneIndex.coerceIn(0, Tuning.SCENE_COUNT - 1),
             trainingBest = p.trainingBest.filterKeys { it in trainingGameNames }.mapValues { it.value.coerceAtLeast(0) },
+            trainedGames = p.trainedGames.filter { it in trainingGameNames }.toSet(),
         ).let { q ->
             // Attacks it may not have: another killer's, one past its level, or an id this build does not know.
             val known = q.known.filter { id -> attackById(id)?.let { it.pet == q.id && it.tier > 0 && it.level <= q.level } == true }.toSet()

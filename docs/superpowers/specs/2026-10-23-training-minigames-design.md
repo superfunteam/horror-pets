@@ -124,6 +124,25 @@ ring, Hide and Eek!, Organ Drop.
 - Every drop must be catchable: the drops form a schedule, and each organ's landing spot is limited to how far the
   killer can run from the previous organ's landing spot in the time between the two landings.
 
+### Train before the first fight
+
+The player's call: a new player trains at both solo games, Slasher Says and Organ Drop (the two that need no stable
+mate), before their first fight.
+
+- **Who is gated:** only a player who has never fought, that is, every pet in the stable has no wins and no losses.
+  Anyone who has fought before (an existing save) is never gated. A new player has only their starter until they fight
+  (killers are unlocked by beating them), so the gate always concerns the selected pet.
+- **What clears it:** the selected pet has finished a game of both. "Finished" is the game reporting an end at any
+  score, including one cut short with Back; quitting during the reel doesn't count, and neither does a game with a
+  mate. The reel never repeats the last game when there's a choice and a mate-less stable offers exactly those two, so
+  two trainings always cover both.
+- **The refusal:** pressing FIGHT on Home (PvP is reached through the opponent switcher behind it, so it is covered
+  too) is refused as a starving pet is: the `refuse` sound, the pet's FAIL animation and a bubble, "Train more
+  first!". The hunger check comes first, so a starving pet still says "Too hungry to fight".
+- **Save:** `PetState.trainedGames`, the names of the games it has finished, recorded when a game ends and saved with
+  the payout (an empty default, cleaned in `SaveCodec.sanitize` like `trainingBest`; the save version doesn't change).
+- The debug puppet's `fight <killer>` sets the VS card directly, so it keeps working on a fresh save.
+
 ### Art and sound
 
 - Art (done, generated in the game's toy style): `tools/generate_minigame_art.py` → `art-work/minigames/`, picks

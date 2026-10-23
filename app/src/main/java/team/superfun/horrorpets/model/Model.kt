@@ -28,6 +28,8 @@ enum class PetId(val displayName: String) {
  * [equipped] is the attack it fights with in each slot, by id (a slot missing here uses its starting attack), and
  * [known] every attack it has been offered as it levelled up, learned or not, so it can equip any of them later.
  * [trainingBest] is its best score in each training game, by [TrainingGame.name] (a game it has not played is absent).
+ * [trainedGames] is the training games it has finished at least once, by [TrainingGame.name], at any score; a new
+ * killer needs both solo games here before its first fight (see `mustTrainBeforeFighting`).
  */
 @Serializable
 data class PetState(
@@ -46,6 +48,7 @@ data class PetState(
     val equipped: Map<Slot, String> = emptyMap(),
     val known: Set<String> = emptySet(),
     val trainingBest: Map<String, Int> = emptyMap(),
+    val trainedGames: Set<String> = emptySet(),
 )
 
 /**

@@ -107,6 +107,34 @@ class SaveCodecTest {
     }
 
     @Test
+    fun trainedGamesRoundTrips() {
+        val jason = PetState(PetId.JASON, trainedGames = setOf("SLASH_SAYS", "QUICK_DRAW"))
+        val state = GameState(pets = mapOf(PetId.JASON to jason, PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.JASON)
+        val back = SaveCodec.decode(SaveCodec.encode(state))
+        assertEquals(state, back)
+        assertEquals(setOf("SLASH_SAYS", "QUICK_DRAW"), back.pets.getValue(PetId.JASON).trainedGames)
+        assertTrue(back.pets.getValue(PetId.FREDDY).trainedGames.isEmpty())
+    }
+
+    @Test
+    fun aSaveWithoutTrainedGamesLoadsWithNone() {
+        // A save from before the first-fight gate: no key at all, and the version is still 2.
+        val loaded = pet(PetId.JASON, """{"id":"JASON","level":5,"wins":2,"trainingBest":{"SLASH_SAYS":4}}""")
+        assertTrue(loaded.trainedGames.isEmpty())
+        assertEquals(5, loaded.level)
+        assertEquals(mapOf("SLASH_SAYS" to 4), loaded.trainingBest)
+    }
+
+    @Test
+    fun unknownTrainedGamesAreDropped() {
+        // A game a later build added is dropped; names are exact, so a wrongly cased one is not a game either.
+        val json = """{"trainedGames":["SLASH_SAYS","FUTURE_GAME","organ_drop","ORGAN_DROP"]}"""
+        assertEquals(setOf("SLASH_SAYS", "ORGAN_DROP"), pet(PetId.JASON, json).trainedGames)
+        // A wrongly typed field is one bad field: that pet resets to defaults and stays unlocked.
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"trainedGames":"SLASH_SAYS"}"""))
+    }
+
+    @Test
     fun roundTripOfAFreshGame() {
         assertEquals(defaults, SaveCodec.decode(SaveCodec.encode(defaults)))
     }
