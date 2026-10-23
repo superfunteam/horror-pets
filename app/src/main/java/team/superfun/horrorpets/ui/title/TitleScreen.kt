@@ -63,6 +63,8 @@ import team.superfun.horrorpets.ui.common.safeInset
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
+import team.superfun.horrorpets.update.UpdateActions
+import team.superfun.horrorpets.update.UpdateStep
 
 /** The title's art and logo (written by tools/make_branding.py from branding/). */
 private const val COVER = "sprites/title/cover.webp"
@@ -82,9 +84,20 @@ private val StartGlow = Shadow(color = Blood, offset = Offset(0f, 0f), blurRadiu
  * The title screen, on every launch: the cover art filling the screen (cropped to fit any shape), the logo over its
  * open sky and a blinking PRESS START. OK or a tap starts ([onStart]); Back leaves the app ([onExit]). A little
  * CREDITS link sits in the corner (Down or Right gets to it on a remote, Up or Left back) and opens [CreditsDialog].
+ *
+ * When the launch's update check has found a newer release, [update] is its window's step and [UpdateDialog] comes up
+ * over the title (after the credits, if they are open), its buttons doing [updateActions]. It only ever shows here:
+ * leaving the title closes it, and an offer that comes in after the player has left waits for the next launch.
  */
 @Composable
-fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, focusEntry: Any? = Unit) {
+fun TitleScreen(
+    loader: AssetLoader,
+    onStart: () -> Unit,
+    onExit: () -> Unit,
+    focusEntry: Any? = Unit,
+    update: UpdateStep = UpdateStep.None,
+    updateActions: UpdateActions = UpdateActions.None,
+) {
     val focus = remember { FocusRequester() }
     val creditsFocus = remember { FocusRequester() }
     var showCredits by remember { mutableStateOf(false) }
@@ -93,7 +106,19 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
         if (backToCredits) runCatching { creditsFocus.requestFocus() }
         backToCredits = false
     }
-    GameBackHandler(enabled = focusEntry != null && !showCredits, onBack = onExit)
+    val showUpdate = update != UpdateStep.None && focusEntry != null && !showCredits
+    // The last step shown, so the window still has its words while it fades out.
+    var shownUpdate by remember { mutableStateOf(update) }
+    if (update != UpdateStep.None) shownUpdate = update
+    // Closed: the title has the focus back, for OK to start.
+    var updateWasShown by remember { mutableStateOf(false) }
+    LaunchedEffect(showUpdate) {
+        if (!showUpdate && updateWasShown && focusEntry != null) runCatching { focus.requestFocus() }
+        updateWasShown = showUpdate
+    }
+    // The window belongs to the title: leaving the title (only the debug puppet can, with the window up) closes it.
+    LaunchedEffect(focusEntry) { if (focusEntry == null) updateActions.later() }
+    GameBackHandler(enabled = focusEntry != null && !showCredits && !showUpdate, onBack = onExit)
     RequestFocusOnEntry(focus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
     val art by produceState<ImageBitmap?>(null, loader) { value = withContext(Dispatchers.IO) { loader.prop(COVER) } }
@@ -118,7 +143,7 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
             .focusProperties {
                 down = creditsFocus
                 right = creditsFocus
-                canFocus = !showCredits
+                canFocus = !showCredits && !showUpdate
             }
             .clickable(remember { MutableInteractionSource() }, indication = null) {
                 tick()
@@ -168,7 +193,7 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
                 .focusProperties {
                     up = focus
                     left = focus
-                    canFocus = !showCredits
+                    canFocus = !showCredits && !showUpdate
                 },
         )
         AnimatedVisibility(visible = showCredits, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
@@ -182,6 +207,16 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
                     showCredits = false
                     backToCredits = true
                 },
+            )
+        }
+        AnimatedVisibility(visible = showUpdate, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
+            UpdateDialog(
+                step = shownUpdate,
+                actions = updateActions,
+                modifier = Modifier.animateEnterExit(
+                    enter = scaleIn(tween(200), initialScale = 0.9f),
+                    exit = scaleOut(tween(160), targetScale = 0.95f),
+                ),
             )
         }
     }

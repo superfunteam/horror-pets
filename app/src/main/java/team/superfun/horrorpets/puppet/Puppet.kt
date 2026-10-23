@@ -32,6 +32,15 @@ interface Puppet {
      */
     val fightHud: StateFlow<Boolean> get() = HUD_SHOWN
 
+    /**
+     * The versionName the update check takes this build to be, or null for its real one. Only a debug build told
+     * `fake_version` has one, so a dev build (which never updates) can be offered a release.
+     */
+    val fakeVersion: String? get() = null
+
+    /** Update checks to run now (`check_update`), even after the launch's own check or a LATER. */
+    val updateChecks: Flow<Unit> get() = emptyFlow()
+
     companion object {
         /** The installed puppet: a do-nothing one unless a debug build has put its own here. */
         @Volatile

@@ -44,6 +44,8 @@ import team.superfun.horrorpets.ui.fight.arenaScene
 import team.superfun.horrorpets.ui.home.HomeScreen
 import team.superfun.horrorpets.ui.switcher.SwitcherScreen
 import team.superfun.horrorpets.ui.theme.Ink
+import team.superfun.horrorpets.update.UpdateActions
+import team.superfun.horrorpets.update.UpdateStep
 
 /** Cross-fade between screens. */
 private const val SCREEN_FADE_MS = 280
@@ -56,7 +58,8 @@ private const val SCREEN_FADE_MS = 280
  * [sounds] as they fill, and screens reach the same sink through [LocalSoundSink] for the sounds they
  * time themselves. [scriptedPicks] are moves picked for the player by a debug build's puppet (see
  * `FightScreen`); a release build's never has any. [showFightHud] off hides the fight screen's HUD, which only a
- * debug build's puppet does (`hud off`, for clean footage).
+ * debug build's puppet does (`hud off`, for clean footage). [update] is the update window's step, shown over the title
+ * only, its buttons doing [updateActions] (see `UpdateController`).
  */
 @Composable
 fun HorrorPetsApp(
@@ -66,6 +69,8 @@ fun HorrorPetsApp(
     onExit: () -> Unit,
     scriptedPicks: Flow<Move> = emptyFlow(),
     showFightHud: Boolean = true,
+    update: UpdateStep = UpdateStep.None,
+    updateActions: UpdateActions = UpdateActions.None,
 ) {
     val state by vm.state.collectAsState()
 
@@ -121,7 +126,14 @@ fun HorrorPetsApp(
                 // The router's own Ink fill (on AnimatedContent) is the only app background; screens draw over it.
                 Screen.Loading -> Box(Modifier.fillMaxSize())
 
-                Screen.Title -> TitleScreen(loader = loader, onStart = vm::onStart, onExit = exitFromTitle, focusEntry = focusEntry)
+                Screen.Title -> TitleScreen(
+                    loader = loader,
+                    onStart = vm::onStart,
+                    onExit = exitFromTitle,
+                    focusEntry = focusEntry,
+                    update = update,
+                    updateActions = updateActions,
+                )
 
                 is Screen.Switcher -> SwitcherScreen(
                     mode = screen.mode,

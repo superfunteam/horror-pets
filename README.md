@@ -49,6 +49,11 @@ allow installing apps from the browser the first time).
 
 Later versions install over the top and keep your pets, because every release is signed with the same key.
 
+**Updates come to you:** you only sideload once. On launch the title screen checks GitHub for a newer release and,
+if there is one, offers it: UPDATE downloads it right in the game (with a progress bar) and hands it to Android's
+installer. The first time on Android 8 and up, Android asks you to allow installs from the game; allow it in the
+settings screen the game opens, then come back. LATER (or Back) skips it until the next launch.
+
 ## Develop
 
 You need **JDK 17** (Temurin is fine; the build does not download one for you) and the Android SDK
