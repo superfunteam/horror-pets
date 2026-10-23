@@ -26,6 +26,10 @@ nothing else.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **Feeding time:** a snack whistles down from the sky (meat on the bone, a turkey leg, canned spinach, a cake with a knife in it, popcorn or a jello brain) and gets munched, bite by bite.
+- **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
+  your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
+  killer trains (up to triple the strength and XP), and it keeps its best in each. Quick Draw and Hide and Eek! need a
+  stable mate, so they only come up once you have a second killer.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all of its health back, in green (+34). Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
