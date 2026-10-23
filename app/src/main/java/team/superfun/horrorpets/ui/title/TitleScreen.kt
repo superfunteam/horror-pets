@@ -1,11 +1,16 @@
 package team.superfun.horrorpets.ui.title
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,12 +27,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -71,12 +80,20 @@ private val StartGlow = Shadow(color = Blood, offset = Offset(0f, 0f), blurRadiu
 
 /**
  * The title screen, on every launch: the cover art filling the screen (cropped to fit any shape), the logo over its
- * open sky and a blinking PRESS START. OK or a tap starts ([onStart]); Back leaves the app ([onExit]).
+ * open sky and a blinking PRESS START. OK or a tap starts ([onStart]); Back leaves the app ([onExit]). A little
+ * CREDITS link sits in the corner (Down or Right gets to it on a remote, Up or Left back) and opens [CreditsDialog].
  */
 @Composable
 fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, focusEntry: Any? = Unit) {
     val focus = remember { FocusRequester() }
-    GameBackHandler(enabled = focusEntry != null, onBack = onExit)
+    val creditsFocus = remember { FocusRequester() }
+    var showCredits by remember { mutableStateOf(false) }
+    var backToCredits by remember { mutableStateOf(false) }
+    LaunchedEffect(backToCredits) {
+        if (backToCredits) runCatching { creditsFocus.requestFocus() }
+        backToCredits = false
+    }
+    GameBackHandler(enabled = focusEntry != null && !showCredits, onBack = onExit)
     RequestFocusOnEntry(focus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
     val art by produceState<ImageBitmap?>(null, loader) { value = withContext(Dispatchers.IO) { loader.prop(COVER) } }
@@ -98,6 +115,11 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
             .background(Ink)
             .ignoreOkUnless(okReady)
             .focusRequester(focus)
+            .focusProperties {
+                down = creditsFocus
+                right = creditsFocus
+                canFocus = !showCredits
+            }
             .clickable(remember { MutableInteractionSource() }, indication = null) {
                 tick()
                 onStart()
@@ -135,6 +157,32 @@ fun TitleScreen(loader: AssetLoader, onStart: () -> Unit, onExit: () -> Unit, fo
                 KeyCap(if (touch) "TAP" else "OK")
                 BasicText("TO BEGIN", style = displayStyle(14.sp, FontWeight.Bold, color = TextHi.copy(alpha = 0.75f), tracking = 0.22f))
             }
+        }
+        CreditsLink(
+            onClick = { showCredits = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = safe.horizontal, bottom = safe.vertical)
+                .graphicsLayer { alpha = shown }
+                .focusRequester(creditsFocus)
+                .focusProperties {
+                    up = focus
+                    left = focus
+                    canFocus = !showCredits
+                },
+        )
+        AnimatedVisibility(visible = showCredits, enter = fadeIn(tween(160)), exit = fadeOut(tween(160))) {
+            CreditsDialog(
+                // The window grows in as the scrim fades in, and settles back as it fades out.
+                modifier = Modifier.animateEnterExit(
+                    enter = scaleIn(tween(200), initialScale = 0.9f),
+                    exit = scaleOut(tween(160), targetScale = 0.95f),
+                ),
+                onClose = {
+                    showCredits = false
+                    backToCredits = true
+                },
+            )
         }
     }
 }

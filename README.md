@@ -18,7 +18,8 @@ nothing else.
 
 - **Seven killers:** Jason, Freddy, Pinhead, Ghostface, Chucky, Michael and Leatherface, each with its own stats, three scenes from its movie, music, a fight passive and a signature special. The newest, Leatherface, revs his Chainsaw passive (his heavy hits land 20% harder) and, for his special, the Saw Dance: he does his chainsaw dance while blades and sparks whirl around his opponent. Hit Play on Home and he dances for you too.
 - **Press start, pick one:** every launch opens on the title screen. A new game starts with one killer of your
-  choice from a spotlight carousel; the rest are locked.
+  choice from a spotlight carousel; the rest are locked. The little CREDITS link in its corner (Down on a remote)
+  names the artists whose chibi figures the killers are loosely based on.
 - **Unlock your stable:** beat a locked killer in a fight and it is UNLOCKED, joining your stable. Once you have
   more than one, the others take turns in the top-right corner of Home, their heads ringed by Fed, Fun, Strength
   and Mood; open the stable there (or with the remote's Menu key) to go see any of them.

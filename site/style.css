@@ -262,6 +262,7 @@ footer {
 }
 footer .download.small { font-size: 1.5rem; padding: 14px 30px; margin-bottom: 36px; }
 footer cite { font-style: italic; }
+footer .credits { max-width: 40em; margin-inline: auto; }
 
 /* ---- narrow screens: the cast frames the logo from below, and the screenshots stack ---- */
 
