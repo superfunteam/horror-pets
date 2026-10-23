@@ -35,7 +35,7 @@ fun perform(action: CareAction, p: PetState): CareResult = when (action) {
     )
 
     CareAction.TRAIN -> {
-        if (p.hunger >= Tuning.TRAIN_REFUSE_AT) {
+        if (!canTrain(p)) {
             CareResult.Refused(RefuseReason.TOO_HUNGRY)
         } else {
             reward(
@@ -57,3 +57,6 @@ private fun reward(p: PetState, xp: Int): CareResult.Done {
 
 /** A starving pet (hunger at or above [Tuning.STARVING_AT]) is too weak to fight. */
 fun canFight(p: PetState): Boolean = p.hunger < Tuning.STARVING_AT
+
+/** A starving pet (hunger at or above [Tuning.TRAIN_REFUSE_AT]) will not train; the same test [perform] refuses on. */
+fun canTrain(p: PetState): Boolean = p.hunger < Tuning.TRAIN_REFUSE_AT

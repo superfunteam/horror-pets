@@ -27,6 +27,7 @@ enum class PetId(val displayName: String) {
  * cleared the first time the time away is actually applied (see `applyElapsed`).
  * [equipped] is the attack it fights with in each slot, by id (a slot missing here uses its starting attack), and
  * [known] every attack it has been offered as it levelled up, learned or not, so it can equip any of them later.
+ * [trainingBest] is its best score in each training game, by [TrainingGame.name] (a game it has not played is absent).
  */
 @Serializable
 data class PetState(
@@ -44,6 +45,7 @@ data class PetState(
     val freshJoin: Boolean = false,
     val equipped: Map<Slot, String> = emptyMap(),
     val known: Set<String> = emptySet(),
+    val trainingBest: Map<String, Int> = emptyMap(),
 )
 
 /**

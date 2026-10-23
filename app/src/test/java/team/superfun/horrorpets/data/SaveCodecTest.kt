@@ -80,6 +80,33 @@ class SaveCodecTest {
     }
 
     @Test
+    fun trainingBestRoundTrips() {
+        val jason = PetState(PetId.JASON, trainingBest = mapOf("SLASH_SAYS" to 6, "ORGAN_DROP" to 41))
+        val state = GameState(pets = mapOf(PetId.JASON to jason, PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.JASON)
+        val back = SaveCodec.decode(SaveCodec.encode(state))
+        assertEquals(state, back)
+        assertEquals(mapOf("SLASH_SAYS" to 6, "ORGAN_DROP" to 41), back.pets.getValue(PetId.JASON).trainingBest)
+        assertTrue(back.pets.getValue(PetId.FREDDY).trainingBest.isEmpty())
+    }
+
+    @Test
+    fun aSaveWithoutTrainingBestLoads() {
+        // A save from before the training games: no key at all, and the version is still 2.
+        val loaded = pet(PetId.JASON, """{"id":"JASON","level":5,"wins":2}""")
+        assertTrue(loaded.trainingBest.isEmpty())
+        assertEquals(5, loaded.level)
+    }
+
+    @Test
+    fun unknownOrNegativeTrainingBestIsCleaned() {
+        // A game a later build added is dropped (it would not be shown anyway); a negative score reads as 0.
+        val json = """{"trainingBest":{"SLASH_SAYS":-4,"FUTURE_GAME":9,"ORGAN_DROP":12,"quick_draw":7}}"""
+        assertEquals(mapOf("SLASH_SAYS" to 0, "ORGAN_DROP" to 12), pet(PetId.JASON, json).trainingBest)
+        // A wrongly typed map is one bad field: that pet resets to defaults and stays unlocked.
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"trainingBest":{"SLASH_SAYS":"lots"}}"""))
+    }
+
+    @Test
     fun roundTripOfAFreshGame() {
         assertEquals(defaults, SaveCodec.decode(SaveCodec.encode(defaults)))
     }

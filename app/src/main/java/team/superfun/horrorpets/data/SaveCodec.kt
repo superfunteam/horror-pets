@@ -12,6 +12,7 @@ import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.canUse
 
@@ -57,7 +58,8 @@ object SaveCodec {
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
      * - hunger, fun and strength are in 0..100 and moodBonus in -30..30 (NaN becomes the field's default);
-     * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative.
+     * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative;
+     * - trainingBest keeps only the training games this build knows (by name), and no score is negative.
      */
     fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
@@ -79,6 +81,8 @@ object SaveCodec {
             null
         }
     }
+
+    private val trainingGameNames: Set<String> = TrainingGame.entries.map { it.name }.toSet()
 
     private fun petIdOrNull(e: JsonElement?): PetId? {
         val name = (e as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
@@ -112,6 +116,7 @@ object SaveCodec {
             wins = p.wins.coerceAtLeast(0),
             losses = p.losses.coerceAtLeast(0),
             sceneIndex = p.sceneIndex.coerceIn(0, Tuning.SCENE_COUNT - 1),
+            trainingBest = p.trainingBest.filterKeys { it in trainingGameNames }.mapValues { it.value.coerceAtLeast(0) },
         ).let { q ->
             // Attacks it may not have: another killer's, one past its level, or an id this build does not know.
             val known = q.known.filter { id -> attackById(id)?.let { it.pet == q.id && it.tier > 0 && it.level <= q.level } == true }.toSet()

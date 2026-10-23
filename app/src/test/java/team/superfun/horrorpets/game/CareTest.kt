@@ -74,6 +74,14 @@ class CareTest {
     }
 
     @Test
+    fun canTrainFollowsTheRefuseThreshold() {
+        assertTrue(canTrain(pet(hunger = 84.9)))
+        assertTrue(canTrain(pet(hunger = 0.0)))
+        assertFalse(canTrain(pet(hunger = 85.0)))
+        assertFalse(canTrain(pet(hunger = 100.0)))
+    }
+
+    @Test
     fun trainAllowedJustBelowRefuseThreshold() {
         val r = done(perform(CareAction.TRAIN, pet(hunger = 84.9)))
         assertEquals(96.9, r.pet.hunger, 1e-9)
