@@ -1,10 +1,12 @@
 package team.superfun.horrorpets.puppet
 
+import team.superfun.horrorpets.DEV_VERSION_NAME
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.TrainingGame
+import team.superfun.horrorpets.versionCodeOf
 
 /** One puppet command, as [parseCommand] reads it from adb (see "Puppet mode" in the README). */
 sealed interface PuppetCommand {
@@ -56,6 +58,12 @@ sealed interface PuppetCommand {
     /** `status`: logs where the game is. */
     data object Status : PuppetCommand
 
+    /** `fake_version <x.y.z>|off`: the update check takes this build to be [version] (null: its real one). */
+    data class FakeVersion(val version: String?) : PuppetCommand
+
+    /** `check_update`: checks GitHub for a newer release now, and offers it over the title. */
+    data object CheckUpdate : PuppetCommand
+
     /** [text] is not a command the puppet knows, for [reason]. */
     data class Invalid(val text: String, val reason: String) : PuppetCommand
 }
@@ -66,7 +74,7 @@ const val MAX_WAIT_SECONDS = 600
 /** Every command's syntax, for the log when one is not understood. */
 const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, hud on|off, " +
     "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train [<game>], score <n>, home, " +
-    "wait <seconds>|home, status"
+    "wait <seconds>|home, status, fake_version <x.y.z>|off, check_update"
 
 private val KILLERS = PetId.entries.joinToString(", ") { it.name.lowercase() }
 private val TRAINING_GAMES = TrainingGame.entries.joinToString(", ") { it.name.lowercase() }
@@ -103,6 +111,12 @@ fun parseCommand(text: String): PuppetCommand {
         }
         "home" -> bare(PuppetCommand.Home)
         "status" -> bare(PuppetCommand.Status)
+        "check_update" -> bare(PuppetCommand.CheckUpdate)
+        "fake_version" -> when {
+            arg == "off" -> PuppetCommand.FakeVersion(null)
+            arg != null && arg != DEV_VERSION_NAME && runCatching { versionCodeOf(arg) }.isSuccess -> PuppetCommand.FakeVersion(arg)
+            else -> invalid("fake_version needs off or a release's MAJOR.MINOR.PATCH, such as 0.5.0")
+        }
         "pet", "fight" -> {
             val pet = arg?.let(::killerNamed) ?: return invalid("$name needs one killer: $KILLERS")
             if (name == "pet") PuppetCommand.Pet(pet) else PuppetCommand.Fight(pet)

@@ -94,6 +94,16 @@ internal object DebugPuppet : Puppet {
     /** Whether autoplay is on. Kept for the process, so it carries on in an Activity that is recreated. */
     var autoplay = false
 
+    /** `fake_version`'s version, kept for the process like [autoplay]: the update check reads it as it runs. */
+    @Volatile
+    override var fakeVersion: String? = null
+
+    private val checks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val updateChecks: Flow<Unit> = checks.asSharedFlow()
+
+    /** Asks MainActivity for an update check now; false when nothing is listening for one. */
+    fun checkUpdate(): Boolean = checks.subscriptionCount.value > 0 && checks.tryEmit(Unit)
+
     /** The Activity being driven, while there is one. */
     private var session: Session? = null
 
@@ -204,7 +214,8 @@ private class Session(
 
     private suspend fun execute(command: PuppetCommand): Outcome {
         val immediate = command is PuppetCommand.Autoplay || command is PuppetCommand.Hud || command is PuppetCommand.Status ||
-            command is PuppetCommand.Wait || command is PuppetCommand.WaitHome || command is PuppetCommand.Invalid
+            command is PuppetCommand.Wait || command is PuppetCommand.WaitHome || command is PuppetCommand.Invalid ||
+            command is PuppetCommand.FakeVersion || command is PuppetCommand.CheckUpdate
         if (!immediate && !awaitIdle()) return Outcome.Refused("the game was still busy after ${IDLE_WAIT_MS / 1000} s")
         return when (command) {
             PuppetCommand.UnlockAll -> {
@@ -321,6 +332,19 @@ private class Session(
                 val s = state()
                 val hud = if (DebugPuppet.hud.value) "on" else "off"
                 Outcome.Done("${describe(s)}; ${petLine(s)}; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
+            }
+
+            is PuppetCommand.FakeVersion -> {
+                DebugPuppet.fakeVersion = command.version
+                Outcome.Done(
+                    if (command.version == null) "the update check uses this build's own version" else "the update check takes this build for ${command.version}",
+                )
+            }
+
+            PuppetCommand.CheckUpdate -> {
+                if (!DebugPuppet.checkUpdate()) return Outcome.Refused("nothing is listening for update checks")
+                val note = if (state().screen == Screen.Title) "" else " (its window only shows over the title)"
+                Outcome.Done("checking for an update as ${DebugPuppet.fakeVersion ?: "this build's own version"}$note: adb logcat -s Updates")
             }
 
             is PuppetCommand.Invalid -> Outcome.Refused(command.reason)

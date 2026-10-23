@@ -54,6 +54,11 @@ allow installing apps from the browser the first time).
 
 Later versions install over the top and keep your pets, because every release is signed with the same key.
 
+**Updates come to you:** you only sideload once. On launch the game checks GitHub for a newer release and, if there
+is one, offers it on the title screen: UPDATE downloads it right in the game (with a progress bar) and hands it to
+Android's installer. The first time on Android 8 and up, Android asks you to allow installs from the game; allow it in the
+settings screen the game opens, then come back. LATER (or Back) skips it until the next launch.
+
 ## Develop
 
 You need **JDK 17** (Temurin is fine; the build does not download one for you) and the Android SDK
@@ -91,6 +96,8 @@ adb -s emulator-5554 shell "am start -S -n team.superfun.horrorpets/.MainActivit
 adb -s emulator-5554 shell "am broadcast -a team.superfun.horrorpets.PUPPET --es cmd 'meter full; move special'"
 adb -s emulator-5554 shell "am broadcast -a team.superfun.horrorpets.PUPPET --es cmd 'autoplay on; wait home; fight jason'"
 adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and each screen as it comes up
+adb -s emulator-5554 shell "am start -S -n team.superfun.horrorpets/.MainActivity --es cmd 'fake_version 0.5.0; check_update'"
+adb -s emulator-5554 logcat -s Puppet Updates    # the update check, download and install
 ```
 
 | Command | What it does |
@@ -110,6 +117,8 @@ adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and e
 | `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch; a training game is left, or its card dismissed). |
 | `wait <seconds>`, `wait home` | Holds the rest of the line: for that long, or until Home is up and idle (a fight and its cards over). |
 | `status` | Logs the screen, the active pet and whether autoplay and the HUD are on. |
+| `fake_version <x.y.z>\|off` | The update check takes this build to be that version (a dev build, `0.0.0-dev`, never updates otherwise); `off` goes back to the real one. It lasts until changed or the app is stopped. Send `check_update` after it. |
+| `check_update` | Checks GitHub for a newer release now, even after LATER, and offers it in the update window. The window only shows over the title, so send it from a cold start. The outcome is logged under `Updates`. A debug build cannot install a release over itself (they are signed with different keys): the installer refuses, and the window says so. |
 
 Each command waits for the action playing (a turn, a feed) to end first. A command that is refused (logged as
 `refused:` with the reason) drops the rest of its line, and a new line replaces one still waiting. Moves are picked

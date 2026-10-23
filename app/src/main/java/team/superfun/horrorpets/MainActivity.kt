@@ -56,6 +56,10 @@ import team.superfun.horrorpets.ui.common.isTouchDevice
 import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.pvp.LocalTapToJoin
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
+import team.superfun.horrorpets.update.AndroidUpdateHost
+import team.superfun.horrorpets.update.UPDATES_TAG
+import team.superfun.horrorpets.update.UpdateController
+import team.superfun.horrorpets.update.showInstallConfirmation
 
 class MainActivity : ComponentActivity() {
     private val loader: AssetLoader by lazy { assetLoader(this) }
@@ -78,6 +82,22 @@ class MainActivity : ComponentActivity() {
                     pvpRelay = HttpPvpRelay(PVP_RELAY, appVersionCode(appContext)),
                     // A phone tapped against this one reads the room code this one is hosting (see PvpTapService).
                     onHostCode = { HostedCode.current = it },
+                )
+            }
+        }
+    }
+
+    /** The in-app update: a check for a newer release on GitHub once per launch, and its window over the title. */
+    private val updates: UpdateController by viewModels {
+        val appContext = applicationContext
+        viewModelFactory {
+            initializer {
+                UpdateController(
+                    host = AndroidUpdateHost(appContext, userAgent = "horror-pets/${BuildConfig.VERSION_NAME} (Android ${Build.VERSION.RELEASE})"),
+                    // A debug build's puppet can fake this build's version (fake_version), so a dev build can try updates.
+                    runningVersion = { Puppet.current.fakeVersion ?: BuildConfig.VERSION_NAME },
+                    scope = null, // viewModelScope
+                    log = { Log.i(UPDATES_TAG, it) },
                 )
             }
         }
@@ -111,6 +131,24 @@ class MainActivity : ComponentActivity() {
         // A recreated Activity gets the launch's intent again, whose commands have already run.
         if (savedInstanceState == null) Puppet.current.onIntent(intent)
 
+        // Look for a newer release as the app starts, so the answer is usually in by the time the title is up (once
+        // per launch: the controller outlives a recreation). Its window only ever shows over the title.
+        updates.checkOnce()
+        // A debug build's puppet can ask for another check (check_update).
+        lifecycleScope.launch {
+            Puppet.current.updateChecks.collect { updates.checkNow() }
+        }
+        // Android's installer wants the player to confirm an update: its screen is shown from here, while the game is in
+        // front, and only while the update window is still installing (not after LATER).
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                updates.step.collect {
+                    val confirm = updates.takeConfirmation() ?: return@collect
+                    if (!showInstallConfirmation(this@MainActivity, confirm)) updates.confirmationFailed()
+                }
+            }
+        }
+
         // The music follows the screen. Collecting only while started means a stopped game stays quiet;
         // GameAudio ignores a track it is already playing, so coming back never restarts it.
         lifecycleScope.launch {
@@ -143,6 +181,7 @@ class MainActivity : ComponentActivity() {
                 ProvideScreenDensity {
                     HorrorPetsTheme {
                         val showFightHud by Puppet.current.fightHud.collectAsState()
+                        val update by updates.step.collectAsState()
                         HorrorPetsApp(
                             vm = vm,
                             loader = loader,
@@ -150,6 +189,8 @@ class MainActivity : ComponentActivity() {
                             onExit = ::finish,
                             scriptedPicks = Puppet.current.fightPicks,
                             showFightHud = showFightHud,
+                            update = update,
+                            updateActions = updates,
                         )
                     }
                 }
@@ -162,6 +203,8 @@ class MainActivity : ComponentActivity() {
         audio.resume()
         vm.onResume()
         tap?.onResume()
+        // Back from allowing installs from this app, maybe: the update carries on.
+        updates.onResume()
     }
 
     override fun onPause() {

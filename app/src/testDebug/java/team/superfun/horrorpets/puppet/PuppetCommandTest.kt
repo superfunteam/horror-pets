@@ -110,6 +110,25 @@ class PuppetCommandTest {
     }
 
     @Test
+    fun fakeVersionTakesAReleaseVersionOrOff() {
+        assertEquals(PuppetCommand.FakeVersion("0.5.0"), parseCommand("fake_version 0.5.0"))
+        assertEquals(PuppetCommand.FakeVersion("12.34.56"), parseCommand("  FAKE_VERSION   12.34.56 "))
+        assertEquals(PuppetCommand.FakeVersion(null), parseCommand("fake_version off"))
+        assertEquals(PuppetCommand.FakeVersion(null), parseCommand("fake_version OFF"))
+        for (bad in listOf("fake_version", "fake_version v0.5.0", "fake_version 0.5", "fake_version 0.5.0-beta", "fake_version 0.0.0-dev",
+            "fake_version 1.100.0", "fake_version soon", "fake_version 0.5.0 0.6.0")) {
+            assertInvalid(bad, "MAJOR.MINOR.PATCH")
+        }
+    }
+
+    @Test
+    fun checkUpdateIsBare() {
+        assertEquals(PuppetCommand.CheckUpdate, parseCommand("check_update"))
+        assertEquals(PuppetCommand.CheckUpdate, parseCommand("CHECK_UPDATE"))
+        assertInvalid("check_update now", "no argument")
+    }
+
+    @Test
     fun bareCommandsTakeNoArgument() {
         assertInvalid("feed now", "no argument")
         assertInvalid("home please", "no argument")
@@ -147,6 +166,8 @@ class PuppetCommandTest {
         assertInvalid("dance", "hud on|off")
         assertInvalid("dance", "train [<game>]")
         assertInvalid("dance", "score <n>")
+        assertInvalid("dance", "fake_version <x.y.z>|off")
+        assertInvalid("dance", "check_update")
         assertInvalid("", "empty")
         // The invalid command keeps its text, for the log.
         assertEquals("dance wildly", (parseCommand("  dance wildly ") as PuppetCommand.Invalid).text)
