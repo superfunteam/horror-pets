@@ -8,8 +8,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +30,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,9 +62,9 @@ private val ScoreFill = Brush.verticalGradient(listOf(Color(0xFFFFE9A8), Amber, 
 
 /**
  * A finished training game's results, in a game window over the frozen game: [game]'s title, the score big, the pet's
- * best (NEW BEST! in gold when this score set it), what training paid (`+N STRENGTH`, `+N XP`, and LEVEL UP! when it was
- * worth a level), and a focused CONTINUE pill: OK or a tap calls [onDone] (the shell's Back does too). OK and taps are
- * ignored for a moment after the card comes up (see `rememberOkReady`), so one mashed through the game's end cannot
+ * best (NEW BEST! in gold when this score set it), what training paid (`+N STRENGTH`, `+N XP`, and LEVEL UP! when it
+ * was worth a level), and a focused CONTINUE pill: OK or a tap calls [onDone] (the shell's Back does too). OK and taps
+ * are ignored for a moment after the card comes up (see `rememberOkReady`), so one mashed through the game's end cannot
  * skip it; nothing under the card takes a touch. `game_over` plays as it appears, unless the view model has queued
  * `levelup` for a level gained. [focusEntry] is the screen's: null while it leaves, when the card stops taking input.
  */
@@ -197,16 +194,5 @@ private fun LevelUpChip() {
             .padding(horizontal = 10.dp, vertical = 2.dp),
     ) {
         BasicText("LEVEL UP!", style = displayStyle(18.sp, color = Ink, tracking = 0.08f, lineHeight = 20.sp), maxLines = 1)
-    }
-}
-
-/** Takes every touch that lands here, so nothing under the card (the frozen game) sees one. */
-private fun Modifier.swallowTouches(): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false)
-        do {
-            val event = awaitPointerEvent()
-            event.changes.forEach { it.consume() }
-        } while (event.changes.any { it.pressed })
     }
 }

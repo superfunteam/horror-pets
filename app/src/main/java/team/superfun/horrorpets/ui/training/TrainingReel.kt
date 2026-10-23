@@ -128,7 +128,10 @@ internal class ReelSpin(val frames: List<TrainingGame>, landIndex: Int) {
         else -> 0f
     }
 
-    /** How smeared the frames look at [ms]: 1 (all motion blur) from 60% of top speed up, 0 (sharp) below a frame a second. */
+    /**
+     * How smeared the frames look at [ms]: 1 (all motion blur) from 60% of top speed up, 0 (sharp) below a frame a
+     * second.
+     */
     fun blur(ms: Long): Float = ((speed(ms) - 1f) / (topSpeed * 0.6f - 1f)).coerceIn(0f, 1f)
 
     companion object {
@@ -136,7 +139,9 @@ internal class ReelSpin(val frames: List<TrainingGame>, landIndex: Int) {
         private const val FULL_SECONDS = REEL_FULL_SPEED_MS / 1000f
         private const val SLOWDOWN_SECONDS = SLOWDOWN_MS / 1000f
 
-        /** Seconds' worth of top speed the whole run covers: flat out, plus a third of the slowdown (the cubic's area). */
+        /**
+         * Seconds' worth of top speed the whole run covers: flat out, plus a third of the slowdown (the cubic's area).
+         */
         private const val RUN_SECONDS = FULL_SECONDS + SLOWDOWN_SECONDS / 3f
 
         /** The reel for [options], landing on [landOn] (added to the strip should it not be among them). */
@@ -348,7 +353,10 @@ private fun DrawScope.drawGatePointers(w: Float, h: Float) {
 
 // ---- the frames' pictures ----
 
-/** What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows, the [organs] Organ Drop does. */
+/**
+ * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows, the [organs] Organ Drop
+ * does.
+ */
 private class ReelArt(val scene: ImageBitmap, val tomb: ImageBitmap?, val organs: List<ImageBitmap>)
 
 /** The organs on Organ Drop's frame: the heart, the brain and the eyeball (indexes into [ORGAN_ART]). */
@@ -429,7 +437,9 @@ private fun DrawScope.drawProp(image: ImageBitmap, center: Offset, height: Float
     )
 }
 
-/** Slash Says' dots, around and above, their colours (the mockups'); three are lit, in slash order, and slashed through. */
+/**
+ * Slash Says' dots, around and above, their colours (the mockups'); three are lit, in slash order, and slashed through.
+ */
 private val SlashAngles = floatArrayOf(205f, 250f, 295f, 340f, 25f, 155f)
 private val SlashColors = listOf(
     Color(0xFFFF4D57), Color(0xFFFFC43D), Color(0xFFB4FF39), Color(0xFF2FD8FF), Color(0xFFFF5CE6), Color(0xFFA078FF),

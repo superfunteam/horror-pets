@@ -26,6 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -48,7 +51,9 @@ import team.superfun.horrorpets.ui.theme.Ink
 /** Once the reel hands over, it fades off the game this fast. */
 private const val REEL_FADE_MS = 300L
 
-/** Back from being away (the TV's Home button, a call, the screen off): "GET READY" this long, then the game goes on. */
+/**
+ * Back from being away (the TV's Home button, a call, the screen off): "GET READY" this long, then the game goes on.
+ */
 private const val RESUME_BEAT_MS = 1_000L
 
 /**
@@ -59,7 +64,9 @@ private const val RESUME_BEAT_MS = 1_000L
  * - [best], the pet's best in this game before this run, for the HUD;
  * - [clock], the game's time: a game waits and animates on it ([GameClock.nowMs], [GameClock.waitMs]), never on `delay`
  *   or the frame clock, so it stops dead while the app is away and through the "GET READY" beat after, and while its
- *   results card is up;
+ *   results card is up. It has been running since the reel started (`nowMs` is already about 4800 as a game begins),
+ *   so a game measures its time from its own start: `nowMs` as it begins. While held, the shell also keeps every
+ *   training key's press and every touch from the game;
  * - [sounds], where it plays its sounds: until the results card, the training screen's key presses make no UI ticks
  *   but the ones a game plays;
  * - [focus]: the game puts `Modifier.focusRequester(focus)` on a focusable element from its first composition, with
@@ -182,7 +189,14 @@ private fun TrainingRun(
         derivedStateOf { !paidOnEntry && (!gameOn || clock.nowMs < gameStartMs + REEL_FADE_MS) }
     }
 
-    Box(Modifier.fillMaxSize().focusRequester(rootFocus).focusable()) {
+    // While held (away, then the GET READY beat) the game's clock is frozen, so it gets no presses either.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .focusRequester(rootFocus)
+            .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held = away.paused && result == null) }
+            .focusable(),
+    ) {
         RunningFilm(run = { if (gameOn || paidOnEntry) spin.total.toFloat() else spin.position(clock.nowMs) }) {
             SceneBackdrop(loader, scene) { floorY -> SideEffect { env.floorY = floorY } }
             if (gameShown) TrainingGameView(screen.game, env, finish)
@@ -228,10 +242,10 @@ private fun TrainingGameView(game: TrainingGame, env: TrainingEnv, onOver: (Int)
     }
 }
 
-/** "GET READY" over the held game as the app comes back. */
+/** "GET READY" over the held game as the app comes back; the game gets no touch through it. */
 @Composable
 private fun GetReady() {
-    Box(Modifier.fillMaxSize().background(Ink.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().swallowTouches().background(Ink.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
         GlowText("GET READY", displayStyle(46.sp, color = TrainingGold, tracking = 0.06f, lineHeight = 48.sp))
     }
 }
@@ -251,7 +265,10 @@ private class AwayPause {
     val paused: Boolean get() = away || beat
 }
 
-/** The Activity's comings and goings as an [AwayPause]: ON_PAUSE is away, ON_RESUME after it starts a [RESUME_BEAT_MS] beat. */
+/**
+ * The Activity's comings and goings as an [AwayPause]: ON_PAUSE is away, ON_RESUME after it starts a [RESUME_BEAT_MS]
+ * beat.
+ */
 @Composable
 private fun rememberAwayPause(): AwayPause {
     val pause = remember { AwayPause() }

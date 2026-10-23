@@ -54,9 +54,9 @@ fun rememberOkReady(entry: Any?): State<Boolean> {
 }
 
 /**
- * Swallows OK / Enter key events (down and up) for everything inside while [ready] says no. A press
- * whose down was swallowed never clicks, even if its up arrives after the guard lifts: a clickable only
- * acts on an up that follows its own down.
+ * Swallows OK / Enter key events (down and up; Space and a gamepad's A too) for everything inside while
+ * [ready] says no. A press whose down was swallowed never clicks, even if its up arrives after the guard
+ * lifts: a clickable only acts on an up that follows its own down.
  *
  * Taps get the same guard: a touch that comes down while [ready] says no is consumed before anything
  * inside sees it, so a second tap mashed through the end of one screen cannot press a button on the next.
@@ -70,4 +70,8 @@ fun Modifier.ignoreOkUnless(ready: State<Boolean>): Modifier =
             }
         }
 
-private val OkKeys = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
+/**
+ * Every key that presses a button: a clickable takes the D-pad's centre, Enter, the keypad's Enter and Space, and a
+ * gamepad's A falls back to the D-pad's centre when nothing takes it.
+ */
+private val OkKeys = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Spacebar, Key.ButtonA)

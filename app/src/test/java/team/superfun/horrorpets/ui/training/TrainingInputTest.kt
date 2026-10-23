@@ -1,8 +1,11 @@
 package team.superfun.horrorpets.ui.training
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.training.TrainingKey
 
@@ -30,5 +33,35 @@ class TrainingInputTest {
             Key.MediaPlayPause, Key.MediaRewind, Key.MediaFastForward, Key.DirectionUpLeft, Key.Home,
         )
         for (key in others) assertNull("$key", trainingKeyOf(key))
+    }
+
+    @Test
+    fun okGoesDownOncePerPressWhateverTheKey() {
+        // Space and a gamepad's A repeat while held (MainActivity drops only the remote's OK repeats): one OK a press.
+        assertTrue(reachesGame(TrainingKey.OK, down = true, repeat = 0))
+        assertFalse(reachesGame(TrainingKey.OK, down = true, repeat = 1))
+        assertFalse(reachesGame(TrainingKey.OK, down = true, repeat = 12))
+        assertTrue(reachesGame(TrainingKey.OK, down = false, repeat = 0))
+    }
+
+    @Test
+    fun heldDirectionsKeepRepeating() {
+        for (key in listOf(TrainingKey.UP, TrainingKey.DOWN, TrainingKey.LEFT, TrainingKey.RIGHT)) {
+            assertTrue("$key", reachesGame(key, down = true, repeat = 0))
+            assertTrue("$key", reachesGame(key, down = true, repeat = 5))
+            assertTrue("$key", reachesGame(key, down = false, repeat = 0))
+        }
+    }
+
+    @Test
+    fun whileHeldNoTrainingKeyGoesDown() {
+        for (key in listOf(Key.DirectionUp, Key.DirectionLeft, Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.ButtonA)) {
+            assertTrue("$key", swallowedWhileHeld(key, KeyEventType.KeyDown, held = true))
+            assertFalse("$key", swallowedWhileHeld(key, KeyEventType.KeyDown, held = false))
+            // A key let go during the hold still gets through, so a game tracking held keys sees it go up.
+            assertFalse("$key", swallowedWhileHeld(key, KeyEventType.KeyUp, held = true))
+        }
+        // Back is never held back: it still leaves.
+        assertFalse(swallowedWhileHeld(Key.Back, KeyEventType.KeyDown, held = true))
     }
 }
