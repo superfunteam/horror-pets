@@ -10,12 +10,17 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <!-- Offline except PvP Battle, which meets the other player through pets.superfun.games. media3 merges
-         ACCESS_NETWORK_STATE in for network playback, but the game only plays its own assets. -->
+    <!-- Offline except PvP Battle, which meets the other player through pets.superfun.games, and the update check, which
+         asks GitHub for the latest release on the title. media3 merges ACCESS_NETWORK_STATE in for network playback,
+         but the game only plays its own assets. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
+
+    <!-- The in-app update hands a downloaded release to Android's installer. From Android 8 the player also allows
+         installs from this app in Settings, once; without this permission that setting is never offered. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- PvP Battle on phones: tap two phones together to join a room. Never required: TVs have no NFC. -->
     <uses-permission android:name="android.permission.NFC" />
@@ -54,6 +59,12 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Android's installer reports an update's install here (the session's status PendingIntent, explicit, so
+             not exported). -->
+        <receiver
+            android:name=".update.InstallStatusReceiver"
+            android:exported="false" />
 
         <!-- A hosting phone's PvP room code, read by a phone tapped against it (host card emulation). -->
         <service
