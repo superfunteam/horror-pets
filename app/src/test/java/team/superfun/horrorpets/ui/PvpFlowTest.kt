@@ -12,7 +12,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.Fighter
@@ -134,7 +133,6 @@ private class App(pet: PetState, relay: PvpRelay?) {
         },
         rng = Random(3),
         scope = scope,
-        feedAnim = { Anim.REVIEW },
         pvpRelay = relay,
         onHostCode = { hostCodes += it },
     )

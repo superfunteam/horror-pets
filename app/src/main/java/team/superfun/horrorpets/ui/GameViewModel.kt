@@ -37,6 +37,10 @@ import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.canFight
 import team.superfun.horrorpets.game.canTrain
+import team.superfun.horrorpets.game.pantry.CookResult
+import team.superfun.horrorpets.game.pantry.cook
+import team.superfun.horrorpets.game.pantry.feed
+import team.superfun.horrorpets.game.pantry.topUp
 import team.superfun.horrorpets.game.perform
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.game.training.eligibleGames
@@ -44,16 +48,16 @@ import team.superfun.horrorpets.game.training.mustTrainBeforeFighting
 import team.superfun.horrorpets.game.training.pickMate
 import team.superfun.horrorpets.game.training.pickTrainingGame
 import team.superfun.horrorpets.model.AwaySummary
-import team.superfun.horrorpets.model.FEED_MUNCHES
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
+import team.superfun.horrorpets.model.ItemKind
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.TrainingGame
-import team.superfun.horrorpets.model.nextFood
 import team.superfun.horrorpets.model.nextPlayGag
 import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.model.pendingAttacks
 import team.superfun.horrorpets.pvp.PvpException
 import team.superfun.horrorpets.pvp.PvpMatch
@@ -80,22 +84,19 @@ import team.superfun.horrorpets.pvp.resolvePvpTurn
  * and nothing is saved for the rest of the session, so the real save is still there next launch.
  *
  * @param scope where loading and saving run; null uses `viewModelScope`.
- * @param feedAnim the animation a pet plays while eating (its manifest's `feed` entry). FEED plays it
- *   [FEED_MUNCHES] times, the first with the dropped [Food] (see [PetAnimRequest.food]).
  * @param canDance whether a pet's sprites ship the optional DANCE (its manifest has `dance`): such a pet
  *   plays it for PLAY instead of JUMP then WAVE.
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
- * @param pickRng picks the food a feed drops, the gag a play does, and the game (and its mate) a train opens. Kept
- *   apart from [rng], so caring for a pet never shifts a fight's rolls.
+ * @param pickRng picks the gag a play does, the game (and its mate) a train opens and what a visit to the pantry tops
+ *   the shelf up with. Kept apart from [rng], so caring for a pet never shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
     private val clock: Clock,
     private val rng: Random,
     scope: CoroutineScope?,
-    private val feedAnim: (PetId) -> Anim,
     private val canDance: (PetId) -> Boolean = { false },
     private val onError: (Throwable) -> Unit = {},
     private val clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
@@ -110,12 +111,14 @@ class GameViewModel(
 
     private var started = false
     private var nextToken = 1L
-    private var lastFood: Food? = null
     private var lastGag: PlayGag? = null
     private var lastTraining: TrainingGame? = null
 
     /** The next TRAIN's [Screen.Training.session]. */
     private var nextTrainingSession = 1L
+
+    /** The next FEED's [Screen.Pantry.session]. */
+    private var nextPantrySession = 1L
 
     /**
      * Debug builds only: the game the next TRAIN opens, when it is on offer (see the puppet's `train <game>`). Any
@@ -218,27 +221,30 @@ class GameViewModel(
 
     // ---- home: care and walking --------------------------------------------------------------
 
-    /** FEED and PLAY act on the selected pet at once; TRAIN opens a training game, which pays when it ends (see [onTrainingOver]). */
+    /**
+     * PLAY acts on the selected pet at once. FEED opens the pantry, where the pet is fed and cooking is done (see
+     * [onPantryFeed]); TRAIN opens a training game, which pays when it ends (see [onTrainingOver]).
+     */
     fun onCare(a: CareAction) {
         val s = _state.value
         val pet = s.homePet() ?: return
-        if (a == CareAction.TRAIN) {
-            openTraining(s, pet)
-            return
+        when (a) {
+            CareAction.FEED -> openPantry(s)
+            CareAction.TRAIN -> openTraining(s, pet)
+            CareAction.PLAY -> play(s, pet)
         }
-        when (val result = perform(a, pet)) {
+    }
+
+    /** PLAY: the pet jumps and waves (or dances, when it ships a dance) after the glove's gag, paid and saved at once. */
+    private fun play(s: UiState, pet: PetState) {
+        when (val result = perform(CareAction.PLAY, pet)) {
             is CareResult.Refused -> refuse(s, result.reason)
             is CareResult.Done -> {
                 val game = s.game.withPet(result.pet)
-                val (anims, sound) = when (a) {
-                    CareAction.FEED -> List(FEED_MUNCHES) { feedAnim(pet.id) } to "food_drop"
-                    CareAction.PLAY -> (if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)) to "hand_whoosh"
-                    CareAction.TRAIN -> error("TRAIN opens a training game (see openTraining): it has no animation or sound of its own")
-                }
-                val sfx = listOf(sound) + if (result.levelsGained > 0) listOf("levelup") else emptyList()
-                val food = if (a == CareAction.FEED) nextFood(lastFood, pickRng).also { lastFood = it } else null
-                val gag = if (a == CareAction.PLAY) nextPlayGag(lastGag, pickRng).also { lastGag = it } else null
-                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, food, gag)
+                val anims = if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
+                val sfx = listOf("hand_whoosh") + if (result.levelsGained > 0) listOf("levelup") else emptyList()
+                val gag = nextPlayGag(lastGag, pickRng).also { lastGag = it }
+                _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, gag)
                 persist(game)
             }
         }
@@ -337,6 +343,123 @@ class GameViewModel(
     /** The training screen in [s] when it is [session]'s; null on any other screen or session. */
     private fun trainingSession(s: UiState, session: Long): Screen.Training? =
         (s.screen as? Screen.Training)?.takeIf { it.session == session }
+
+    // ---- the pantry --------------------------------------------------------------------------
+
+    /**
+     * FEED on Home: opens the pantry for the selected pet, even one too full to eat (it can still cook). The shelf is
+     * topped up first (see [topUp]) and saved when that changed it; nothing else is paid or saved. Opening is not an
+     * action: no animation plays and the game is not [UiState.busy].
+     */
+    private fun openPantry(s: UiState) {
+        val stocked = topUp(s.game.pantryItems(), pickRng).map { it.id }
+        val game = if (stocked == s.game.pantry) s.game else s.game.copy(pantry = stocked)
+        _state.value = s.copy(game = game, screen = Screen.Pantry(session = nextPantrySession++), refuse = null)
+        if (game != s.game) persist(game)
+    }
+
+    /**
+     * Pick on pantry [session]'s shelf: puts the item at [index] on the board, or takes it off again if it is there.
+     * A third item is ignored (the board has two places), and so is an index off the shelf. Nothing is saved: the
+     * board belongs to the visit. Ignored once the killer has eaten.
+     */
+    fun onPantryPick(session: Long, index: Int) {
+        val s = _state.value
+        val pantry = pantrySession(s, session)?.takeIf { it.fed == null } ?: return
+        if (index !in s.game.pantryItems().indices) return
+        val board = when {
+            index in pantry.board -> pantry.board.filter { it != index }
+            pantry.board.size < BOARD_PLACES -> pantry.board + index
+            else -> return
+        }
+        _state.value = s.copy(screen = pantry.copy(board = board))
+    }
+
+    /**
+     * COOK pantry [session]'s board, which must hold two items (so a second press on a board that has just been cooked
+     * does nothing). Both are used up and the result takes the shelf place of the earlier of them; the board is cleared,
+     * [Screen.Pantry.cook] shows the cook and the game is saved. A way to cook among them plays its own sound (the first
+     * on the board, when both are), then the poof. A board that can not be cooked (a botch is a dead end, see [cook])
+     * uses nothing and keeps its board: only [Screen.Pantry.refusedCook] changes, with a squelch.
+     */
+    fun onPantryCook(session: Long) {
+        val s = _state.value
+        val pantry = pantrySession(s, session)?.takeIf { it.fed == null && it.board.size == BOARD_PLACES } ?: return
+        val shelf = s.game.pantryItems()
+        val inputs = pantry.board.map { shelf[it] }
+        val result = (cook(inputs[0], inputs[1]) as? CookResult.Cooked)?.item
+        if (result == null) {
+            _state.value = s.copy(screen = pantry.copy(refusedCook = nextToken++), sfx = s.sfx + "pantry_squelch")
+            return
+        }
+        val at = pantry.board.min()
+        val left = shelf.filterIndexed { i, _ -> i !in pantry.board }
+        val game = s.game.copy(pantry = (left.take(at) + result + left.drop(at)).map { it.id })
+        val method = inputs.firstOrNull { it.kind == ItemKind.METHOD }
+        val sfx = listOfNotNull(method?.let { "cook_${it.id}" }, "pantry_poof")
+        val show = CookShow(result, inputs, at, nextToken++)
+        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), cook = show), sfx = s.sfx + sfx)
+        persist(game)
+    }
+
+    /**
+     * FEED pantry [session]'s board, which must hold one item: the selected pet eats it and is paid (see [feed]), the
+     * item leaves the shelf, the board is cleared, [Screen.Pantry.fed] shows how it went and the game is saved. After
+     * that the visit does nothing but leave. A pet too full to eat (hunger below [Tuning.FEED_REFUSE_BELOW]) eats
+     * nothing: the board stays and [Screen.Pantry.tooFull] changes, with the refusal's sound. That is not [refuse]:
+     * it plays a Home animation that nothing on this screen would ever finish. The eating sounds are the screen's.
+     */
+    fun onPantryFeed(session: Long) {
+        val s = _state.value
+        val pantry = pantrySession(s, session)?.takeIf { it.fed == null && it.board.size == 1 } ?: return
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        if (pet.hunger < Tuning.FEED_REFUSE_BELOW) {
+            _state.value = s.copy(screen = pantry.copy(tooFull = nextToken++), sfx = s.sfx + "refuse")
+            return
+        }
+        val shelf = s.game.pantryItems()
+        val place = pantry.board.single()
+        val item = shelf[place]
+        val outcome = feed(pet, item)
+        val game = s.game.withPet(outcome.pet).copy(pantry = shelf.filterIndexed { i, _ -> i != place }.map { it.id })
+        val fed = FedShow(item, outcome.reaction, outcome.line, outcome.xpGained, outcome.levelsGained)
+        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed))
+        persist(game)
+    }
+
+    /**
+     * OK on pantry [session]'s reaction: Home, where a level-up's new attack is offered as after any level-up.
+     * Leaves the same way [onPantryBack] does, at any point of the visit.
+     */
+    fun onPantryDone(session: Long) = leavePantry(session)
+
+    /** Back in pantry [session]: Home with the shelf as it was (what was on the board goes back), nothing paid. */
+    fun onPantryBack(session: Long) = leavePantry(session)
+
+    private fun leavePantry(session: Long) {
+        val s = _state.value
+        pantrySession(s, session) ?: return
+        _state.value = s.goHome()
+    }
+
+    /** The pantry screen in [s] when it is [session]'s; null on any other screen or session. */
+    private fun pantrySession(s: UiState, session: Long): Screen.Pantry? =
+        (s.screen as? Screen.Pantry)?.takeIf { it.session == session }
+
+    /**
+     * Debug builds only: the puppet's `stock` (see `team.superfun.horrorpets.puppet.Puppet`). Puts [items] on the end of
+     * the shelf, as many as fit under [Tuning.PANTRY_MAX] (the first ones, in order), and saves the game. Works on any
+     * screen, and a pantry on show keeps its board, as the items only join the end. Ignored while the save is loading.
+     */
+    internal fun debugStock(items: List<PantryItem>) {
+        val s = _state.value
+        if (s.screen == Screen.Loading) return
+        val room = Tuning.PANTRY_MAX - s.game.pantry.size
+        if (room <= 0 || items.isEmpty()) return
+        val game = s.game.copy(pantry = s.game.pantry + items.take(room).map { it.id })
+        _state.value = s.copy(game = game)
+        persist(game)
+    }
 
     // ---- the stable, the carousel, versus, fake death -----------------------------------------
 
@@ -899,12 +1022,11 @@ class GameViewModel(
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */
     private fun UiState.beginAction(
         anims: List<Anim>,
-        food: Food? = null,
         gag: PlayGag? = null,
         finish: (UiState) -> UiState = { it },
     ): UiState {
         running = Running(ArrayDeque(anims.drop(1)), finish)
-        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++, food, gag))
+        return copy(busy = true, petAnim = PetAnimRequest(anims.first(), nextToken++, gag = gag))
     }
 
     private fun refuse(s: UiState, reason: RefuseReason) {
@@ -1035,6 +1157,9 @@ class GameViewModel(
 
 /** The pause before the one retry of a failed load. */
 private const val LOAD_RETRY_DELAY_MS = 250L
+
+/** The pantry's board has this many places: two items to cook, or the one to feed. */
+private const val BOARD_PLACES = 2
 
 /** A PvP room's code is this many digits. */
 internal const val CODE_LENGTH = 4

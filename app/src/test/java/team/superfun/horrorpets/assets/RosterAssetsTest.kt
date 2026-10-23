@@ -9,6 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.Food
+import team.superfun.horrorpets.model.ItemKind
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.fight.Moment
@@ -142,6 +144,16 @@ class RosterAssetsTest {
             assertTrue(path, file(path).isFile)
         }
         for (sfx in listOf("food_drop", "bite")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+    }
+
+    @Test
+    fun theSoundsAPantryCookQueuesAreShipped() {
+        // The view model plays cook_<way to cook> and the poof for a cook, the squelch for one it refuses, and the
+        // buzz for a killer too full to eat.
+        val ways = PantryItem.entries.filter { it.kind == ItemKind.METHOD }.map { "cook_${it.id}" }
+        for (sfx in ways + listOf("pantry_poof", "pantry_squelch", "refuse")) {
+            assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+        }
     }
 
     @Test

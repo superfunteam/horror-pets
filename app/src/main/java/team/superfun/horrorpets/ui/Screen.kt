@@ -6,8 +6,10 @@ import team.superfun.horrorpets.fight.FightReward
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.RefuseReason
+import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.TrainingGame
@@ -64,6 +66,20 @@ data class TrainingResult(
     val levelsGained: Int,
 )
 
+/**
+ * A cook the pantry has just made, for its screen to show: [inputs] (in the order they went on the board) came together
+ * into [result], which now stands in the shelf at [at]. [token] is new for every cook, so a screen that keys its show
+ * on it plays each one once, even when the same dish is cooked twice in a row.
+ */
+data class CookShow(val result: PantryItem, val inputs: List<PantryItem>, val at: Int, val token: Long)
+
+/**
+ * What the killer made of the meal it was just fed, for the pantry's screen to show: the [item] it ate, how it took it
+ * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past. All of it is
+ * already paid and saved when this is set.
+ */
+data class FedShow(val item: PantryItem, val reaction: Reaction, val line: String, val xp: Int, val levelsGained: Int)
+
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
 sealed interface Screen {
     /** The save is still being read. */
@@ -109,6 +125,27 @@ sealed interface Screen {
     ) : Screen
 
     /**
+     * FEED: the pantry. The shelf is [GameState.pantry] (shared by the whole stable and saved with the game); what the
+     * player does here is a visit of its own, and everything it reports names its [session], as a training game's does
+     * (a new number for every FEED), so that a late press from one visit can never act on the next.
+     *
+     * - [board] is the shelf indices on the board, at most two, in the order they were put there. It is the visit's
+     *   alone: it is never saved, and leaving puts everything back as it was.
+     * - [cook] is the last cook of the visit, for the screen to show. It stays until the next cook replaces it.
+     * - [refusedCook] and [tooFull] are tokens that change on every refusal (a board with a botch on it can not be
+     *   cooked, a killer too full to eat can not be fed), 0 until the first one, so the screen reacts to each.
+     * - [fed] is set once the killer has eaten, and ends the visit's doing: from then on only leaving does anything.
+     */
+    data class Pantry(
+        val session: Long,
+        val board: List<Int> = emptyList(),
+        val cook: CookShow? = null,
+        val refusedCook: Long = 0,
+        val tooFull: Long = 0,
+        val fed: FedShow? = null,
+    ) : Screen
+
+    /**
      * [lastEvents] are the events of the turn just resolved, in the order to animate them (empty before
      * turn 1, and after a RUN). The turn's result is already in [fight]: when `fight.winner` is set the
      * screen still plays the turn out and reports its `PetAnimRequest` finished, and only then does
@@ -137,18 +174,19 @@ sealed interface Screen {
 
 /**
  * Whether this screen makes the sounds for its own key presses, so `MainActivity` leaves out its `ui_move` and
- * `ui_select` ticks: a training game does, from the reel to the last move (its results card ticks like any other).
+ * `ui_select` ticks: a training game does, from the reel to the last move (its results card ticks like any other), and
+ * the pantry does all through the visit.
  */
-val Screen.ownsKeySounds: Boolean get() = this is Screen.Training && result == null
+val Screen.ownsKeySounds: Boolean get() = (this is Screen.Training && result == null) || this is Screen.Pantry
 
 /**
  * Ask the UI to play [anim] on the selected pet. The UI calls `onAnimFinished(token)` when it ends.
  * Every request has a fresh [token], even when two in a row play the same [anim] (a feed's munches),
  * so the UI must key on the token, not the anim.
  *
- * A feed's first request carries the [food] to drop: the UI drops it in beside the pet and only then
- * plays [anim], the first of the feed's munches. A play's first request carries the [gag] the player's
- * glove does to the pet first, and [anim] (its happy reaction) waits for that the same way.
+ * A play's first request carries the [gag] the player's glove does to the pet first, and [anim] (its happy reaction)
+ * waits for that. A request with a [food] has the UI drop it in beside the pet and only then play [anim]; nothing asks
+ * for that now that FEED opens the pantry (see [Screen.Pantry]), and Home's food drop is left to be retired.
  */
 data class PetAnimRequest(val anim: Anim, val token: Long, val food: Food? = null, val gag: PlayGag? = null)
 

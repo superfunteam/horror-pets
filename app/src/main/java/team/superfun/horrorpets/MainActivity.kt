@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
-import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.data.OffsetClock
@@ -75,7 +74,6 @@ class MainActivity : ComponentActivity() {
                     clock = offsetClock,
                     rng = Random.Default,
                     scope = null, // viewModelScope: main-confined, as the view model requires
-                    feedAnim = { loader.manifest(it).feedAnim() },
                     canDance = { loader.manifest(it).has(Anim.DANCE) },
                     onError = { Log.e(TAG, "Save or load failed; carrying on from memory", it) },
                     clockFloorMs = clockFloorMs(appContext),
@@ -239,7 +237,7 @@ class MainActivity : ComponentActivity() {
      *   cascade through several screens;
      * - on Home, Menu opens the pet switcher and Rewind / Fast-forward walk to the neighbouring scene;
      * - the UI tick sounds: a D-pad arrow plays `ui_move` (except in the pet switcher, which times its own),
-     *   OK / Enter plays `ui_select` (both stay quiet in a training game, whose presses make their own sounds) and
+     *   OK / Enter plays `ui_select` (both stay quiet in a training game and in the pantry, whose presses make their own sounds) and
      *   Back plays `ui_back`. Only a key's first down counts, not its repeats.
      *   A phone's back gesture can arrive as a Back key too (before Android 16), but the screens tick for a
      *   gesture themselves (`GameBackHandler`), so a Back key that comes in touch mode stays quiet here.
@@ -360,7 +358,7 @@ class MainActivity : ComponentActivity() {
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
             Screen.Loading, is Screen.FakeDeath -> null
             Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
-            Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training -> state.game.selected?.name?.lowercase()
+            Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training, is Screen.Pantry -> state.game.selected?.name?.lowercase()
             is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
         }
 

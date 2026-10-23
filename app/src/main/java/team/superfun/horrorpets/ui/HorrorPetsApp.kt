@@ -28,6 +28,7 @@ import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.fakedeath.FakeDeathScreen
 import team.superfun.horrorpets.ui.fight.UnlockedScreen
@@ -42,6 +43,7 @@ import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.kitOf
 import team.superfun.horrorpets.ui.fight.arenaScene
 import team.superfun.horrorpets.ui.home.HomeScreen
+import team.superfun.horrorpets.ui.pantry.PantryScreen
 import team.superfun.horrorpets.ui.switcher.SwitcherScreen
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.training.TrainingScreen
@@ -215,6 +217,24 @@ fun HorrorPetsApp(
                             onOver = vm::onTrainingOver,
                             onDone = vm::onTrainingDone,
                             onQuit = vm::onTrainingQuit,
+                            focusEntry = focusEntry,
+                        )
+                    }
+                }
+
+                is Screen.Pantry -> {
+                    val pet = state.game.selected?.let { state.game.pets[it] }
+                    if (pet != null) {
+                        PantryScreen(
+                            screen = screen,
+                            pet = pet,
+                            shelf = remember(state.game.pantry) { state.game.pantryItems() },
+                            loader = loader,
+                            onPick = vm::onPantryPick,
+                            onCook = vm::onPantryCook,
+                            onFeed = vm::onPantryFeed,
+                            onDone = vm::onPantryDone,
+                            onBack = vm::onPantryBack,
                             focusEntry = focusEntry,
                         )
                     }

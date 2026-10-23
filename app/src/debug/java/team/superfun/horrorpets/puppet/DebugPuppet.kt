@@ -31,12 +31,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
+import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.training.eligibleGames
 import team.superfun.horrorpets.game.training.pickMate
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.kitOf
+import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.model.pendingAttacks
 import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.Screen
@@ -295,6 +298,7 @@ private class Session(
                 goHome()?.let { return Outcome.Refused(it) }
                 val before = activePet() ?: return Outcome.Refused(NO_PET)
                 if (command.action == CareAction.TRAIN) return openTraining(before, command.game)
+                if (command.action == CareAction.FEED) return openPantry()
                 vm.onCare(command.action)
                 val after = state()
                 val pet = activePet() ?: before
@@ -314,6 +318,51 @@ private class Session(
                 val strength = (result.strength * 10).roundToInt() / 10.0
                 val levels = if (result.levelsGained > 0) ", +${result.levelsGained} level" else ""
                 Outcome.Done("${describe(state())} ($best): +$strength strength, +${result.xp} XP$levels")
+            }
+
+            is PuppetCommand.Stock -> {
+                val before = state().game.pantry.size
+                vm.debugStock(command.items)
+                val added = state().game.pantry.size - before
+                if (added == 0) {
+                    Outcome.Refused("the pantry is full: ${Tuning.PANTRY_MAX} items")
+                } else {
+                    Outcome.Done("stocked $added of ${command.items.size}: ${state().game.pantry.size} on the shelf")
+                }
+            }
+
+            is PuppetCommand.Cook -> {
+                pantryRefusal()?.let { return Outcome.Refused(it) }
+                val wanted = listOf(command.a, command.b)
+                val places = placesOnShelf(wanted)
+                places.indexOf(null).takeIf { it >= 0 }?.let { return Outcome.Refused("${wanted[it].id} is not on the shelf") }
+                val session = (state().screen as Screen.Pantry).session
+                val before = (state().screen as Screen.Pantry).cook?.token
+                putOnBoard(places.filterNotNull())
+                vm.onPantryCook(session)
+                val cooked = (state().screen as? Screen.Pantry)?.cook?.takeIf { it.token != before }
+                val inputs = wanted.joinToString(" + ") { it.id }
+                if (cooked == null) {
+                    Outcome.Refused("$inputs will not cook: a botched dish is a dead end, so they stay on the board")
+                } else {
+                    Outcome.Done("$inputs = ${cooked.result.id}, ${state().game.pantry.size} on the shelf")
+                }
+            }
+
+            is PuppetCommand.Serve -> {
+                pantryRefusal()?.let { return Outcome.Refused(it) }
+                val place = placesOnShelf(listOf(command.item)).single() ?: return Outcome.Refused("${command.item.id} is not on the shelf")
+                val session = (state().screen as Screen.Pantry).session
+                putOnBoard(listOf(place))
+                vm.onPantryFeed(session)
+                val pet = activePet()?.id?.displayName ?: "the killer"
+                val fed = (state().screen as? Screen.Pantry)?.fed
+                if (fed == null) {
+                    Outcome.Refused("$pet is too full to eat: hunger ${activePet()?.hunger?.toInt()}, and it eats from ${Tuning.FEED_REFUSE_BELOW.toInt()} up")
+                } else {
+                    val levels = if (fed.levelsGained > 0) ", +${fed.levelsGained} level" else ""
+                    Outcome.Done("$pet ate ${fed.item.id}: ${fed.reaction}, \"${fed.line}\", +${fed.xp} XP$levels")
+                }
             }
 
             PuppetCommand.Home -> goHome()?.let { Outcome.Refused(it) } ?: Outcome.Done("on Home${screenNote(state())}")
@@ -358,7 +407,7 @@ private class Session(
         /** The fight's menu is up for [fight]'s turn. */
         data class Menu(val fight: FightState) : Cue
 
-        /** A card that waits for Continue: results (a fight's or a training game's), an unlock or a learn screen. */
+        /** A card that waits for Continue: results (a fight's or a training game's), an unlock or a learn screen, or a pantry's reaction. */
         data class Card(val screen: Screen) : Cue
     }
 
@@ -369,6 +418,8 @@ private class Session(
             is Screen.Results, is Screen.Unlocked, is Screen.Learn -> Cue.Card(screen)
             // A training game is played by hand (or ended with `score`); only its results card waits for Continue.
             is Screen.Training -> if (screen.result != null) Cue.Card(screen) else null
+            // The pantry is cooked and fed by hand (or with `cook` and `serve`); only the reaction after the meal waits for Continue.
+            is Screen.Pantry -> if (screen.fed != null) Cue.Card(screen) else null
             else -> null
         }
     }
@@ -393,6 +444,7 @@ private class Session(
                             is Screen.Results -> vm.onResultsDone()
                             is Screen.Unlocked -> vm.onUnlockedDone()
                             is Screen.Training -> vm.onTrainingDone(card.session)
+                            is Screen.Pantry -> vm.onPantryDone(card.session)
                             is Screen.Learn -> {
                                 Log.i(TAG, "Autoplay: learns ${attackById(card.attack)?.name ?: card.attack}")
                                 vm.onLearn(learn = true)
@@ -464,6 +516,7 @@ private class Session(
                 is Screen.Learn -> vm.onLearnLater()
                 Screen.Moves -> vm.onMovesBack()
                 is Screen.Training -> if (screen.result == null) vm.onTrainingQuit(screen.session) else vm.onTrainingDone(screen.session)
+                is Screen.Pantry -> if (screen.fed == null) vm.onPantryBack(screen.session) else vm.onPantryDone(screen.session)
                 is Screen.Fight -> return "in a fight: finish it first (autoplay on, or move run)"
                 is Screen.Unlocked -> vm.onUnlockedDone()
                 is Screen.Results -> vm.onResultsDone()
@@ -492,6 +545,39 @@ private class Session(
             after.screen !is Screen.Training -> Outcome.Refused("Home did not take it")
             else -> Outcome.Done(describe(after))
         }
+    }
+
+    /**
+     * FEED, from Home: opens the pantry, its shelf topped up as for a player. Nothing is eaten until `serve`, and a pet too
+     * full to eat can still cook.
+     */
+    private fun openPantry(): Outcome {
+        vm.onCare(CareAction.FEED)
+        val after = state()
+        return if (after.screen is Screen.Pantry) Outcome.Done(describe(after)) else Outcome.Refused("Home did not take it")
+    }
+
+    /** Why the pantry can not cook or serve now, or null when it can: it is not on screen, or the killer has eaten already. */
+    private fun pantryRefusal(): String? = when (val screen = state().screen) {
+        is Screen.Pantry -> if (screen.fed != null) "the killer has eaten already: home, or feed for a new visit" else null
+        else -> "not in the pantry: feed first"
+    }
+
+    /**
+     * The shelf place of each of [wanted], in order: the first place that holds it and that no item before it took, so
+     * the same id twice is two different places. Null where the shelf has none left.
+     */
+    private fun placesOnShelf(wanted: List<PantryItem>): List<Int?> {
+        val shelf = state().game.pantryItems()
+        val taken = mutableSetOf<Int>()
+        return wanted.map { item -> shelf.indices.firstOrNull { it !in taken && shelf[it] == item }?.also { taken += it } }
+    }
+
+    /** Puts exactly [places] on the pantry's board, in that order, through its picks: whatever stood there comes off first. */
+    private fun putOnBoard(places: List<Int>) {
+        val pantry = state().screen as? Screen.Pantry ?: return
+        pantry.board.forEach { vm.onPantryPick(pantry.session, it) }
+        places.forEach { vm.onPantryPick(pantry.session, it) }
     }
 
     /** "Freddy, level 14": the active pet in [s]. */
@@ -534,6 +620,7 @@ private fun describe(s: UiState): String = when (val screen = s.screen) {
     is Screen.Training -> "training: ${screen.game.title}" +
         (screen.mate?.let { ", mate ${it.displayName}" } ?: "") +
         (screen.result?.let { ", scored ${it.score}" } ?: "")
+    is Screen.Pantry -> "pantry: ${s.game.pantry.size} items" + (screen.fed?.let { ", fed ${it.item.id}" } ?: "")
     is Screen.Fight -> screen.fight.let { f ->
         "fight vs ${f.cpu.id.displayName}${if (screen.pvp != null) " (PvP)" else ""}, turn ${f.turn}, " +
             "HP ${f.player.hp}/${f.player.maxHp} vs ${f.cpu.hp}/${f.cpu.maxHp}, meter ${f.player.meter}"

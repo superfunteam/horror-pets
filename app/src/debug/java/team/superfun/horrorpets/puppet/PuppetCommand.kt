@@ -4,8 +4,10 @@ import team.superfun.horrorpets.DEV_VERSION_NAME
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.TrainingGame
+import team.superfun.horrorpets.model.pantryItemById
 import team.superfun.horrorpets.versionCodeOf
 
 /** One puppet command, as [parseCommand] reads it from adb (see "Puppet mode" in the README). */
@@ -38,13 +40,26 @@ sealed interface PuppetCommand {
     data object MeterFull : PuppetCommand
 
     /**
-     * `feed`, `play` or `train`: that care [action] on Home (going Home first). `train <game>` opens training on
-     * [game] (when the stable has what it needs), else on the game the pick makes.
+     * `feed`, `play` or `train`: that care [action] on Home (going Home first). `feed` opens the pantry, where nothing
+     * is eaten until `serve`. `train <game>` opens training on [game] (when the stable has what it needs), else on the
+     * game the pick makes.
      */
     data class Care(val action: CareAction, val game: TrainingGame? = null) : PuppetCommand
 
     /** `score <n>`: the training game on screen ends now with [score], which pays and shows its results card. */
     data class Score(val score: Int) : PuppetCommand
+
+    /** `stock <id> [<id>...]`: [items] join the end of the pantry's shelf, as many as fit, on any screen. */
+    data class Stock(val items: List<PantryItem>) : PuppetCommand
+
+    /**
+     * `cook <id> <id>`: in the pantry, [a] and [b] go on the board and are cooked. They are two different places on the
+     * shelf, so the same id twice needs two of it.
+     */
+    data class Cook(val a: PantryItem, val b: PantryItem) : PuppetCommand
+
+    /** `serve <id>`: in the pantry, [item] goes on the board and is fed to the active pet. */
+    data class Serve(val item: PantryItem) : PuppetCommand
 
     /** `home`: back to Home from wherever the game is, but a fight. */
     data object Home : PuppetCommand
@@ -73,7 +88,8 @@ const val MAX_WAIT_SECONDS = 600
 
 /** Every command's syntax, for the log when one is not understood. */
 const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, hud on|off, " +
-    "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train [<game>], score <n>, home, " +
+    "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train [<game>], score <n>, " +
+    "stock <id>..., cook <id> <id>, serve <id>, home, " +
     "wait <seconds>|home, status, fake_version <x.y.z>|off, check_update"
 
 private val KILLERS = PetId.entries.joinToString(", ") { it.name.lowercase() }
@@ -94,6 +110,7 @@ fun parseCommand(text: String): PuppetCommand {
     val arg = args.singleOrNull()
     fun invalid(reason: String) = PuppetCommand.Invalid(text.trim(), reason)
     fun bare(command: PuppetCommand) = if (args.isEmpty()) command else invalid("$name takes no argument")
+    fun unknownItem(id: String) = invalid("no pantry item called $id: ids look like raw_steak or steak_dinner")
 
     return when (name) {
         "unlock_all" -> bare(PuppetCommand.UnlockAll)
@@ -108,6 +125,19 @@ fun parseCommand(text: String): PuppetCommand {
         "score" -> {
             val score = arg?.toIntOrNull()?.takeIf { it >= 0 }
             if (score == null) invalid("score needs a whole number, 0 or more") else PuppetCommand.Score(score)
+        }
+        "stock" -> {
+            if (args.isEmpty()) return invalid("stock needs one or more item ids, such as raw_steak or grill")
+            PuppetCommand.Stock(args.map { pantryItemById(it) ?: return unknownItem(it) })
+        }
+        "cook" -> {
+            if (args.size != 2) return invalid("cook needs two item ids, such as cook grill egg")
+            val (a, b) = args.map { pantryItemById(it) ?: return unknownItem(it) }
+            PuppetCommand.Cook(a, b)
+        }
+        "serve" -> {
+            val id = arg ?: return invalid("serve needs one item id, such as serve steak")
+            PuppetCommand.Serve(pantryItemById(id) ?: return unknownItem(id))
         }
         "home" -> bare(PuppetCommand.Home)
         "status" -> bare(PuppetCommand.Status)

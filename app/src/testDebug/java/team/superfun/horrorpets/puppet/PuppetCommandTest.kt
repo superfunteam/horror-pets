@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.TrainingGame
 
@@ -160,12 +161,49 @@ class PuppetCommandTest {
     }
 
     @Test
+    fun stockTakesOneOrMoreItems() {
+        assertEquals(PuppetCommand.Stock(listOf(PantryItem.EGG)), parseCommand("stock egg"))
+        assertEquals(
+            PuppetCommand.Stock(listOf(PantryItem.SUN, PantryItem.SUN, PantryItem.RAW_STEAK)),
+            parseCommand("  STOCK  sun  Sun raw_steak "),
+        )
+        for (item in PantryItem.entries) assertEquals(PuppetCommand.Stock(listOf(item)), parseCommand("stock ${item.id}"))
+        assertInvalid("stock", "one or more")
+        assertInvalid("stock egg spoon", "spoon")
+        assertInvalid("stock spoon", "no pantry item")
+        // Case does not matter, and an id has no dashes.
+        assertEquals(PuppetCommand.Stock(listOf(PantryItem.RAW_STEAK)), parseCommand("stock RAW_STEAK"))
+        assertInvalid("stock raw-steak", "raw-steak")
+    }
+
+    @Test
+    fun cookTakesTwoItems() {
+        assertEquals(PuppetCommand.Cook(PantryItem.GRILL, PantryItem.EGG), parseCommand("cook grill egg"))
+        assertEquals(PuppetCommand.Cook(PantryItem.EGG, PantryItem.GRILL), parseCommand("  COOK   Egg  GRILL "))
+        assertEquals("the same item twice is two of them", PuppetCommand.Cook(PantryItem.EGG, PantryItem.EGG), parseCommand("cook egg egg"))
+        for (bad in listOf("cook", "cook grill", "cook grill egg pot")) assertInvalid(bad, "two item")
+        assertInvalid("cook grill spoon", "spoon")
+        assertInvalid("cook spoon grill", "spoon")
+    }
+
+    @Test
+    fun serveTakesOneItem() {
+        assertEquals(PuppetCommand.Serve(PantryItem.STEAK), parseCommand("serve steak"))
+        assertEquals(PuppetCommand.Serve(PantryItem.CAMP_CRYSTAL_FISH_FRY), parseCommand(" SERVE  Camp_Crystal_Fish_Fry "))
+        for (bad in listOf("serve", "serve steak egg")) assertInvalid(bad, "one item")
+        assertInvalid("serve spoon", "spoon")
+    }
+
+    @Test
     fun anUnknownCommandListsTheCommands() {
         assertInvalid("dance", "unlock_all")
         assertInvalid("dance", "autoplay on|off")
         assertInvalid("dance", "hud on|off")
         assertInvalid("dance", "train [<game>]")
         assertInvalid("dance", "score <n>")
+        assertInvalid("dance", "stock <id>")
+        assertInvalid("dance", "cook <id> <id>")
+        assertInvalid("dance", "serve <id>")
         assertInvalid("dance", "fake_version <x.y.z>|off")
         assertInvalid("dance", "check_update")
         assertInvalid("", "empty")

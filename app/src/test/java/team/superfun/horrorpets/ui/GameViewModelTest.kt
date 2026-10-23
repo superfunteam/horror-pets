@@ -32,12 +32,35 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
+import team.superfun.horrorpets.game.pantry.Reaction
+import team.superfun.horrorpets.game.pantry.feed
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
+import team.superfun.horrorpets.model.ItemKind
+import team.superfun.horrorpets.model.PantryItem
+import team.superfun.horrorpets.model.PantryItem.BATTER
+import team.superfun.horrorpets.model.PantryItem.BRAIN
+import team.superfun.horrorpets.model.PantryItem.BURNT_TO_A_CRISP
+import team.superfun.horrorpets.model.PantryItem.CAMPFIRE
+import team.superfun.horrorpets.model.PantryItem.CAMPFIRE_BREAD
+import team.superfun.horrorpets.model.PantryItem.CAMP_CRYSTAL_FISH_FRY
+import team.superfun.horrorpets.model.PantryItem.CAULDRON
+import team.superfun.horrorpets.model.PantryItem.CHEESE
+import team.superfun.horrorpets.model.PantryItem.EGG
+import team.superfun.horrorpets.model.PantryItem.FLOUR
+import team.superfun.horrorpets.model.PantryItem.FRIED_EGG
+import team.superfun.horrorpets.model.PantryItem.GRILL
+import team.superfun.horrorpets.model.PantryItem.KITCHEN_FIRE
+import team.superfun.horrorpets.model.PantryItem.PILE_OF_SLOP
+import team.superfun.horrorpets.model.PantryItem.POT
+import team.superfun.horrorpets.model.PantryItem.RAW_STEAK
+import team.superfun.horrorpets.model.PantryItem.STEAK
+import team.superfun.horrorpets.model.PantryItem.SUN
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.TrainingGame
+import team.superfun.horrorpets.model.pantryItems
 
 // A realistic epoch (2027-01-15), safely past Tuning.MIN_VALID_EPOCH_MS.
 private const val T0 = 1_800_000_000_000L
@@ -53,6 +76,12 @@ private const val NO_FEINT = 0.99
  * below have all done them, so FIGHT is open unless a test builds a new player's stable to see it shut.
  */
 private val TRAINED: Set<String> = FIGHT_PREREQUISITE_NAMES
+
+/**
+ * A shelf that already has everything a visit tops up to (two ways to cook, four foods), so opening the pantry leaves
+ * it as it is and the tests can count on every index.
+ */
+private val SHELF: List<PantryItem> = listOf(GRILL, RAW_STEAK, EGG, CAMPFIRE, FLOUR, CHEESE)
 
 private fun gameOf(
     selected: PetId? = PetId.JASON,
@@ -141,7 +170,6 @@ private class Rig(
         clock = clock,
         rng = rng,
         scope = scope,
-        feedAnim = { if (it == PetId.FREDDY || it == PetId.GHOSTFACE) Anim.WORK else Anim.REVIEW },
         // As the real manifests have it: only Leatherface ships a dance.
         canDance = { it == PetId.LEATHERFACE },
         onError = { errors += it },
@@ -340,7 +368,7 @@ class GameViewModelTest {
     @Test
     fun startTwiceLoadsOnce() {
         val rig = Rig(gameOf()).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         rig.vm.start()
         rig.settle()
         assertTrue(rig.ui.busy)
@@ -468,35 +496,25 @@ class GameViewModelTest {
     // ---- care --------------------------------------------------------------------------------
 
     @Test
-    fun feedTwiceWhileBusyAppliesOnce() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
-        rig.vm.onCare(CareAction.FEED)
-        rig.vm.onCare(CareAction.FEED)
-        assertEquals(25.0, rig.jason.hunger, 1e-9)
+    fun playTwiceWhileBusyAppliesOnce() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0, funLevel = 40.0)))).started()
+        rig.vm.onCare(CareAction.PLAY)
+        rig.vm.onCare(CareAction.PLAY)
+        rig.vm.onCare(CareAction.PLAY)
+        assertEquals(65.0, rig.jason.funLevel, 1e-9)
+        assertEquals(28.0, rig.jason.hunger, 1e-9)
         assertTrue(rig.ui.busy)
-        assertEquals(listOf("food_drop"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
 
         rig.finishAllAnims()
         assertFalse(rig.ui.busy)
         assertNull(rig.ui.petAnim)
-        assertEquals(25.0, rig.jason.hunger, 1e-9)
+        assertEquals(65.0, rig.jason.funLevel, 1e-9)
 
         rig.settle()
-        // One save for start(), one for the single feed.
-        assertEquals(25.0, rig.store.last.pets.getValue(PetId.JASON).hunger, 1e-9)
+        // One save for start(), one for the single play.
+        assertEquals(65.0, rig.store.last.pets.getValue(PetId.JASON).funLevel, 1e-9)
         assertEquals(2, rig.store.saves.size)
-    }
-
-    @Test
-    fun feedPlaysTheManifestFeedAnimForThatPet() {
-        val rig = Rig(gameOf(PetId.FREDDY, T0, PetState(PetId.FREDDY, hunger = 60.0))).started()
-        rig.vm.onCare(CareAction.FEED)
-        assertEquals(Anim.WORK, rig.ui.petAnim!!.anim)
-
-        val rig2 = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig2.vm.onCare(CareAction.FEED)
-        assertEquals(Anim.REVIEW, rig2.ui.petAnim!!.anim)
     }
 
     @Test
@@ -567,11 +585,12 @@ class GameViewModelTest {
     }
 
     @Test
-    fun feedIsTheSameForADancerAndTrainStillOpensTraining() {
+    fun feedAndTrainOpenTheirScreensForADancerToo() {
         val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(PetState(PetId.LEATHERFACE, hunger = 60.0)))).started()
         rig.vm.onCare(CareAction.FEED)
-        assertEquals(Anim.REVIEW, rig.ui.petAnim!!.anim)
-        rig.finishAllAnims()
+        assertTrue(rig.ui.screen is Screen.Pantry)
+        assertNull("the kitchen plays the meal, not Home", rig.ui.petAnim)
+        rig.vm.onPantryBack((rig.ui.screen as Screen.Pantry).session)
         rig.vm.onCare(CareAction.TRAIN)
         assertTrue(rig.ui.screen is Screen.Training)
         assertNull("no dance, no swing: the games are the training", rig.ui.petAnim)
@@ -598,7 +617,7 @@ class GameViewModelTest {
     @Test
     fun staleAnimTokenIsIgnored() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 80.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         val token = rig.ui.petAnim!!.token
 
         rig.vm.onAnimFinished(token + 99)
@@ -609,7 +628,7 @@ class GameViewModelTest {
         rig.vm.onAnimFinished(token)
         val second = rig.ui.petAnim!!
         assertNotEquals(token, second.token)
-        rig.vm.onAnimFinished(token) // the finished token cannot end the feed's second munch
+        rig.vm.onAnimFinished(token) // the finished token cannot end the play's wave
         assertEquals(second, rig.ui.petAnim)
         rig.vm.onAnimFinished(second.token)
         assertFalse(rig.ui.busy)
@@ -652,36 +671,14 @@ class GameViewModelTest {
     }
 
     @Test
-    fun feedingAFullPetIsRefused() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 5.0)))).started()
-        val before = rig.jason
-        rig.vm.onCare(CareAction.FEED)
-        assertEquals(RefuseReason.TOO_FULL, rig.ui.refuse)
-        assertEquals(Anim.FAIL, rig.ui.petAnim!!.anim)
-        assertEquals(listOf("refuse"), rig.ui.sfx)
-        assertTrue(rig.ui.busy)
-        assertEquals(before, rig.jason)
-
-        rig.vm.onCare(CareAction.PLAY) // busy: ignored
-        assertEquals(before, rig.jason)
-
-        rig.finishAnim()
-        assertFalse(rig.ui.busy)
-        assertEquals(before, rig.jason)
-
-        // The next real action clears the refusal.
-        rig.vm.onCare(CareAction.PLAY)
-        assertNull(rig.ui.refuse)
-    }
-
-    @Test
     fun anyPressDuringAnActionIsIgnored() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         val token = rig.ui.petAnim!!.token
         val snapshot = rig.ui
 
         rig.vm.onCare(CareAction.PLAY)
+        rig.vm.onCare(CareAction.FEED)
         rig.vm.onCare(CareAction.TRAIN)
         rig.vm.onWalk(1)
         rig.vm.onWalk(-1)
@@ -976,6 +973,629 @@ class GameViewModelTest {
         rig.vm.onTrainingDone(rig.session())
         assertEquals(Screen.Learn(PetId.JASON, "jason_light_1"), rig.ui.screen)
         assertTrue("unlock" in rig.ui.sfx)
+    }
+
+    // ---- the pantry --------------------------------------------------------------------------
+
+    /** A rig started on a Jason (not too full to eat unless [pet] says so) with [shelf] on the pantry shelf. */
+    private fun pantryRig(shelf: List<PantryItem> = SHELF, pet: PetState = jason()): Rig =
+        Rig(gameOf(pets = arrayOf(pet)).copy(pantry = shelf.map { it.id }), pickRng = Random(1)).started()
+
+    /** The pantry on screen. */
+    private val Rig.visit: Screen.Pantry get() = ui.screen as Screen.Pantry
+
+    /** The shelf as items, in shelf order. */
+    private val Rig.shelf: List<PantryItem> get() = game.pantryItems()
+
+    /** FEED on Home: the pantry opens. */
+    private fun Rig.openPantry(): Screen.Pantry {
+        vm.onCare(CareAction.FEED)
+        return visit
+    }
+
+    /** Picks [indices] off the shelf one after another, in the pantry on screen. */
+    private fun Rig.pick(vararg indices: Int) {
+        val session = visit.session
+        indices.forEach { vm.onPantryPick(session, it) }
+    }
+
+    @Test
+    fun feedOpensThePantry() {
+        val rig = Rig(gameOf(), pickRng = Random(5)).started()
+        val before = rig.jason
+        assertTrue(rig.game.pantry.isEmpty())
+        rig.vm.onCare(CareAction.FEED)
+
+        val visit = rig.visit
+        assertEquals(emptyList<Int>(), visit.board)
+        assertNull(visit.cook)
+        assertNull(visit.fed)
+        assertEquals(0L, visit.refusedCook)
+        assertEquals(0L, visit.tooFull)
+        // An empty pantry starts with a handful, the cooks and foods every visit needs.
+        assertEquals(Tuning.PANTRY_START_METHODS + Tuning.PANTRY_START_FOODS, rig.shelf.size)
+        assertTrue(rig.shelf.count { it.raw } >= Tuning.PANTRY_MIN_RAW)
+        assertEquals(before, rig.jason)
+        assertFalse("opening the pantry is not an action", rig.ui.busy)
+        assertNull("the kitchen plays the meal, not Home", rig.ui.petAnim)
+        assertNull(rig.ui.refuse)
+        assertTrue("and food is not dropped", rig.ui.sfx.isEmpty())
+        rig.settle()
+        assertEquals(rig.game, rig.store.last)
+        assertEquals(rig.shelf.map { it.id }, rig.store.last.pantry)
+    }
+
+    @Test
+    fun openingTopsAThinShelfUpAndKeepsWhatIsOnIt() {
+        val rig = pantryRig(listOf(EGG, PILE_OF_SLOP))
+        rig.vm.onCare(CareAction.FEED)
+        assertEquals(listOf(EGG, PILE_OF_SLOP), rig.shelf.take(2))
+        assertTrue(rig.shelf.count { it.raw } >= Tuning.PANTRY_MIN_RAW)
+        assertTrue(rig.shelf.any { it.kind == ItemKind.METHOD })
+        rig.settle()
+        assertEquals(rig.game.pantry, rig.store.last.pantry)
+    }
+
+    @Test
+    fun aStockedShelfOpensAsItWasAndSavesNothing() {
+        val rig = pantryRig()
+        rig.settle()
+        val saves = rig.store.saves.size
+        rig.vm.onCare(CareAction.FEED)
+        rig.settle()
+        assertEquals(SHELF, rig.shelf)
+        assertEquals(saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun pickTogglesTheBoard() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        rig.settle()
+        val saves = rig.store.saves.size
+        val opened = rig.ui
+
+        rig.vm.onPantryPick(session, 0)
+        assertEquals(listOf(0), rig.visit.board)
+        rig.vm.onPantryPick(session, 2)
+        assertEquals(listOf(0, 2), rig.visit.board)
+        rig.vm.onPantryPick(session, 0)
+        assertEquals("taken off the board again", listOf(2), rig.visit.board)
+        rig.vm.onPantryPick(session, 0)
+        assertEquals("the board keeps the order they were placed in", listOf(2, 0), rig.visit.board)
+        rig.vm.onPantryPick(session, 2)
+        rig.vm.onPantryPick(session, 0)
+        assertEquals(emptyList<Int>(), rig.visit.board)
+
+        assertEquals("a pick moves nothing but the board", opened, rig.ui)
+        rig.settle()
+        assertEquals("and the board is not saved", saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun picksOffTheShelfAreIgnored() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        val opened = rig.ui
+        rig.vm.onPantryPick(session, -1)
+        rig.vm.onPantryPick(session, SHELF.size)
+        rig.vm.onPantryPick(session, Int.MAX_VALUE)
+        assertEquals(opened, rig.ui)
+    }
+
+    @Test
+    fun aThirdPickIsIgnored() {
+        val rig = pantryRig()
+        rig.openPantry()
+        rig.pick(0, 2)
+        val full = rig.ui
+        rig.pick(3)
+        assertEquals(listOf(0, 2), rig.visit.board)
+        assertEquals(full, rig.ui)
+
+        // Taking one off makes room for another.
+        rig.pick(0, 3)
+        assertEquals(listOf(2, 3), rig.visit.board)
+    }
+
+    @Test
+    fun cookUsesBothAndShelvesTheResult() {
+        // Grill + Egg make a Fried Egg, whichever was put on the board first; it goes where the first of them was.
+        for (order in listOf(listOf(0, 2), listOf(2, 0))) {
+            val rig = pantryRig()
+            rig.openPantry()
+            rig.pick(*order.toIntArray())
+            val before = rig.jason
+            rig.vm.onPantryCook(rig.visit.session)
+
+            val expected = listOf(FRIED_EGG, RAW_STEAK, CAMPFIRE, FLOUR, CHEESE)
+            assertEquals("$order", expected, rig.shelf)
+            val cook = rig.visit.cook!!
+            assertEquals(FRIED_EGG, cook.result)
+            assertEquals("the inputs, in the order they were placed", order.map { SHELF[it] }, cook.inputs)
+            assertEquals(0, cook.at)
+            assertEquals(emptyList<Int>(), rig.visit.board)
+            assertEquals(listOf("cook_grill", "pantry_poof"), rig.ui.sfx)
+            assertEquals("cooking feeds no one", before, rig.jason)
+            assertFalse(rig.ui.busy)
+            assertNull(rig.ui.petAnim)
+            rig.settle()
+            assertEquals("every cook is saved at once", rig.game, rig.store.last)
+            assertEquals(expected.map { it.id }, rig.store.last.pantry)
+        }
+    }
+
+    @Test
+    fun theResultTakesTheSmallerIndexWhateverTheOrder() {
+        // Flour (4) + Campfire (3): Campfire Bread where the Campfire stood, the later items sliding up.
+        val near = pantryRig()
+        near.openPantry()
+        near.pick(4, 3)
+        near.vm.onPantryCook(near.visit.session)
+        assertEquals(listOf(GRILL, RAW_STEAK, EGG, CAMPFIRE_BREAD, CHEESE), near.shelf)
+        assertEquals(3, near.visit.cook!!.at)
+
+        // Cheese (5) + Raw Steak (1) don't go: a Pile of Slop where the steak was, far from the other input.
+        val far = pantryRig()
+        far.openPantry()
+        far.pick(5, 1)
+        far.vm.onPantryCook(far.visit.session)
+        assertEquals(listOf(GRILL, PILE_OF_SLOP, EGG, CAMPFIRE, FLOUR), far.shelf)
+        assertEquals(1, far.visit.cook!!.at)
+    }
+
+    @Test
+    fun aMixPlaysOnlyThePoof() {
+        val rig = pantryRig()
+        rig.openPantry()
+        rig.pick(4, 2) // Flour + Egg: two foods, no way to cook
+        rig.vm.onPantryCook(rig.visit.session)
+        assertEquals(BATTER, rig.visit.cook!!.result)
+        assertEquals(listOf("pantry_poof"), rig.ui.sfx)
+    }
+
+    @Test
+    fun aCookWithAWayToCookPlaysThatWaysSound() {
+        for (method in listOf(GRILL, CAMPFIRE, POT, CAULDRON, SUN)) {
+            val rig = pantryRig(listOf(RAW_STEAK, method, EGG, FLOUR, CHEESE, STEAK))
+            rig.openPantry()
+            rig.pick(2, 1) // the way to cook doesn't have to be placed first
+            rig.vm.onPantryCook(rig.visit.session)
+            assertEquals("${method.id} + Egg", listOf("cook_${method.id}", "pantry_poof"), rig.ui.sfx)
+        }
+
+        // A way to cook on a finished dish still has the way's sound, though what comes out is Burnt to a Crisp.
+        val burnt = pantryRig(listOf(RAW_STEAK, GRILL, EGG, FLOUR, CHEESE, STEAK))
+        burnt.openPantry()
+        burnt.pick(5, 1)
+        burnt.vm.onPantryCook(burnt.visit.session)
+        assertEquals(BURNT_TO_A_CRISP, burnt.visit.cook!!.result)
+        assertEquals(listOf("cook_grill", "pantry_poof"), burnt.ui.sfx)
+    }
+
+    @Test
+    fun twoWaysToCookPlayTheSoundOfTheFirstOnTheBoard() {
+        val rig = pantryRig()
+        rig.openPantry()
+        rig.pick(3, 0) // Campfire, then Grill
+        rig.vm.onPantryCook(rig.visit.session)
+        assertEquals(KITCHEN_FIRE, rig.visit.cook!!.result)
+        assertEquals(listOf("cook_campfire", "pantry_poof"), rig.ui.sfx)
+    }
+
+    @Test
+    fun cookTwiceCooksOnce() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        rig.pick(0, 2)
+        rig.vm.onPantryCook(session)
+        val cooked = rig.ui
+        rig.settle()
+        val saves = rig.store.saves.size
+
+        rig.vm.onPantryCook(session) // the same press again, as a held OK or a double tap would
+        rig.vm.onPantryCook(session)
+        assertEquals(cooked, rig.ui)
+        assertEquals("the inputs are used up once", listOf(FRIED_EGG, RAW_STEAK, CAMPFIRE, FLOUR, CHEESE), rig.shelf)
+        assertEquals(listOf("cook_grill", "pantry_poof"), rig.ui.sfx)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun cookNeedsTwoOnTheBoardAndFeedNeedsOne() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        val empty = rig.ui
+        rig.vm.onPantryCook(session)
+        rig.vm.onPantryFeed(session)
+        assertEquals("nothing on the board", empty, rig.ui)
+
+        rig.pick(0)
+        val one = rig.ui
+        rig.vm.onPantryCook(session)
+        assertEquals("one is nothing to cook", one, rig.ui)
+
+        rig.pick(2)
+        val two = rig.ui
+        rig.vm.onPantryFeed(session)
+        assertEquals("and two are not a meal", two, rig.ui)
+        assertEquals(SHELF, rig.shelf)
+    }
+
+    @Test
+    fun aBotchOnTheBoardRefusesTheCook() {
+        val rig = pantryRig(listOf(GRILL, EGG, PILE_OF_SLOP, FLOUR, CHEESE, RAW_STEAK))
+        val session = rig.openPantry().session
+        rig.pick(2, 1) // the Slop and the Egg
+        rig.settle()
+        val saves = rig.store.saves.size
+        val before = rig.ui
+        val shelf = rig.shelf
+
+        rig.vm.onPantryCook(session)
+        assertEquals("nothing is used", shelf, rig.shelf)
+        assertEquals("the board stays as it was", listOf(2, 1), rig.visit.board)
+        assertNull(rig.visit.cook)
+        val first = rig.visit.refusedCook
+        assertNotEquals("the screen can tell it was refused", 0L, first)
+        assertEquals(listOf("pantry_squelch"), rig.ui.sfx)
+        assertEquals(before.game, rig.ui.game)
+        assertFalse(rig.ui.busy)
+        rig.settle()
+        assertEquals("a refusal is not saved", saves, rig.store.saves.size)
+
+        // Every refusal is a new one, so the screen shakes the board each time.
+        rig.vm.onPantryCook(session)
+        assertNotEquals(first, rig.visit.refusedCook)
+        assertEquals(listOf("pantry_squelch", "pantry_squelch"), rig.ui.sfx)
+
+        // The board is still usable: swap the Slop for the Grill and the Egg cooks.
+        rig.pick(2, 0)
+        rig.vm.onPantryCook(session)
+        assertEquals(FRIED_EGG, rig.visit.cook!!.result)
+        assertEquals(listOf(PILE_OF_SLOP, FLOUR, CHEESE, RAW_STEAK), rig.shelf.drop(1))
+    }
+
+    @Test
+    fun feedPaysAndShowsTheReaction() {
+        // Jason loves savory: a Steak is a loved snack.
+        val rig = pantryRig(SHELF + STEAK, pet = jason(hunger = 60.0))
+        val before = rig.jason
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.settle()
+        val saves = rig.store.saves.size
+        rig.vm.onPantryFeed(session)
+
+        val paid = feed(before, STEAK)
+        assertEquals(paid.pet, rig.jason)
+        assertEquals(25.0, rig.jason.hunger, 1e-9)
+        assertEquals(10, rig.jason.xp)
+        assertEquals(SHELF, rig.shelf)
+        val fed = rig.visit.fed!!
+        assertEquals(STEAK, fed.item)
+        assertEquals(Reaction.LOVED, fed.reaction)
+        assertEquals(paid.line, fed.line)
+        assertEquals(10, fed.xp)
+        assertEquals(0, fed.levelsGained)
+        assertEquals(emptyList<Int>(), rig.visit.board)
+        assertTrue("the kitchen plays the eating sounds", rig.ui.sfx.isEmpty())
+        assertFalse(rig.ui.busy)
+        rig.settle()
+        assertEquals("paid and saved the moment it is fed", rig.game, rig.store.last)
+        assertEquals(saves + 1, rig.store.saves.size)
+        assertEquals(SHELF.map { it.id }, rig.store.last.pantry)
+    }
+
+    @Test
+    fun onceFedNothingButDoneAndBackActs() {
+        val rig = pantryRig(SHELF + STEAK)
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        rig.settle()
+        val fed = rig.ui
+        val saves = rig.store.saves.size
+
+        rig.vm.onPantryPick(session, 0)
+        rig.vm.onPantryPick(session, 2)
+        rig.vm.onPantryCook(session)
+        rig.vm.onPantryFeed(session)
+        assertEquals(fed, rig.ui)
+        rig.pick(0)
+        rig.vm.onPantryFeed(session) // a second meal for the same visit
+        assertEquals(fed, rig.ui)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+
+        rig.vm.onPantryDone(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun aFullPetCanCookButNotFeed() {
+        val rig = pantryRig(pet = jason(hunger = 5.0))
+        val session = rig.openPantry().session
+
+        // Cooking needs no appetite.
+        rig.pick(0, 2)
+        rig.vm.onPantryCook(session)
+        assertEquals(FRIED_EGG, rig.visit.cook!!.result)
+        rig.vm.consumeSounds()
+        rig.settle()
+        val saves = rig.store.saves.size
+        val cooked = rig.ui
+        val pet = rig.jason
+
+        // Feeding is turned away: nothing eaten, nothing paid, the board kept; the screen is told with a fresh token.
+        rig.pick(0)
+        val onBoard = rig.visit
+        rig.vm.onPantryFeed(session)
+        val first = rig.visit.tooFull
+        assertNotEquals(0L, first)
+        assertEquals("only the token changed: the board is kept", onBoard.copy(tooFull = first), rig.visit)
+        assertEquals(listOf("refuse"), rig.ui.sfx)
+        assertNull(rig.visit.fed)
+        assertEquals(pet, rig.jason)
+        assertEquals(cooked.game, rig.ui.game)
+        assertFalse("no Home animation that nothing here would finish", rig.ui.busy)
+        assertNull(rig.ui.petAnim)
+        assertNull(rig.ui.refuse)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+
+        rig.vm.onPantryFeed(session)
+        assertNotEquals(first, rig.visit.tooFull)
+        assertEquals(listOf("refuse", "refuse"), rig.ui.sfx)
+    }
+
+    @Test
+    fun aPetJustAtTheLimitCanStillEat() {
+        val atLimit = pantryRig(pet = jason(hunger = Tuning.FEED_REFUSE_BELOW))
+        atLimit.openPantry()
+        atLimit.pick(1)
+        atLimit.vm.onPantryFeed(atLimit.visit.session)
+        assertNotNull(atLimit.visit.fed)
+        assertEquals(0L, atLimit.visit.tooFull)
+
+        val below = pantryRig(pet = jason(hunger = Tuning.FEED_REFUSE_BELOW - 0.01))
+        below.openPantry()
+        below.pick(1)
+        below.vm.onPantryFeed(below.visit.session)
+        assertNull(below.visit.fed)
+        assertNotEquals(0L, below.visit.tooFull)
+    }
+
+    @Test
+    fun doneGoesHome() {
+        val rig = pantryRig(SHELF + STEAK)
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        rig.vm.onPantryDone(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertNull(rig.ui.refuse)
+        assertFalse(rig.ui.busy)
+
+        val home = rig.ui
+        rig.vm.onPantryDone(session)
+        rig.vm.onPantryBack(session)
+        assertEquals("a second Done finds no pantry", home, rig.ui)
+    }
+
+    @Test
+    fun backLeavesWithTheShelfKept() {
+        val rig = pantryRig()
+        val first = rig.openPantry().session
+        rig.pick(0, 2)
+        rig.settle()
+        val saves = rig.store.saves.size
+        val pet = rig.jason
+
+        rig.vm.onPantryBack(first)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals("what was on the board is back where it was", SHELF, rig.shelf)
+        assertEquals(pet, rig.jason)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+
+        // The next visit starts with a clean board.
+        val second = rig.openPantry()
+        assertNotEquals(first, second.session)
+        assertEquals(emptyList<Int>(), second.board)
+        assertEquals(SHELF, rig.shelf)
+    }
+
+    @Test
+    fun backAfterFeedingStillGoesHome() {
+        val rig = pantryRig(SHELF + STEAK)
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        rig.vm.onPantryBack(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
+    fun everyVisitIsASessionOfItsOwn() {
+        val rig = pantryRig()
+        val seen = mutableSetOf<Long>()
+        repeat(5) {
+            assertTrue("a new session each time", seen.add(rig.openPantry().session))
+            rig.vm.onPantryBack(rig.visit.session)
+        }
+    }
+
+    @Test
+    fun aStaleSessionCannotCookOrFeed() {
+        // FEED, Back and FEED again within a frame, as the debug puppet goes: the last visit reporting late must not
+        // act on this one.
+        val rig = pantryRig(SHELF + STEAK)
+        val old = rig.openPantry().session
+        rig.pick(0, 2)
+        rig.vm.onPantryBack(old)
+        val now = rig.openPantry().session
+        rig.pick(0, 2)
+        val board = rig.ui
+
+        rig.vm.onPantryCook(old)
+        rig.vm.onPantryFeed(old)
+        rig.vm.onPantryPick(old, 3)
+        rig.vm.onPantryDone(old)
+        rig.vm.onPantryBack(old)
+        rig.vm.onPantryCook(now + 1)
+        rig.vm.onPantryCook(-1)
+        assertEquals("the shelf, the board and the screen are as they were", board, rig.ui)
+        assertEquals(SHELF + STEAK, rig.shelf)
+
+        rig.vm.onPantryPick(now, 2) // this one's board is still its own
+        rig.vm.onPantryFeed(old)
+        assertEquals(listOf(0), rig.visit.board)
+
+        rig.vm.onPantryPick(now, 2)
+        rig.vm.onPantryCook(now)
+        assertEquals(FRIED_EGG, rig.visit.cook!!.result)
+    }
+
+    @Test
+    fun pantryMessagesOffThePantryAreIgnored() {
+        val rig = Rig(gameOf()).started()
+        val before = rig.ui
+        rig.vm.onPantryPick(1, 0)
+        rig.vm.onPantryCook(1)
+        rig.vm.onPantryFeed(1)
+        rig.vm.onPantryDone(1)
+        rig.vm.onPantryBack(1)
+        assertEquals(before, rig.ui)
+    }
+
+    @Test
+    fun aLevelUpFromFeedingOffersTheNewAttack() {
+        val rig = pantryRig(SHELF + STEAK, pet = jason(xp = 95))
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        assertEquals(2, rig.jason.level)
+        assertEquals(1, rig.visit.fed!!.levelsGained)
+        assertTrue("the reaction comes first", rig.ui.screen is Screen.Pantry)
+
+        rig.vm.onPantryDone(session)
+        assertEquals(Screen.Learn(PetId.JASON, "jason_light_1"), rig.ui.screen)
+        assertTrue("unlock" in rig.ui.sfx)
+        rig.settle()
+        assertEquals(2, rig.store.last.pets.getValue(PetId.JASON).level)
+    }
+
+    @Test
+    fun theFavoriteIsRemembered() {
+        val rig = pantryRig(SHELF + CAMP_CRYSTAL_FISH_FRY, pet = jason(hunger = 60.0))
+        assertFalse(rig.jason.favoriteFound)
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+
+        assertEquals(Reaction.FAVORITE, rig.visit.fed!!.reaction)
+        assertTrue(rig.jason.favoriteFound)
+        assertTrue("and only Jason's", rig.game.pets.filterKeys { it != PetId.JASON }.values.none { it.favoriteFound })
+        rig.settle()
+        assertTrue("saved with the meal", rig.store.last.pets.getValue(PetId.JASON).favoriteFound)
+    }
+
+    @Test
+    fun aPantryMakesItsOwnKeySounds() {
+        val rig = pantryRig(SHELF + STEAK)
+        assertFalse("Home ticks", rig.ui.screen.ownsKeySounds)
+        val session = rig.openPantry().session
+        assertTrue(rig.ui.screen.ownsKeySounds)
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        assertTrue("the reaction too", rig.ui.screen.ownsKeySounds)
+        rig.vm.onPantryDone(session)
+        assertFalse(rig.ui.screen.ownsKeySounds)
+    }
+
+    @Test
+    fun feedIsIgnoredWhileTheStableIsOpenOrAnActionPlays() {
+        val rig = pantryRig()
+        rig.vm.onCare(CareAction.PLAY)
+        val busy = rig.ui
+        rig.vm.onCare(CareAction.FEED)
+        assertEquals(busy, rig.ui)
+        rig.finishAllAnims()
+
+        rig.vm.openStable()
+        val stable = rig.ui
+        rig.vm.onCare(CareAction.FEED)
+        assertEquals(stable, rig.ui)
+    }
+
+    @Test
+    fun aTickKeepsThePantryOnScreen() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        rig.pick(0, 2)
+        val hunger = rig.jason.hunger
+        rig.clock.now += 3 * HOUR
+        rig.vm.tick()
+        assertTrue("time passed", rig.jason.hunger > hunger)
+        assertEquals(session, rig.visit.session)
+        assertEquals(listOf(0, 2), rig.visit.board)
+        assertEquals(SHELF, rig.shelf)
+    }
+
+    // ---- the pantry: the puppet's way in -------------------------------------------------------
+
+    @Test
+    fun debugStockAddsToTheSavedPantry() {
+        val rig = pantryRig()
+        rig.vm.debugStock(listOf(SUN, SUN, BRAIN))
+        assertEquals(SHELF + listOf(SUN, SUN, BRAIN), rig.shelf)
+        assertEquals("on Home still", Screen.Home, rig.ui.screen)
+        rig.settle()
+        assertEquals(rig.game, rig.store.last)
+        assertEquals((SHELF + listOf(SUN, SUN, BRAIN)).map { it.id }, rig.store.last.pantry)
+    }
+
+    @Test
+    fun debugStockNeverFillsPastTheLimit() {
+        val twoShort = List(Tuning.PANTRY_MAX - 2) { EGG }
+        val rig = pantryRig(twoShort)
+        rig.vm.debugStock(listOf(SUN, BRAIN, POT))
+        assertEquals("the first that fit, in order", twoShort + listOf(SUN, BRAIN), rig.shelf)
+        assertEquals(Tuning.PANTRY_MAX, rig.shelf.size)
+        rig.settle()
+        assertEquals(rig.game, rig.store.last)
+
+        val saves = rig.store.saves.size
+        rig.vm.debugStock(listOf(POT))
+        assertEquals("a full shelf takes nothing", Tuning.PANTRY_MAX, rig.shelf.size)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun debugStockWorksFromAnyScreenAndKeepsTheBoard() {
+        val title = Rig(gameOf().copy(pantry = SHELF.map { it.id })).loaded()
+        title.vm.debugStock(listOf(SUN))
+        assertEquals("on the title", Screen.Title, title.ui.screen)
+        assertEquals(SHELF + SUN, title.shelf)
+
+        val rig = pantryRig()
+        rig.openPantry()
+        rig.pick(0, 2)
+        rig.vm.debugStock(listOf(SUN))
+        assertEquals("the pantry on screen: the board is as it was", listOf(0, 2), rig.visit.board)
+        assertEquals(SHELF + SUN, rig.shelf)
+    }
+
+    @Test
+    fun debugStockWaitsForTheSaveToLoad() {
+        val rig = Rig(gameOf().copy(pantry = SHELF.map { it.id }))
+        rig.vm.debugStock(listOf(SUN))
+        rig.settle()
+        assertEquals(Screen.Loading, rig.ui.screen)
+        assertTrue("never saved over the real game", rig.store.saves.isEmpty())
     }
 
     // ---- walking -----------------------------------------------------------------------------
@@ -1638,14 +2258,14 @@ class GameViewModelTest {
     @Test
     fun fakeDeathFromATickWaitsForTheActionToFinish() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         rig.clock.now += 7 * DAY
         rig.vm.tick()
         assertEquals("not mid-animation", Screen.Home, rig.ui.screen)
         assertTrue(rig.ui.busy)
 
         rig.finishAnim()
-        assertEquals("not between the munches", Screen.Home, rig.ui.screen)
+        assertEquals("not between the steps", Screen.Home, rig.ui.screen)
         rig.finishAnim()
         assertEquals(Screen.FakeDeath(PetId.JASON), rig.ui.screen)
         assertFalse(rig.ui.busy)
@@ -1671,7 +2291,7 @@ class GameViewModelTest {
         val rig = Rig(gameOf(), store = store).started()
         assertEquals(Screen.Home, rig.ui.screen)
 
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         rig.finishAllAnims()
         rig.clock.now += HOUR
         rig.vm.tick()
@@ -1697,7 +2317,7 @@ class GameViewModelTest {
     @Test
     fun everyStateChangeIsSaved() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         rig.finishAnim()
         rig.vm.onWalk(1)
         rig.finishAnim()
@@ -1709,45 +2329,14 @@ class GameViewModelTest {
     fun savesLandInTheOrderTheStateChanged() {
         val store = SlowFirstSaveStore(gameOf(pets = arrayOf(jason(hunger = 60.0))))
         val scope = TestScope(StandardTestDispatcher())
-        val vm = GameViewModel(store, FakeClock(T0), Random(1), scope, { Anim.REVIEW })
+        val vm = GameViewModel(store, FakeClock(T0), Random(1), scope)
         vm.start()
         scope.runCurrent() // the first save is now in flight and slow
         vm.onStart()
-        vm.onCare(CareAction.FEED) // its successor must wait for it
+        vm.onCare(CareAction.PLAY) // its successor must wait for it
         scope.advanceUntilIdle()
-        assertEquals(listOf(60.0, 25.0), store.saved.map { it.pets.getValue(PetId.JASON).hunger })
+        assertEquals(listOf(60.0, 68.0), store.saved.map { it.pets.getValue(PetId.JASON).hunger })
         assertEquals(vm.state.value.game, store.saved.last())
-    }
-
-    @Test
-    fun feedDropsFoodWithItsFirstMunchOnly() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
-        val first = rig.ui.petAnim!!
-        assertEquals(Anim.REVIEW, first.anim)
-        assertNotNull(first.food)
-
-        rig.finishAnim()
-        val second = rig.ui.petAnim!!
-        assertEquals(Anim.REVIEW, second.anim)
-        assertNull(second.food)
-        assertTrue(rig.ui.busy)
-
-        rig.finishAnim()
-        assertFalse(rig.ui.busy)
-        assertNull(rig.ui.petAnim)
-    }
-
-    @Test
-    fun twoFeedsInARowDropDifferentFood() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 100.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
-        val first = rig.ui.petAnim!!.food
-        rig.finishAllAnims()
-        rig.vm.onCare(CareAction.FEED)
-        val second = rig.ui.petAnim!!.food
-        assertNotNull(second)
-        assertNotEquals(first, second)
     }
 
     @Test
@@ -1775,16 +2364,6 @@ class GameViewModelTest {
         val second = rig.ui.petAnim!!.gag
         assertNotNull(second)
         assertNotEquals(first, second)
-    }
-
-    @Test
-    fun feedAndTrainDoNoGag() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
-        assertNull(rig.ui.petAnim!!.gag)
-        rig.finishAllAnims()
-        rig.vm.onCare(CareAction.TRAIN)
-        assertNull("training plays no animation of its own", rig.ui.petAnim)
     }
 
     @Test
@@ -1988,12 +2567,12 @@ class GameViewModelTest {
     @Test
     fun consumeSoundsClearsBothQueues() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 60.0)))).started()
-        rig.vm.onCare(CareAction.FEED)
+        rig.vm.onCare(CareAction.PLAY)
         rig.finishAllAnims()
         rig.vm.onFightPressed()
         rig.vm.onSwitcherPick(PetId.GHOSTFACE)
         // Unconsumed sounds pile up in order.
-        assertEquals(listOf("food_drop"), rig.ui.sfx)
+        assertEquals(listOf("hand_whoosh"), rig.ui.sfx)
         assertEquals(listOf("jason", "versus", "ghostface"), rig.ui.voice)
 
         rig.vm.consumeSounds()

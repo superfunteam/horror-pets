@@ -7,7 +7,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.game.CareAction
@@ -37,7 +36,6 @@ class AttacksFlowTest {
             },
             rng = Random(1),
             scope = scope,
-            feedAnim = { Anim.REVIEW },
         )
 
         val ui: UiState get() = vm.state.value
