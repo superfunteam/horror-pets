@@ -157,6 +157,30 @@ class RosterAssetsTest {
     }
 
     @Test
+    fun everyPantryItemHasItsArt() {
+        // The spec's "every item has art": each item's picture, where the loader reads it, under its save id.
+        for (item in PantryItem.entries) {
+            val path = pantryArt(item).replaceFirst("sprites/", "sprites-final/")
+            assertEquals("$item", "sprites-final/pantry/${item.id}.webp", path)
+            assertTrue(path, file(path).isFile)
+        }
+        // Nothing else in the folder but the cutting board: a renamed id would leave its old picture behind.
+        val shipped = file("sprites-final/pantry").list()!!.filter { it.endsWith(".webp") }.toSet()
+        assertEquals(PantryItem.entries.map { "${it.id}.webp" }.toSet() + "board.webp", shipped)
+        assertTrue(file(CUTTING_BOARD_ART.replaceFirst("sprites/", "sprites-final/")).isFile)
+    }
+
+    @Test
+    fun theKitchenIsAScene() {
+        // Read the way the loader reads it, so it crops, tints and places its floor like any other scene.
+        val kitchen = parseScene(file(KITCHEN_SCENE.replaceFirst("scenes/", "scenes-final/")).readText())
+        assertTrue(kitchen.file, file("scenes-final/${kitchen.file}").isFile)
+        assertEquals(0.7531f, kitchen.floorY, 1e-6f)
+        // The pantry's own key sounds: an item on or off the board, and the focus moving.
+        for (sfx in listOf("pantry_pick", "ui_move")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+    }
+
+    @Test
     fun thePotionHasItsArtAndSound() {
         assertTrue(file("sprites-final/fight/potion.webp").isFile)
         assertTrue(file("audio-final/sfx/potion.wav").isFile)

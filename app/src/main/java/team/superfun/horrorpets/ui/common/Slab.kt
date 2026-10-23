@@ -115,7 +115,8 @@ private fun slab(size: Size): Path = Path().apply {
     close()
 }
 
-private fun DrawScope.drawSlab(glow: Float) {
+/** A slab's look across this whole box, [glow] (0..1) of the way to lit; the pantry's COOK and FEED draw it too. */
+internal fun DrawScope.drawSlab(glow: Float) {
     val shape = slab(size)
     val drop = 4.dp.toPx()
     translate(drop, drop) { drawPath(shape, Color.Black.copy(alpha = 0.55f)) }

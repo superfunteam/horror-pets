@@ -10,12 +10,23 @@ import java.util.EnumMap
 import java.util.concurrent.ConcurrentHashMap
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.Food
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
+
+/** Where [item]'s picture is under the assets: `sprites/pantry/<id>.webp`, named by its save id. */
+fun pantryArt(item: PantryItem): String = "sprites/pantry/${item.id}.webp"
+
+/** The pantry's cutting board, the board its two places sit on. */
+const val CUTTING_BOARD_ART = "sprites/pantry/board.webp"
+
+/** The pantry's kitchen: a scene of its own (in a scene catalog entry's fields), shared by every killer. */
+const val KITCHEN_SCENE = "scenes/pantry/kitchen.json"
 
 /**
  * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the food a
- * feed drops and the player's glove (`sprites/food/...`, `sprites/hand/...`) and scene backdrops (`scenes/...`). Bitmaps are decoded as ARGB_8888 without density
- * scaling.
+ * feed drops and the player's glove (`sprites/food/...`, `sprites/hand/...`), the pantry's items
+ * (`sprites/pantry/...`) and scene backdrops (`scenes/...`, the pantry's kitchen among them). Bitmaps are decoded as
+ * ARGB_8888 without density scaling.
  *
  * The scene catalog must have [Tuning.SCENE_COUNT] scenes per pet (see [scenes]).
  *
@@ -26,7 +37,9 @@ import team.superfun.horrorpets.model.PetId
  *  - sprite strips live in an LRU of at most [MAX_STRIPS] entries keyed by (pet, anim) (under [stripLock]);
  *  - scene bitmaps live in an LRU of at most [MAX_SCENES], so the one being left can fade out while the
  *    next fades in, and anything older is dropped (a scene is about 10 MB decoded) (under [sceneLock]);
- *  - props are kept once decoded: about a dozen small pictures, under 1 MB each (under [propLock]).
+ *  - props are kept once decoded: about a dozen small pictures, under 1 MB each (under [propLock]);
+ *  - pantry items live in an LRU of at most [MAX_PANTRY_ITEMS] (under [pantryLock]): there are over a hundred, and
+ *    a shelf scrolled end to end would otherwise keep every one it passed.
  * Lock order: [stripLock] may take [metaLock] (a strip needs its manifest), never the other way round.
  * Evicted bitmaps are not recycled: a composable may still be drawing one. The GC reclaims them.
  *
@@ -41,11 +54,17 @@ class AssetLoader(context: Context) {
     private val stripLock = Any()
     private val sceneLock = Any()
     private val propLock = Any()
+    private val pantryLock = Any()
     private val manifests = EnumMap<PetId, SpriteManifest>(PetId::class.java)
     private var catalog: Map<PetId, List<SceneSpec>>? = null
+    private var kitchenSpec: SceneSpec? = null
     private val strips = lru<StripKey>(MAX_STRIPS) { ready.remove(it) }
     private val sceneBitmaps = lru<String>(MAX_SCENES)
     private val props = HashMap<String, ImageBitmap>()
+    private val pantryItems = lru<PantryItem>(MAX_PANTRY_ITEMS) { readyItems.remove(it) }
+
+    /** The decoded pantry items, readable without a lock (see [readyPantryItem]); kept as [ready] is for strips. */
+    private val readyItems = ConcurrentHashMap<PantryItem, ImageBitmap>()
 
     /**
      * The decoded strips, readable without a lock (see [readyStrip]). Written only under [stripLock] by
@@ -86,6 +105,28 @@ class AssetLoader(context: Context) {
     fun sceneBitmap(spec: SceneSpec): ImageBitmap = synchronized(sceneLock) {
         sceneBitmaps.getOrPut(spec.file) { decode("scenes/${spec.file}") }
     }
+
+    /** The pantry's kitchen, as a scene ([KITCHEN_SCENE]): draw it with `SceneBackdrop` like any other. */
+    fun kitchenScene(): SceneSpec = synchronized(metaLock) {
+        kitchenSpec ?: parseScene(readText(KITCHEN_SCENE)).also { kitchenSpec = it }
+    }
+
+    /** The kitchen's backdrop, cached as the scenes are. */
+    fun kitchen(): ImageBitmap = sceneBitmap(kitchenScene())
+
+    /** [item]'s picture ([pantryArt]): its longer side 384 px, on a transparent background. */
+    fun pantryItem(item: PantryItem): ImageBitmap = synchronized(pantryLock) {
+        pantryItems.getOrPut(item) { decode(pantryArt(item)) }.also { readyItems[item] = it }
+    }
+
+    /**
+     * [item]'s picture if it is already decoded, or null; never decodes and never waits, so it is safe on the main
+     * thread (an item sliding back into view on the shelf, or going onto the board, shows at once).
+     */
+    fun readyPantryItem(item: PantryItem): ImageBitmap? = readyItems[item]
+
+    /** The cutting board ([CUTTING_BOARD_ART]), 768 px wide and angled a little, on a transparent background. */
+    fun cuttingBoard(): ImageBitmap = prop(CUTTING_BOARD_ART)
 
     /** The picture of [food], to drop in when a pet is fed. */
     fun food(food: Food): ImageBitmap = prop("sprites/food/${food.file}")
@@ -128,6 +169,12 @@ class AssetLoader(context: Context) {
          */
         const val MAX_STRIPS = 12
         const val MAX_SCENES = 2
+
+        /**
+         * A pantry item is at most 384 x 384 px, 0.6 MB decoded, so 24 are under 15 MB: the most a shelf shows at once
+         * (under a dozen slots, on a 20:9 phone), the two it decodes ahead either side, the board's two and some to spare.
+         */
+        const val MAX_PANTRY_ITEMS = 24
 
         /** Access-ordered map that drops its least recently used entry beyond [max], telling [onEvict]. */
         fun <K> lru(max: Int, onEvict: (K) -> Unit = {}): LinkedHashMap<K, ImageBitmap> =

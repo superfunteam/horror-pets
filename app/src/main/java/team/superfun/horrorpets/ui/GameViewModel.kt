@@ -1159,7 +1159,7 @@ class GameViewModel(
 private const val LOAD_RETRY_DELAY_MS = 250L
 
 /** The pantry's board has this many places: two items to cook, or the one to feed. */
-private const val BOARD_PLACES = 2
+internal const val BOARD_PLACES = 2
 
 /** A PvP room's code is this many digits. */
 internal const val CODE_LENGTH = 4

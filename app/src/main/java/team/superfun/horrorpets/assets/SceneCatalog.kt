@@ -28,6 +28,12 @@ private val sceneFormat = Json { ignoreUnknownKeys = true }
 private val catalogSerializer = MapSerializer(String.serializer(), ListSerializer(SceneSpec.serializer()))
 
 /**
+ * Parses one scene's spec, in a catalog entry's fields: a scene of its own that no pet's catalog lists (the pantry's
+ * kitchen, `scenes/pantry/kitchen.json`). Throws a `SerializationException` on malformed JSON.
+ */
+fun parseScene(json: String): SceneSpec = sceneFormat.decodeFromString(SceneSpec.serializer(), json)
+
+/**
  * Parses the scene catalog. Keys name a [PetId] case-insensitively; keys that name no pet are
  * ignored. Throws a `SerializationException` on malformed JSON and [IllegalArgumentException] unless
  * every pet has at least one scene (the catalog ships inside the APK, so that is a broken build).

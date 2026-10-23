@@ -103,9 +103,9 @@ fun TrainingHud(title: String, status: String, best: Int, help: List<HelpItem>, 
     }
 }
 
-/** The help strip in a small game window: [help]'s key caps and labels, or [touchHelp] under a finger. */
+/** The help strip in a small game window: [help]'s key caps and labels, or [touchHelp] under a finger (the pantry's too). */
 @Composable
-private fun HelpStrip(help: List<HelpItem>, touchHelp: String, modifier: Modifier = Modifier) {
+internal fun HelpStrip(help: List<HelpItem>, touchHelp: String, modifier: Modifier = Modifier) {
     val touch = isTouchInput()
     if (if (touch) touchHelp.isBlank() else help.isEmpty()) return
     val label = displayStyle(14.sp, FontWeight.Bold, tracking = 0.06f)
