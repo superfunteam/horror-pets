@@ -352,10 +352,12 @@ private fun DrawScope.drawGatePointers(w: Float, h: Float) {
 // ---- the frames' pictures ----
 
 /**
- * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows, the [organs] Organ Drop
- * does.
+ * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows (and its shadow), the
+ * [organs] Organ Drop does.
  */
-private class ReelArt(val scene: ImageBitmap, val tomb: ImageBitmap?, val organs: List<ImageBitmap>)
+private class ReelArt(val scene: ImageBitmap, val tomb: ImageBitmap?, val organs: List<ImageBitmap>) {
+    val tombShadow = tombShadow()
+}
 
 /** The organs on Organ Drop's frame: the heart, the brain and the eyeball (indexes into [ORGAN_ART]). */
 private val ReelOrgans = listOf(0, 1, 2)
@@ -395,12 +397,7 @@ private fun DrawScope.drawGameArt(game: TrainingGame, art: ReelArt, c: Offset, s
     when (game) {
         TrainingGame.SLASH_SAYS -> drawSlashDots(c, s)
         TrainingGame.QUICK_DRAW -> drawDrawRing(DrawRingShapes(c, 0.82f * s), lit = DrawCall.UP, pop = 1f, timeLeft = 0.7f, ok = null)
-        TrainingGame.HIDE_AND_SEEK -> art.tomb?.let { tomb ->
-            val height = 1.75f * s
-            val foot = c.y + 0.9f * s
-            drawOval(Color.Black, Offset(c.x - 0.75f * s, foot - 0.09f * s), Size(1.5f * s, 0.18f * s), alpha = 0.45f)
-            drawProp(tomb, Offset(c.x, foot - height / 2f), height)
-        }
+        TrainingGame.HIDE_AND_SEEK -> art.tomb?.let { drawTombstone(it, art.tombShadow, Offset(c.x, c.y + 0.81f * s), 1.75f * s) }
         TrainingGame.ORGAN_DROP -> art.organs.forEachIndexed { i, organ ->
             val (dx, dy, size) = OrganSpots[i]
             val at = Offset(c.x + dx * s, c.y + dy * s)

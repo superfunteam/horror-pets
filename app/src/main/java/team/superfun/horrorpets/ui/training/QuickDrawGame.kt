@@ -390,7 +390,10 @@ private fun DrawScope.drawRingPart(ring: DrawRingShapes, call: DrawCall, lit: Bo
 /** Where a game of Quick Draw is: the ring dark, [READY] for the call; a [CALL] lit; or [OVER], lost. */
 internal enum class DrawPhase { READY, CALL, OVER }
 
-/** One of Quick Draw's killers: its animation, and its play count so that the same one plays again. Main thread only. */
+/**
+ * One of a training game's killers (Quick Draw's two, Hide and Seek's): its animation, and its play count so that the
+ * same one plays again. Main thread only.
+ */
 @Stable
 internal class DrawActor {
     var anim by mutableStateOf(Anim.IDLE)
