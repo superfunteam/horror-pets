@@ -401,6 +401,51 @@ class FeedingTest {
         }
     }
 
+    /** [n] cooked items and botches: a shelf with nothing raw on it, so a top-up wants to add the most. */
+    private fun dishes(n: Int): List<PantryItem> = PantryItem.entries.filterNot { it.raw }.take(n)
+
+    @Test
+    fun topUpNeverGrowsTheShelfPastTheCap() {
+        assertEquals(40, Tuning.PANTRY_MAX)
+        for (size in listOf(Tuning.PANTRY_MAX, Tuning.PANTRY_MAX - 1, Tuning.PANTRY_MAX - 2)) {
+            val shelf = dishes(size)
+            assertEquals(size, shelf.size)
+            for (seed in 0 until 1000) {
+                val topped = topUp(shelf, Random(seed))
+                assertTrue("size $size seed $seed", topped.size <= Tuning.PANTRY_MAX)
+                assertEquals("size $size seed $seed", shelf, topped.take(shelf.size))
+            }
+        }
+    }
+
+    @Test
+    fun aFullShelfComesBackUnchanged() {
+        // No way to cook on it and nothing raw, and still it gets nothing: the save would drop it anyway.
+        val full = dishes(Tuning.PANTRY_MAX)
+        for (seed in 0 until 100) assertEquals(full, topUp(full, Random(seed)))
+        // A shelf past the cap (a later build's) is not trimmed here either.
+        val over = dishes(Tuning.PANTRY_MAX + 5)
+        for (seed in 0 until 100) assertEquals(over, topUp(over, Random(seed)))
+    }
+
+    @Test
+    fun aShelfOneShortOfFullGetsExactlyOneWayToCook() {
+        // The most important minimum comes first: of the one place left, a way to cook takes it.
+        val shelf = dishes(Tuning.PANTRY_MAX - 1)
+        for (seed in 0 until 1000) {
+            val topped = topUp(shelf, Random(seed))
+            assertEquals("seed $seed", Tuning.PANTRY_MAX, topped.size)
+            assertEquals("seed $seed", shelf, topped.take(shelf.size))
+            assertEquals("seed $seed", ItemKind.METHOD, topped.last().kind)
+        }
+        // Two places left: a way to cook, then a food.
+        val two = dishes(Tuning.PANTRY_MAX - 2)
+        for (seed in 0 until 1000) {
+            val added = topUp(two, Random(seed)).drop(two.size)
+            assertEquals("seed $seed", listOf(ItemKind.METHOD, ItemKind.FOOD), added.map { it.kind })
+        }
+    }
+
     @Test
     fun topUpDoesNotChangeTheShelfItIsGiven() {
         val shelf = listOf(PILE_OF_SLOP)

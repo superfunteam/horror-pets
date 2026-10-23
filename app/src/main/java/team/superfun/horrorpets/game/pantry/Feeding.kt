@@ -72,7 +72,8 @@ fun feed(pet: PetState, item: PantryItem): FeedOutcome {
     val fed = when (item.flavor) {
         Flavor.SAVORY -> base.copy(strength = clampStat(base.strength + p.stat))
         Flavor.SWEET -> base.copy(funLevel = clampStat(base.funLevel + p.stat))
-        Flavor.GROSS, null -> base
+        Flavor.GROSS -> base // its stat is the mood bonus, already added above
+        null -> base // a way to cook or a botch has no flavor, so no flavor stat
     }
     val paid = addXp(fed, p.xp)
     val favorite = p.reaction == Reaction.FAVORITE
@@ -103,24 +104,25 @@ private fun payout(item: PantryItem, taste: Taste): Payout = when {
         val hunger = if (meal) Tuning.FEED_MEAL_HUNGER else Tuning.FEED_SNACK_HUNGER
         val xp = if (meal) Tuning.XP_FEED_MEAL else Tuning.XP_FEED_SNACK
         val stat = if (meal) Tuning.FLAVOR_MEAL else Tuning.FLAVOR_SNACK
-        when (item.flavor) {
-            taste.loves -> Payout(hunger, xp * 2, stat * 2, Tuning.MOOD_LOVED, Reaction.LOVED, lovedLine(item.flavor))
-            taste.hates -> Payout(hunger / 2, 0, 0.0, Tuning.MOOD_HATED, Reaction.HATED, hatedLine(item.flavor))
+        val flavor = requireNotNull(item.flavor) { "${item.name} is a ${item.kind} with no flavor" }
+        when (flavor) {
+            taste.loves -> Payout(hunger, xp * 2, stat * 2, Tuning.MOOD_LOVED, Reaction.LOVED, lovedLine(flavor))
+            taste.hates -> Payout(hunger / 2, 0, 0.0, Tuning.MOOD_HATED, Reaction.HATED, hatedLine(flavor))
             else -> Payout(hunger, xp, stat, 0.0, Reaction.CONTENT, "Not bad!")
         }
     }
 }
 
-private fun lovedLine(flavor: Flavor?): String = when (flavor) {
+private fun lovedLine(flavor: Flavor): String = when (flavor) {
     Flavor.SAVORY -> "Mmm, savory!"
     Flavor.SWEET -> "Mmm, sweet!"
-    Flavor.GROSS, null -> "Gross! I love it!"
+    Flavor.GROSS -> "Gross! I love it!"
 }
 
-private fun hatedLine(flavor: Flavor?): String = when (flavor) {
+private fun hatedLine(flavor: Flavor): String = when (flavor) {
     Flavor.SAVORY -> "Too salty. Yuck."
     Flavor.SWEET -> "Too sweet. Yuck."
-    Flavor.GROSS, null -> "Gross. And not the good kind."
+    Flavor.GROSS -> "Gross. And not the good kind."
 }
 
 /** What each way to cook says when it is fed raw (the spec's quotes). */
@@ -159,20 +161,28 @@ private val FOODS: List<PantryItem> = PantryItem.entries.filter { it.kind == Ite
  * [Tuning.PANTRY_MIN_FOODS] foods, so there is always something to cook. An empty pantry gets a starting handful
  * instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and [Tuning.PANTRY_START_FOODS] foods). Never removes
  * or reorders what is there, and a shelf that already has enough comes back as it was. The open draws lean toward a
- * way to cook ([Tuning.PANTRY_METHOD_ODDS]), since a food alone can only be fed raw. It does not cap the shelf at
- * [Tuning.PANTRY_MAX]; the save does.
+ * way to cook ([Tuning.PANTRY_METHOD_ODDS]), since a food alone can only be fed raw.
+ *
+ * The shelf never grows past [Tuning.PANTRY_MAX] (the save keeps only that many, so anything more would vanish on the
+ * next load): a full shelf gets nothing, and one with only a few places left fills them in order of importance, a way
+ * to cook first, then foods, then open draws.
  */
 fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
     val shelf = pantry.toMutableList()
+    if (shelf.size >= Tuning.PANTRY_MAX) return shelf
     if (shelf.isEmpty()) {
         repeat(Tuning.PANTRY_START_METHODS) { shelf += WAYS_TO_COOK.random(rng) }
         repeat(Tuning.PANTRY_START_FOODS) { shelf += FOODS.random(rng) }
         shelf.shuffle(rng)
         return shelf
     }
-    while (shelf.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_MIN_METHODS) shelf += WAYS_TO_COOK.random(rng)
-    while (shelf.count { it.kind == ItemKind.FOOD } < Tuning.PANTRY_MIN_FOODS) shelf += FOODS.random(rng)
-    while (shelf.count { it.raw } < Tuning.PANTRY_MIN_RAW) {
+    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_MIN_METHODS) {
+        shelf += WAYS_TO_COOK.random(rng)
+    }
+    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.kind == ItemKind.FOOD } < Tuning.PANTRY_MIN_FOODS) {
+        shelf += FOODS.random(rng)
+    }
+    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.raw } < Tuning.PANTRY_MIN_RAW) {
         shelf += if (rng.nextDouble() < Tuning.PANTRY_METHOD_ODDS) WAYS_TO_COOK.random(rng) else FOODS.random(rng)
     }
     return shelf
