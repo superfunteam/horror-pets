@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
@@ -56,11 +55,11 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.Crop
 import team.superfun.horrorpets.assets.SceneSpec
 import team.superfun.horrorpets.assets.coverCrop
+import team.superfun.horrorpets.game.training.DrawCall
 import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.safeInset
-import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextHi
 
@@ -395,7 +394,7 @@ private fun DrawScope.drawFramePicture(art: ReelArt, game: TrainingGame, crop: C
 private fun DrawScope.drawGameArt(game: TrainingGame, art: ReelArt, c: Offset, s: Float) {
     when (game) {
         TrainingGame.SLASH_SAYS -> drawSlashDots(c, s)
-        TrainingGame.QUICK_DRAW -> drawDrawRing(c, s)
+        TrainingGame.QUICK_DRAW -> drawDrawRing(DrawRingShapes(c, 0.82f * s), lit = DrawCall.UP, pop = 1f, timeLeft = 0.7f, ok = null)
         TrainingGame.HIDE_AND_SEEK -> art.tomb?.let { tomb ->
             val height = 1.75f * s
             val foot = c.y + 0.9f * s
@@ -459,49 +458,6 @@ private fun DrawScope.drawSlashDots(c: Offset, s: Float) {
         drawSlashDot(p, r, color, light = if (lit) 1f else 0f, glow = if (lit) slashDotGlow(color, r) else null)
     }
 }
-
-private val RingDark = Color(0xE618141A)
-
-/** Quick Draw's D-pad ring: four wedges round a centre button, the up wedge lit as the call, the time ring draining. */
-private fun DrawScope.drawDrawRing(c: Offset, s: Float) {
-    val outer = 0.82f * s
-    val inner = outer * 0.42f
-    val gap = outer * 0.05f
-    // The wedges, right, down, left and up, each 90° less a sliver either side.
-    for (k in 0 until 4) {
-        val start = -45f + 90f * k
-        val lit = k == 3
-        val wedge = Path().apply {
-            arcTo(Rect(c, outer), start + 3f, 84f, forceMoveTo = true)
-            arcTo(Rect(c, inner + gap), start + 87f, -84f, forceMoveTo = false)
-            close()
-        }
-        if (lit) drawPath(wedge, BloodGlow, alpha = 0.35f, style = Stroke(outer * 0.12f, join = StrokeJoin.Round))
-        drawPath(wedge, if (lit) Blood else RingDark)
-        drawPath(
-            arrowPath(c + Offset(cosDeg(start + 45f), sinDeg(start + 45f)) * ((outer + inner) / 2f), outer * 0.26f, start + 45f),
-            Color.White,
-            alpha = if (lit) 1f else 0.4f,
-        )
-    }
-    drawCircle(RingDark, inner, c)
-    drawCircle(Color.White, inner * 0.92f, c, alpha = 0.08f, style = Stroke(outer * 0.03f))
-    // The time left, draining round the outside.
-    val o = outer * 1.16f
-    drawArc(
-        BloodGlow,
-        startAngle = -90f,
-        sweepAngle = 360f * 0.7f,
-        useCenter = false,
-        topLeft = c - Offset(o, o),
-        size = Size(o * 2f, o * 2f),
-        style = Stroke(outer * 0.07f, cap = StrokeCap.Round),
-    )
-}
-
-private fun cosDeg(degrees: Float): Float = cos(Math.toRadians(degrees.toDouble())).toFloat()
-
-private fun sinDeg(degrees: Float): Float = sin(Math.toRadians(degrees.toDouble())).toFloat()
 
 // ---- the smear ----
 
