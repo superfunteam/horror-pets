@@ -108,8 +108,15 @@ private const val BOB_MS = 900L
 
 // ---- the layout, in the play area ----
 
-/** Your killer watches from the left edge, this far across the play area. */
-private const val PET_X = 0.08f
+/**
+ * Your killer watches from the left edge, a small onlooker: its feet this far across the play area, [WATCHER_HEIGHT] of
+ * the height tall (its cell, as `SpriteView` takes it; Home's pet is 0.46), but in a narrow play area no more than
+ * [WATCHER_MAX_OF_WIDTH] of the width, so that even waving it keeps clear of the left stone (0.30 of the height on a
+ * TV, 0.23 on 4:3).
+ */
+private const val PET_X = 0.065f
+private const val WATCHER_HEIGHT = 0.34f
+private const val WATCHER_MAX_OF_WIDTH = 0.2f
 
 /** The stones stand this many play widths apart, the middle one in the middle. */
 private const val STONE_SPACING = 0.25f
@@ -212,15 +219,16 @@ fun HideAndSeekGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         val petHeight = h * HOME_PET_HEIGHT
         val floorY = env.floorY
         val row = remember(w, h, floorY) { TombRow.of(w, h, floorY) }
+        val watcher = remember(w, h) { SeekWatcher.of(w, h) }
         SideEffect { play.row = row }
 
         SeekStones(play, row, tombs, stoneFilter, env.clock)
         if (mate != null) SeekMate(env, mate.id, play, row, petHeight, h * MATE_IN_FRONT)
         // Facing the camera at the left edge, its feet on the scene's floor.
-        SeekKiller(env, env.pet.id, play.pet, petHeight, 0L, Modifier.placeAt(x = { w * PET_X }, y = { env.floorY }))
+        SeekKiller(env, env.pet.id, play.pet, watcher.height, 0L, Modifier.placeAt(x = { watcher.x }, y = { env.floorY }))
         SeekPointer(play, row, env.clock)
         SeekCallout(play, mateName, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
-        SeekHud(play, env.best, mateName)
+        SeekHud(play, env, mateName)
     }
 }
 
@@ -276,12 +284,12 @@ private fun SeekMate(env: TrainingEnv, mate: PetId, play: HideAndSeekPlay, row: 
 
 /** The HUD, its status line the round, `· WATCH` while the mate hides and the stones shuffle. */
 @Composable
-private fun SeekHud(play: HideAndSeekPlay, best: Int, mateName: String) {
+private fun SeekHud(play: HideAndSeekPlay, env: TrainingEnv, mateName: String) {
     val status = when (play.phase) {
         SeekPhase.HIDE, SeekPhase.SHUFFLE -> "ROUND ${play.round} · WATCH"
         else -> "ROUND ${play.round}"
     }
-    TrainingHud(TrainingGame.HIDE_AND_SEEK.title, status, best, SeekHelp, "TAP THE STONE $mateName IS BEHIND")
+    TrainingHud(TrainingGame.HIDE_AND_SEEK.title, status, env.hudBest, SeekHelp, "TAP THE STONE $mateName IS BEHIND")
 }
 
 /** At the top, in gold: "WHERE'S <MATE>?" while the player picks, then how the pick went. */
@@ -454,6 +462,9 @@ internal class TombRow(val cx: Float, val spacing: Float, val footY: Float, val 
     /** The top of the stones' art. */
     val top: Float get() = footY - stoneH * TOMB_BASE
 
+    /** How far a standing stone's art reaches either side of its middle, in the widest design. */
+    val halfWidth: Float get() = stoneH * WIDEST_TOMB / 2f
+
     /** Where the stone at [pos] stands, across. */
     fun x(pos: Int): Float = x(pos.toFloat())
 
@@ -479,6 +490,22 @@ internal class TombRow(val cx: Float, val spacing: Float, val footY: Float, val 
             val spacing = w * STONE_SPACING
             return TombRow(w / 2f, spacing, floorY, min(h * STONE_HEIGHT, spacing * STONE_MAX_OF_SPACING / WIDEST_TOMB))
         }
+    }
+}
+
+/**
+ * Where your killer watches Hide and Eek! from, in px: its feet [x] across the play area (on the floor), its cell
+ * [height] tall. A small onlooker at the left edge, clear of the stones.
+ */
+@Immutable
+internal class SeekWatcher(val x: Float, val height: Float) {
+    companion object {
+        /**
+         * The watcher for a [w] x [h] play area: [PET_X] of the width across, [WATCHER_HEIGHT] of the height tall, or
+         * less in a narrow one.
+         */
+        fun of(w: Float, h: Float): SeekWatcher =
+            SeekWatcher(w * PET_X, min(h * WATCHER_HEIGHT, w * WATCHER_MAX_OF_WIDTH))
     }
 }
 

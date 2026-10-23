@@ -328,6 +328,28 @@ class HideAndSeekPlayTest {
     }
 
     @Test
+    fun yourKillerWatchesClearOfTheStones() {
+        // How far a killer's art reaches from its feet in what the watcher plays (idle, wave, fail), in its cell's
+        // heights, as measured on sprites-final's strips: to the right in any of them (Jason's wave, 0.327), to the left
+        // standing or failing (Leatherface's fail, 0.267). Chucky's half size is in these already.
+        val reachRight = 0.33f
+        val reachLeft = 0.27f
+        // Screens from 4:3 to a wide phone, the play area between the film's edges.
+        val screens = listOf("4:3" to 4f / 3f, "3:2" to 1.5f, "16:10" to 1.6f, "16:9" to 16f / 9f, "20:9" to 20f / 9f)
+        for ((name, aspect) in screens) {
+            val h = 1080f
+            val w = h * aspect * (1f - 2f * FILM_EDGE_FRACTION)
+            val row = TombRow.of(w, h, floorY = 0.75f * h)
+            val watcher = SeekWatcher.of(w, h)
+            val body = watcher.x + reachRight * watcher.height
+            val stone = row.x(0) - row.halfWidth
+            assertTrue("$name: the body reaches $body, the left stone starts at $stone", body < stone)
+            assertTrue("$name: standing inside the frame", watcher.x - reachLeft * watcher.height >= 0f)
+            assertTrue("$name: a small onlooker, ${watcher.height}", watcher.height <= 0.34f * h + 1e-3f)
+        }
+    }
+
+    @Test
     fun theRowFitsThePlayArea() {
         // A TV's frame between the film's edges (3:2), the floor three quarters down.
         val tv = TombRow.of(w = 1500f, h = 1000f, floorY = 750f)

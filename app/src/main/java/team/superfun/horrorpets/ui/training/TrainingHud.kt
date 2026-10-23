@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 import team.superfun.horrorpets.game.training.TrainingKey
 import team.superfun.horrorpets.ui.common.KeyCap
@@ -41,6 +42,12 @@ import team.superfun.horrorpets.ui.theme.Ink
 
 /** The training games' gold: live status lines and callouts (WATCH..., GET READY, NEW BEST!). */
 internal val TrainingGold = Color(0xFFF5C543)
+
+/**
+ * The best a game's HUD shows as it is played: the pet's [best] before the game, or the [score] so far once it beats
+ * that, so a new best counts up in the corner as it is set, as the results card will have it.
+ */
+internal fun liveBest(best: Int, score: Int): Int = max(best, score)
 
 /** One entry on the help strip: the [keys] (shown as key caps, in order) and what they do, the [label]. */
 data class HelpItem(val keys: List<TrainingKey>, val label: String)

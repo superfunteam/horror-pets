@@ -47,11 +47,35 @@ class SlashSwipeTest {
     @Test
     fun aWrongDotCountsOnlyWhenTouchedItself() {
         val turn = turn()
-        // Due is dot 0; brushing dot 1's hit circle (12 off its centre, under 1.4 radii but outside the dot) is nothing.
+        // Due is dot 0; brushing dot 1's hit circle (12 off its centre, under 1.4 radii but outside the dot) is nothing,
+        // and so is grazing its rim (9.7 off: inside it, but not by 0.95 of its radius).
         assertEquals(emptyList<Pair<Int, SlashStep>>(), swipe(turn, 112f to 30f, 112f to -30f))
+        assertEquals(emptyList<Pair<Int, SlashStep>>(), swipe(turn, 109.7f to 30f, 109.7f to -30f))
         // Touching dot 1 itself ends it.
         assertEquals(listOf(1 to SlashStep.WRONG), swipe(turn, 105f to 0f))
         assertTrue(turn.over)
+    }
+
+    @Test
+    fun aStraightSwipeFromDotToDotCrossesNoOtherOnTheRing() {
+        // The ring a TV shows (its frame between the film's edges, 3:2), every slot dealt. From slot 255° to 320° (or
+        // 220° to 285°), the line between grazes the dot between at 0.99 of its radius, so that must not count.
+        val ring = SlashRing.of(w = 1500f, h = 1000f, floorY = 750f, petHeight = 460f)
+        val slots = (0 until SLASH_SLOTS).toList()
+        val dots = slots.map(ring::dot)
+        for (from in slots) {
+            for (to in slots) {
+                if (to == from) continue
+                // Due: [from], then [to], then the rest.
+                val order = listOf(from, to) + slots.filter { it != from && it != to }
+                val turn = SlashTurn(SlashRound(round = SLASH_SLOTS, slots = slots, order = order))
+                val inside = BooleanArray(SLASH_SLOTS)
+                val steps = mutableListOf<Pair<Int, SlashStep>>()
+                swipeThrough(turn, dots, ring.dotR, dots[from], dots[from], inside) { dot, step -> steps += dot to step }
+                swipeThrough(turn, dots, ring.dotR, dots[from], dots[to], inside) { dot, step -> steps += dot to step }
+                assertEquals("$from to $to", listOf(from to SlashStep.RIGHT, to to SlashStep.RIGHT), steps)
+            }
+        }
     }
 
     @Test

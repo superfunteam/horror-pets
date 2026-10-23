@@ -113,11 +113,12 @@ private const val CHEST_AT = 0.5f
 private const val RING_LOWEST = 0.84f
 
 /**
- * A finger slashes the due dot on reaching this many of its radii (a generous target), but a wrong one only on touching
- * the dot itself ([WRONG_HIT]), so a straight swipe that passes close by another dot isn't a loss.
+ * A finger slashes the due dot on reaching this many of its radii (a generous target), but a wrong one only a little
+ * inside the dot itself ([WRONG_HIT]), so a straight swipe that passes close by another dot isn't a loss: from one dot
+ * to the one two slots round (255° to 320°, or 220° to 285°) the line grazes the dot between at 0.99 of its radius.
  */
 private const val HIT = 1.4f
-private const val WRONG_HIT = 1f
+private const val WRONG_HIT = 0.95f
 
 /** How far down the ring its lowest slots sit, in y radii below its centre. */
 private val LowestSlot = (0 until SLASH_SLOTS).maxOf { sin(Math.toRadians(slotAngle(it).toDouble())) }.toFloat()
@@ -197,7 +198,7 @@ fun SlashSaysGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         SlashPet(env, play, petHeight, Modifier.placeAt(x = { w / 2f }, y = { env.floorY }))
         SlashDots(play, ring.dotR, env.clock)
         SlashCallout(play, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
-        SlashHud(play, env.best)
+        SlashHud(play, env)
     }
 }
 
@@ -232,13 +233,13 @@ private fun SlashCallout(play: SlashSaysPlay, modifier: Modifier) {
 
 /** The HUD, its status line following the round: `ROUND n · WATCH` while it's shown, then `ROUND n · k OF m`. */
 @Composable
-private fun SlashHud(play: SlashSaysPlay, best: Int) {
+private fun SlashHud(play: SlashSaysPlay, env: TrainingEnv) {
     val round = play.round
     val status = when (play.phase) {
         SlashPhase.WATCH -> "ROUND ${round.round} · WATCH"
         else -> "ROUND ${round.round} · ${play.slashed} OF ${round.slots.size}"
     }
-    TrainingHud(TrainingGame.SLASH_SAYS.title, status, best, SlashHelp, "SWIPE THROUGH THE DOTS IN ORDER")
+    TrainingHud(TrainingGame.SLASH_SAYS.title, status, env.hudBest, SlashHelp, "SWIPE THROUGH THE DOTS IN ORDER")
 }
 
 /**
@@ -308,7 +309,7 @@ private enum class SlashPhase { WATCH, TURN, DONE, MISSED }
  * [ry], the dots [dotR] in radius.
  */
 @Immutable
-private class SlashRing(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val dotR: Float) {
+internal class SlashRing(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val dotR: Float) {
     val chest: Offset get() = Offset(cx, cy)
 
     /** Where [slot]'s dot is. */
@@ -521,9 +522,10 @@ private class SlashSaysPlay(private val env: TrainingEnv, private val rng: Rando
 /**
  * A finger moving from [from] to [to] (the same point for a touch going down) through the [dots] (radius [dotR]):
  * slashes, in [turn], each dot it reaches, in the order it reaches them, and tells [onSlash] what that did. It reaches
- * the due dot on entering [HIT] times its radius, any other dot not yet slashed on entering the dot itself
- * ([WRONG_HIT]); a dot it was already in ([inside], by index, which this updates to the dots it is in at [to]) is not
- * reached again until it has left. It stops when the turn is over, and slashes nothing without a [turn].
+ * the due dot on entering [HIT] times its radius, any other dot not yet slashed on entering [WRONG_HIT] times it (a
+ * little inside the dot itself); a dot it was already in ([inside], by index, which this updates to the dots it is in
+ * at [to]) is not reached again until it has left. It stops when the turn is over, and slashes nothing without a
+ * [turn].
  */
 internal fun swipeThrough(
     turn: SlashTurn?,

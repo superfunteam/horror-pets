@@ -213,7 +213,7 @@ fun OrganDropGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         DropPet(env, play, petHeight, Modifier.placeAt(x = { play.killerX(env.clock.nowMs) * w }, y = { env.floorY }))
         DropOrgans(play, lane, organs, organFilter, env.clock)
         DropCallout(play, Modifier.align(Alignment.TopCenter).padding(top = safeInset().vertical + 6.dp))
-        DropHud(play, env.best)
+        DropHud(play, env)
     }
 }
 
@@ -244,8 +244,8 @@ private fun DropCallout(play: OrganDropPlay, modifier: Modifier) {
 
 /** The HUD, its status line the organs caught. */
 @Composable
-private fun DropHud(play: OrganDropPlay, best: Int) {
-    TrainingHud(TrainingGame.ORGAN_DROP.title, "CAUGHT ${play.caught}", best, DropHelp, "HOLD A FINGER WHERE YOU WANT TO RUN")
+private fun DropHud(play: OrganDropPlay, env: TrainingEnv) {
+    TrainingHud(TrainingGame.ORGAN_DROP.title, "CAUGHT ${play.caught}", env.hudBest, DropHelp, "HOLD A FINGER WHERE YOU WANT TO RUN")
 }
 
 /**

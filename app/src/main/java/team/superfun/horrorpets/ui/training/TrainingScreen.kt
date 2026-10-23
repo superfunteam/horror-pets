@@ -61,7 +61,7 @@ private const val RESUME_BEAT_MS = 1_000L
  * - [loader] for its art; [pet], the selected killer as it went into the game; [mate], the stable mate the game puts on
  *   screen (set for a game that `needsMate`, null otherwise); [scene], the pet's Home scene, which the shell already
  *   draws behind the game, its floor at [floorY];
- * - [best], the pet's best in this game before this run, for the HUD;
+ * - [best], the pet's best in this game before this run; the HUD shows [hudBest], the score once it beats that;
  * - [clock], the game's time: a game waits and animates on it ([GameClock.nowMs], [GameClock.waitMs]), never on `delay`
  *   or the frame clock, so it stops dead while the app is away and through the "GET READY" beat after, and while its
  *   results card is up. It has been running since the reel started (`nowMs` is already about 4800 as a game begins),
@@ -95,6 +95,9 @@ class TrainingEnv(
      */
     var floorY: Float by mutableFloatStateOf(Float.NaN)
         internal set
+
+    /** The best the game's HUD shows ([liveBest]): [best], until the [score] beats it. Reading it follows the score. */
+    val hudBest: Int get() = liveBest(best, score.intValue)
 }
 
 /**

@@ -172,7 +172,7 @@ fun QuickDrawGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         }
         DrawRingView(play, spot, env.clock)
         DrawCallout(play, Modifier.placeAt(x = { w / 2f }, y = { spot.cy + spot.reach + h * CALLOUT_GAP }, pivotY = 0f))
-        DrawHud(play, env.best)
+        DrawHud(play, env)
     }
 }
 
@@ -202,8 +202,8 @@ private fun DrawKiller(env: TrainingEnv, pet: PetId, actor: DrawActor, heightPx:
 
 /** The HUD, its status line the streak. */
 @Composable
-private fun DrawHud(play: QuickDrawPlay, best: Int) {
-    TrainingHud(TrainingGame.QUICK_DRAW.title, "STREAK ×${play.streak}", best, DrawHelp, "TAP THE PART THAT LIGHTS UP, FAST")
+private fun DrawHud(play: QuickDrawPlay, env: TrainingEnv) {
+    TrainingHud(TrainingGame.QUICK_DRAW.title, "STREAK ×${play.streak}", env.hudBest, DrawHelp, "TAP THE PART THAT LIGHTS UP, FAST")
 }
 
 /** Under the ring, in gold: "READY..." while it waits, "SLASH!" while a call is lit, and how the game was lost. */
