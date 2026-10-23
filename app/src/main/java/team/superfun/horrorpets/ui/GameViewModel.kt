@@ -36,7 +36,12 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.canFight
+import team.superfun.horrorpets.game.canTrain
 import team.superfun.horrorpets.game.perform
+import team.superfun.horrorpets.game.training.applyTraining
+import team.superfun.horrorpets.game.training.eligibleGames
+import team.superfun.horrorpets.game.training.pickMate
+import team.superfun.horrorpets.game.training.pickTrainingGame
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.FEED_MUNCHES
 import team.superfun.horrorpets.model.Food
@@ -44,6 +49,7 @@ import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.PlayGag
+import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.nextFood
 import team.superfun.horrorpets.model.nextPlayGag
 import team.superfun.horrorpets.model.attackById
@@ -80,8 +86,8 @@ import team.superfun.horrorpets.pvp.resolvePvpTurn
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
- * @param pickRng picks the food a feed drops and the gag a play does. Kept apart from [rng], so caring for a
- *   pet never shifts a fight's rolls.
+ * @param pickRng picks the food a feed drops, the gag a play does, and the game (and its mate) a train opens. Kept
+ *   apart from [rng], so caring for a pet never shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -105,6 +111,13 @@ class GameViewModel(
     private var nextToken = 1L
     private var lastFood: Food? = null
     private var lastGag: PlayGag? = null
+    private var lastTraining: TrainingGame? = null
+
+    /**
+     * Debug builds only: the game the next TRAIN opens, when it is on offer (see the puppet's `train <game>`). Any
+     * TRAIN uses it up, refused or not, so a forced game never waits around for a later one.
+     */
+    internal var debugNextTraining: TrainingGame? = null
 
     /** What happened while the app was closed, read at launch and toasted once Start takes the player Home. */
     private var pendingAway: AwaySummary? = null
@@ -201,31 +214,50 @@ class GameViewModel(
 
     // ---- home: care and walking --------------------------------------------------------------
 
+    /** FEED and PLAY act on the selected pet at once; TRAIN opens a training game, which pays when it ends (see [onTrainingOver]). */
     fun onCare(a: CareAction) {
         val s = _state.value
         val pet = s.homePet() ?: return
+        if (a == CareAction.TRAIN) {
+            openTraining(s, pet)
+            return
+        }
         when (val result = perform(a, pet)) {
             is CareResult.Refused -> refuse(s, result.reason)
             is CareResult.Done -> {
                 val game = s.game.withPet(result.pet)
-                val anims = when (a) {
-                    CareAction.FEED -> List(FEED_MUNCHES) { feedAnim(pet.id) }
-                    CareAction.PLAY -> if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
-                    CareAction.TRAIN -> listOf(Anim.ATTACK, Anim.ATTACK)
+                val (anims, sound) = when (a) {
+                    CareAction.FEED -> List(FEED_MUNCHES) { feedAnim(pet.id) } to "food_drop"
+                    CareAction.PLAY -> (if (canDance(pet.id)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)) to "hand_whoosh"
+                    CareAction.TRAIN -> error("TRAIN opens a training game (see openTraining): it has no animation or sound of its own")
                 }
-                val sfx = listOf(
-                    when (a) {
-                        CareAction.FEED -> "food_drop"
-                        CareAction.PLAY -> "hand_whoosh"
-                        CareAction.TRAIN -> "train"
-                    },
-                ) + if (result.levelsGained > 0) listOf("levelup") else emptyList()
+                val sfx = listOf(sound) + if (result.levelsGained > 0) listOf("levelup") else emptyList()
                 val food = if (a == CareAction.FEED) nextFood(lastFood, pickRng).also { lastFood = it } else null
                 val gag = if (a == CareAction.PLAY) nextPlayGag(lastGag, pickRng).also { lastGag = it } else null
                 _state.value = s.copy(game = game, refuse = null, sfx = s.sfx + sfx).beginAction(anims, food, gag)
                 persist(game)
             }
         }
+    }
+
+    /**
+     * TRAIN on Home: refuses a pet too hungry to train, else opens a training game. The game is random among the ones
+     * on offer (those that need a stable mate only when the stable has one) and never the one picked last when there
+     * is a choice; the mate, for the games that use one, is a random other killer in the stable. [debugNextTraining]
+     * picks the game instead when it is on offer. Nothing is paid or saved until the game ends.
+     */
+    private fun openTraining(s: UiState, pet: PetState) {
+        val forced = debugNextTraining
+        debugNextTraining = null
+        if (!canTrain(pet)) {
+            refuse(s, RefuseReason.TOO_HUNGRY)
+            return
+        }
+        val mate = pickMate(s.game, pickRng)
+        val options = eligibleGames(hasMate = mate != null)
+        val game = forced?.takeIf { it in options } ?: pickTrainingGame(options, lastTraining, pickRng)
+        lastTraining = game
+        _state.value = s.copy(screen = Screen.Training(game, mate.takeIf { game.needsMate }, options), refuse = null)
     }
 
     /** Walks to the neighbouring scene: -1 is left, +1 is right, wrapping around. The scene changes after the run. */
@@ -244,6 +276,49 @@ class GameViewModel(
                 done.copy(game = done.game.withPet(pet.copy(sceneIndex = scene)))
             }
         }
+    }
+
+    // ---- training ----------------------------------------------------------------------------
+
+    /**
+     * The training game ended with [score] (on its own, or Back cut it short): pays it out (see [applyTraining]),
+     * saves, and shows the results card, with the level-up sound when it was worth a level. Only a game that has not
+     * paid yet is paid, so a report that comes in again (Back on the frame the game ended) changes nothing.
+     */
+    fun onTrainingOver(score: Int) {
+        val s = _state.value
+        val training = s.screen as? Screen.Training ?: return
+        if (training.result != null) return
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        val outcome = applyTraining(pet, training.game, score)
+        val game = s.game.withPet(outcome.pet)
+        val result = TrainingResult(
+            score = score.coerceAtLeast(0),
+            best = outcome.best,
+            newBest = outcome.newBest,
+            strength = outcome.strengthGained,
+            xp = outcome.xpGained,
+            levelsGained = outcome.levelsGained,
+        )
+        val sfx = if (outcome.levelsGained > 0) listOf("levelup") else emptyList()
+        _state.value = s.copy(game = game, screen = training.copy(result = result), sfx = s.sfx + sfx)
+        persist(game)
+    }
+
+    /** OK on the results card: Home, where a level-up's new attack is offered as after any level-up. Ignored until the game has paid. */
+    fun onTrainingDone() {
+        val s = _state.value
+        val training = s.screen as? Screen.Training ?: return
+        if (training.result == null) return
+        _state.value = s.goHome()
+    }
+
+    /** Back on the reel: leaves training with nothing paid or spent. Ignored once the game has paid, which only OK carries on from. */
+    fun onTrainingQuit() {
+        val s = _state.value
+        val training = s.screen as? Screen.Training ?: return
+        if (training.result != null) return
+        _state.value = s.goHome()
     }
 
     // ---- the stable, the carousel, versus, fake death -----------------------------------------

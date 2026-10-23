@@ -11,6 +11,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import kotlin.math.roundToInt
+import kotlin.random.Random
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -29,7 +31,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
+import team.superfun.horrorpets.game.training.eligibleGames
+import team.superfun.horrorpets.game.training.pickMate
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.kitOf
 import team.superfun.horrorpets.model.pendingAttacks
@@ -278,6 +283,7 @@ private class Session(
             is PuppetCommand.Care -> {
                 goHome()?.let { return Outcome.Refused(it) }
                 val before = activePet() ?: return Outcome.Refused(NO_PET)
+                if (command.action == CareAction.TRAIN) return openTraining(before, command.game)
                 vm.onCare(command.action)
                 val after = state()
                 val pet = activePet() ?: before
@@ -286,6 +292,17 @@ private class Session(
                     !after.busy -> Outcome.Refused("Home did not take it")
                     else -> Outcome.Done("${pet.id.displayName}: ${careChange(command.action, before, pet)}")
                 }
+            }
+
+            is PuppetCommand.Score -> {
+                val screen = state().screen as? Screen.Training ?: return Outcome.Refused("not training: train first")
+                if (screen.result != null) return Outcome.Refused("the game is over already: home, or train again")
+                vm.onTrainingOver(command.score)
+                val result = (state().screen as? Screen.Training)?.result ?: return Outcome.Refused("training did not take the score")
+                val best = if (result.newBest) "a new best" else "best ${result.best}"
+                val strength = (result.strength * 10).roundToInt() / 10.0
+                val levels = if (result.levelsGained > 0) ", +${result.levelsGained} level" else ""
+                Outcome.Done("${describe(state())} ($best): +$strength strength, +${result.xp} XP$levels")
             }
 
             PuppetCommand.Home -> goHome()?.let { Outcome.Refused(it) } ?: Outcome.Done("on Home${screenNote(state())}")
@@ -317,7 +334,7 @@ private class Session(
         /** The fight's menu is up for [fight]'s turn. */
         data class Menu(val fight: FightState) : Cue
 
-        /** A card that waits for Continue: results, an unlock or a learn screen. */
+        /** A card that waits for Continue: results (a fight's or a training game's), an unlock or a learn screen. */
         data class Card(val screen: Screen) : Cue
     }
 
@@ -326,6 +343,8 @@ private class Session(
         return when (val screen = s.screen) {
             is Screen.Fight -> if (screen.fight.winner == null && screen.pvp?.waiting != true) Cue.Menu(screen.fight) else null
             is Screen.Results, is Screen.Unlocked, is Screen.Learn -> Cue.Card(screen)
+            // A training game is played by hand (or ended with `score`); only its results card waits for Continue.
+            is Screen.Training -> if (screen.result != null) Cue.Card(screen) else null
             else -> null
         }
     }
@@ -349,6 +368,7 @@ private class Session(
                         when (val card = cue.screen) {
                             is Screen.Results -> vm.onResultsDone()
                             is Screen.Unlocked -> vm.onUnlockedDone()
+                            is Screen.Training -> vm.onTrainingDone()
                             is Screen.Learn -> {
                                 Log.i(TAG, "Autoplay: learns ${attackById(card.attack)?.name ?: card.attack}")
                                 vm.onLearn(learn = true)
@@ -419,12 +439,35 @@ private class Session(
                 is Screen.PvpLobby -> vm.onLobbyBack()
                 is Screen.Learn -> vm.onLearnLater()
                 Screen.Moves -> vm.onMovesBack()
+                is Screen.Training -> if (screen.result == null) vm.onTrainingQuit() else vm.onTrainingDone()
                 is Screen.Fight -> return "in a fight: finish it first (autoplay on, or move run)"
                 is Screen.Unlocked -> vm.onUnlockedDone()
                 is Screen.Results -> vm.onResultsDone()
             }
         }
         return "could not get Home from ${describe(state())}"
+    }
+
+    /**
+     * TRAIN for [pet], from Home: opens training on [game] when it is given, else on the one the pick makes. Nothing
+     * is paid until the game ends (see `score`). A [game] that needs a stable mate the stable does not have is
+     * refused, changing nothing.
+     */
+    private fun openTraining(pet: PetState, game: TrainingGame?): Outcome {
+        if (game != null) {
+            if (game !in eligibleGames(hasMate = pickMate(state().game, Random.Default) != null)) {
+                return Outcome.Refused("${game.title} needs another killer in the stable: unlock_all first")
+            }
+            vm.debugNextTraining = game
+        }
+        vm.onCare(CareAction.TRAIN)
+        vm.debugNextTraining = null // for the case Home did not take it
+        val after = state()
+        return when {
+            after.refuse != null -> Outcome.Refused("${pet.id.displayName} turned it down: ${after.refuse}")
+            after.screen !is Screen.Training -> Outcome.Refused("Home did not take it")
+            else -> Outcome.Done(describe(after))
+        }
     }
 
     /** "Freddy, level 14": the active pet in [s]. */
@@ -464,6 +507,9 @@ private fun describe(s: UiState): String = when (val screen = s.screen) {
     is Screen.PvpLobby -> "PvP lobby"
     is Screen.Learn -> "learn screen for ${attackById(screen.attack)?.name ?: screen.attack}"
     Screen.Moves -> "moves"
+    is Screen.Training -> "training: ${screen.game.title}" +
+        (screen.mate?.let { ", mate ${it.displayName}" } ?: "") +
+        (screen.result?.let { ", scored ${it.score}" } ?: "")
     is Screen.Fight -> screen.fight.let { f ->
         "fight vs ${f.cpu.id.displayName}${if (screen.pvp != null) " (PvP)" else ""}, turn ${f.turn}, " +
             "HP ${f.player.hp}/${f.player.maxHp} vs ${f.cpu.hp}/${f.cpu.maxHp}, meter ${f.player.meter}"

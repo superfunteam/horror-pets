@@ -99,8 +99,10 @@ adb -s emulator-5554 logcat -s Puppet    # every command, what came of it, and e
 | `hud off\|on` | Fights (CPU and PvP) hide their HUD for clean footage: the bars, meters, turn badge and status chips, the command and help windows, and PvP's waiting banner. The fighters, callouts, damage numbers, the CPU's tell, cut-ins, the VS card, K.O. and the cards after still show. The hidden menu still takes `move` and autoplay picks. On by default; it lasts until changed, across fights. |
 | `move <strike\|heavy\|block\|special\|potion\|run>` | Picks that move now, if the fight allows it. A `run` runs without asking. |
 | `meter full` | Fills the player's special meter (CPU fights only: a PvP fight must play the same on both apps). |
-| `feed`, `play`, `train` | That care action, going Home first. |
-| `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch). |
+| `feed`, `play`, `train` | That care action, going Home first. `train` opens the training reel, which picks a game and then plays it. Nothing is paid until a game ends. |
+| `train <game>` | Training on that game (`slash_says`, `quick_draw`, `hide_and_seek`, `organ_drop`) instead of the pick. Quick Draw and Hide and Seek need another killer in the stable (`unlock_all`), else the command is refused. |
+| `score <n>` | Ends the training game on screen now with that score (0 or more): the pet is paid for it and the results card comes up, as if the game had ended with it. |
+| `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch; a training game is left, or its card dismissed). |
 | `wait <seconds>`, `wait home` | Holds the rest of the line: for that long, or until Home is up and idle (a fight and its cards over). |
 | `status` | Logs the screen, the active pet and whether autoplay and the HUD are on. |
 

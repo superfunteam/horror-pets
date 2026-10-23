@@ -44,6 +44,7 @@ import team.superfun.horrorpets.ui.fight.arenaScene
 import team.superfun.horrorpets.ui.home.HomeScreen
 import team.superfun.horrorpets.ui.switcher.SwitcherScreen
 import team.superfun.horrorpets.ui.theme.Ink
+import team.superfun.horrorpets.ui.training.TrainingScreen
 
 /** Cross-fade between screens. */
 private const val SCREEN_FADE_MS = 280
@@ -189,6 +190,22 @@ fun HorrorPetsApp(
                 Screen.Moves -> {
                     val pet = state.game.selected?.let { state.game.pets[it] }
                     if (pet != null) MovesScreen(pet = pet, onEquip = vm::onEquip, onBack = vm::onMovesBack, focusEntry = focusEntry)
+                }
+
+                is Screen.Training -> {
+                    val pet = state.game.selected?.let { state.game.pets[it] }
+                    if (pet != null) {
+                        TrainingScreen(
+                            screen = screen,
+                            pet = pet,
+                            mate = screen.mate?.let { state.game.pets[it] },
+                            loader = loader,
+                            onOver = vm::onTrainingOver,
+                            onDone = vm::onTrainingDone,
+                            onQuit = vm::onTrainingQuit,
+                            focusEntry = focusEntry,
+                        )
+                    }
                 }
 
                 is Screen.PvpLobby -> PvpLobbyScreen(

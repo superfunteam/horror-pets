@@ -6,6 +6,7 @@ import org.junit.Test
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.TrainingGame
 
 class PuppetCommandTest {
     private fun assertInvalid(text: String, mentioning: String) {
@@ -116,10 +117,36 @@ class PuppetCommandTest {
     }
 
     @Test
+    fun trainTakesAnOptionalGame() {
+        assertEquals(PuppetCommand.Care(CareAction.TRAIN), parseCommand("train"))
+        for (game in TrainingGame.entries) {
+            assertEquals(PuppetCommand.Care(CareAction.TRAIN, game), parseCommand("train ${game.name.lowercase()}"))
+        }
+        assertEquals(PuppetCommand.Care(CareAction.TRAIN, TrainingGame.QUICK_DRAW), parseCommand("  TRAIN   Quick_Draw "))
+        assertInvalid("train chess", "hide_and_seek")
+        assertInvalid("train slash_says organ_drop", "one game")
+        // Only train has games to choose from.
+        assertInvalid("feed slash_says", "no argument")
+        assertInvalid("play organ_drop", "no argument")
+    }
+
+    @Test
+    fun scoreTakesANumber() {
+        assertEquals(PuppetCommand.Score(8), parseCommand("score 8"))
+        assertEquals(PuppetCommand.Score(0), parseCommand(" SCORE  0 "))
+        assertEquals(PuppetCommand.Score(30), parseCommand("score 30"))
+        for (bad in listOf("score", "score -1", "score 2.5", "score ten", "score 1 2", "score 99999999999")) {
+            assertInvalid(bad, "whole number")
+        }
+    }
+
+    @Test
     fun anUnknownCommandListsTheCommands() {
         assertInvalid("dance", "unlock_all")
         assertInvalid("dance", "autoplay on|off")
         assertInvalid("dance", "hud on|off")
+        assertInvalid("dance", "train [<game>]")
+        assertInvalid("dance", "score <n>")
         assertInvalid("", "empty")
         // The invalid command keeps its text, for the log.
         assertEquals("dance wildly", (parseCommand("  dance wildly ") as PuppetCommand.Invalid).text)

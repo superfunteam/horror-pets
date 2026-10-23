@@ -10,6 +10,7 @@ import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
+import team.superfun.horrorpets.model.TrainingGame
 
 /**
  * Why the spotlight carousel is open: picking the starter of a new game ([ONBOARD], any of the killers), or an
@@ -50,6 +51,19 @@ enum class PvpProblem {
 /** A PvP fight's link to the other player, for the fight screen: this player is [waiting] for the other to lock in, who [opponentIn] already has. */
 data class PvpView(val waiting: Boolean = false, val opponentIn: Boolean = false)
 
+/**
+ * What a finished training game paid, for its results card: the [score], the pet's [best] in that game (which
+ * [newBest] says this score just set), the [strength] and [xp] the training earned, and the [levelsGained].
+ */
+data class TrainingResult(
+    val score: Int,
+    val best: Int,
+    val newBest: Boolean,
+    val strength: Double,
+    val xp: Int,
+    val levelsGained: Int,
+)
+
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
 sealed interface Screen {
     /** The save is still being read. */
@@ -76,6 +90,18 @@ sealed interface Screen {
 
     /** The selected pet's attacks, slot by slot: equip any it has unlocked. */
     data object Moves : Screen
+
+    /**
+     * TRAIN: the selected pet plays [game], picked from [options] (the games on offer, which the reel shows), against
+     * its stable [mate] when the game uses one (else null). [result] is null while the reel spins and the game plays,
+     * and set the moment the game has paid, until the player carries on Home.
+     */
+    data class Training(
+        val game: TrainingGame,
+        val mate: PetId?,
+        val options: List<TrainingGame>,
+        val result: TrainingResult? = null,
+    ) : Screen
 
     /**
      * [lastEvents] are the events of the turn just resolved, in the order to animate them (empty before
@@ -105,9 +131,15 @@ sealed interface Screen {
 }
 
 /**
+ * Whether this screen makes the sounds for its own key presses, so `MainActivity` leaves out its `ui_move` and
+ * `ui_select` ticks: a training game does, from the reel to the last move (its results card ticks like any other).
+ */
+val Screen.ownsKeySounds: Boolean get() = this is Screen.Training && result == null
+
+/**
  * Ask the UI to play [anim] on the selected pet. The UI calls `onAnimFinished(token)` when it ends.
- * Every request has a fresh [token], even when two in a row play the same [anim] (TRAIN plays ATTACK
- * twice), so the UI must key on the token, not the anim.
+ * Every request has a fresh [token], even when two in a row play the same [anim] (a feed's munches),
+ * so the UI must key on the token, not the anim.
  *
  * A feed's first request carries the [food] to drop: the UI drops it in beside the pet and only then
  * plays [anim], the first of the feed's munches. A play's first request carries the [gag] the player's

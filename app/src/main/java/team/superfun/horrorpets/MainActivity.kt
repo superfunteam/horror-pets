@@ -49,6 +49,7 @@ import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.HorrorPetsApp
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.ownsKeySounds
 import team.superfun.horrorpets.ui.common.LocalTouchDevice
 import team.superfun.horrorpets.ui.common.ProvideScreenDensity
 import team.superfun.horrorpets.ui.common.isTouchDevice
@@ -195,7 +196,8 @@ class MainActivity : ComponentActivity() {
      *   cascade through several screens;
      * - on Home, Menu opens the pet switcher and Rewind / Fast-forward walk to the neighbouring scene;
      * - the UI tick sounds: a D-pad arrow plays `ui_move` (except in the pet switcher, which times its own),
-     *   OK / Enter plays `ui_select` and Back plays `ui_back`. Only a key's first down counts, not its repeats.
+     *   OK / Enter plays `ui_select` (both stay quiet in a training game, whose presses make their own sounds) and
+     *   Back plays `ui_back`. Only a key's first down counts, not its repeats.
      *   A phone's back gesture can arrive as a Back key too (before Android 16), but the screens tick for a
      *   gesture themselves (`GameBackHandler`), so a Back key that comes in touch mode stays quiet here.
      *
@@ -224,9 +226,10 @@ class MainActivity : ComponentActivity() {
     // a TV remote's Back button is still a real KEYCODE_BACK, and this only plays a tick, it doesn't navigate.
     @SuppressLint("GestureBackNavigation")
     private fun playKeySound(keyCode: Int) {
+        val screen = vm.state.value.screen
         when (keyCode) {
-            in MOVE_KEYS -> if (vm.state.value.screen !is Screen.Switcher) audio.sfx("ui_move")
-            in SELECT_KEYS -> audio.sfx("ui_select")
+            in MOVE_KEYS -> if (screen !is Screen.Switcher && !screen.ownsKeySounds) audio.sfx("ui_move")
+            in SELECT_KEYS -> if (!screen.ownsKeySounds) audio.sfx("ui_select")
             KeyEvent.KEYCODE_BACK -> if (!isTouchInput(touchDevice, window.decorView.isInTouchMode)) audio.sfx("ui_back")
         }
     }
@@ -314,7 +317,7 @@ class MainActivity : ComponentActivity() {
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
             Screen.Loading, is Screen.FakeDeath -> null
             Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
-            Screen.Home, is Screen.Learn, Screen.Moves -> state.game.selected?.name?.lowercase()
+            Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training -> state.game.selected?.name?.lowercase()
             is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
         }
 

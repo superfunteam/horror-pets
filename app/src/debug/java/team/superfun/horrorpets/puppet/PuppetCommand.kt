@@ -4,6 +4,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.TrainingGame
 
 /** One puppet command, as [parseCommand] reads it from adb (see "Puppet mode" in the README). */
 sealed interface PuppetCommand {
@@ -34,8 +35,14 @@ sealed interface PuppetCommand {
     /** `meter full`: fills the player's special meter in the current CPU fight. */
     data object MeterFull : PuppetCommand
 
-    /** `feed`, `play` or `train`: that care [action] on Home (going Home first). */
-    data class Care(val action: CareAction) : PuppetCommand
+    /**
+     * `feed`, `play` or `train`: that care [action] on Home (going Home first). `train <game>` opens training on
+     * [game] (when the stable has what it needs), else on the game the pick makes.
+     */
+    data class Care(val action: CareAction, val game: TrainingGame? = null) : PuppetCommand
+
+    /** `score <n>`: the training game on screen ends now with [score], which pays and shows its results card. */
+    data class Score(val score: Int) : PuppetCommand
 
     /** `home`: back to Home from wherever the game is, but a fight. */
     data object Home : PuppetCommand
@@ -58,9 +65,11 @@ const val MAX_WAIT_SECONDS = 600
 
 /** Every command's syntax, for the log when one is not understood. */
 const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, hud on|off, " +
-    "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train, home, wait <seconds>|home, status"
+    "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train [<game>], score <n>, home, " +
+    "wait <seconds>|home, status"
 
 private val KILLERS = PetId.entries.joinToString(", ") { it.name.lowercase() }
+private val TRAINING_GAMES = TrainingGame.entries.joinToString(", ") { it.name.lowercase() }
 
 /** A line of commands split into one per command: they are separated by `;` or new lines, and blanks are dropped. */
 fun splitCommands(line: String): List<String> = line.split(';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
@@ -83,7 +92,15 @@ fun parseCommand(text: String): PuppetCommand {
         "learn_all" -> bare(PuppetCommand.LearnAll)
         "feed" -> bare(PuppetCommand.Care(CareAction.FEED))
         "play" -> bare(PuppetCommand.Care(CareAction.PLAY))
-        "train" -> bare(PuppetCommand.Care(CareAction.TRAIN))
+        "train" -> {
+            if (args.isEmpty()) return PuppetCommand.Care(CareAction.TRAIN)
+            val game = arg?.let(::trainingGameNamed) ?: return invalid("train takes no argument or one game: $TRAINING_GAMES")
+            PuppetCommand.Care(CareAction.TRAIN, game)
+        }
+        "score" -> {
+            val score = arg?.toIntOrNull()?.takeIf { it >= 0 }
+            if (score == null) invalid("score needs a whole number, 0 or more") else PuppetCommand.Score(score)
+        }
         "home" -> bare(PuppetCommand.Home)
         "status" -> bare(PuppetCommand.Status)
         "pet", "fight" -> {
@@ -120,3 +137,6 @@ fun parseCommand(text: String): PuppetCommand {
 
 /** The killer called [name] (its id, in any case), if there is one. */
 private fun killerNamed(name: String): PetId? = PetId.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+
+/** The training game called [name] (its id, in any case), if there is one. */
+private fun trainingGameNamed(name: String): TrainingGame? = TrainingGame.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }

@@ -31,10 +31,12 @@ import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
+import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.TrainingGame
 
 // A realistic epoch (2027-01-15), safely past Tuning.MIN_VALID_EPOCH_MS.
 private const val T0 = 1_800_000_000_000L
@@ -120,6 +122,7 @@ private class Rig(
     val store: FakeStore = FakeStore(initial),
     val clock: FakeClock = FakeClock(T0),
     clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
+    pickRng: Random = Random.Default,
 ) {
     val errors = mutableListOf<Throwable>()
     val scope = TestScope(StandardTestDispatcher())
@@ -133,6 +136,7 @@ private class Rig(
         canDance = { it == PetId.LEATHERFACE },
         onError = { errors += it },
         clockFloorMs = clockFloorMs,
+        pickRng = pickRng,
     )
 
     val ui: UiState get() = vm.state.value
@@ -553,35 +557,32 @@ class GameViewModelTest {
     }
 
     @Test
-    fun trainAndFeedAreTheSameForADancer() {
+    fun feedIsTheSameForADancerAndTrainStillOpensTraining() {
         val rig = Rig(gameOf(selected = PetId.LEATHERFACE, pets = arrayOf(PetState(PetId.LEATHERFACE, hunger = 60.0)))).started()
         rig.vm.onCare(CareAction.FEED)
         assertEquals(Anim.REVIEW, rig.ui.petAnim!!.anim)
         rig.finishAllAnims()
         rig.vm.onCare(CareAction.TRAIN)
-        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
-        rig.finishAnim()
-        assertEquals(Anim.ATTACK, rig.ui.petAnim!!.anim)
+        assertTrue(rig.ui.screen is Screen.Training)
+        assertNull("no dance, no swing: the games are the training", rig.ui.petAnim)
     }
 
     @Test
-    fun trainPlaysAttackTwiceWithDistinctTokens() {
+    fun trainOpensTrainingInsteadOfPayingAtOnce() {
         val rig = Rig(gameOf()).started()
+        val before = rig.jason
+        val saves = rig.store.saves.size
         rig.vm.onCare(CareAction.TRAIN)
-        val first = rig.ui.petAnim!!
-        assertEquals(Anim.ATTACK, first.anim)
-        assertEquals(26.0, rig.jason.strength, 1e-9)
-        assertEquals(listOf("train"), rig.ui.sfx)
 
-        rig.vm.onAnimFinished(first.token)
-        val second = rig.ui.petAnim!!
-        assertEquals(Anim.ATTACK, second.anim)
-        assertNotEquals(first.token, second.token)
-        assertTrue(rig.ui.busy)
-
-        rig.vm.onAnimFinished(second.token)
+        val training = rig.ui.screen as Screen.Training
+        assertTrue(training.game in training.options)
+        assertNull(training.result)
+        assertEquals("nothing is paid until a game ends", before, rig.jason)
         assertFalse(rig.ui.busy)
-        assertEquals(26.0, rig.jason.strength, 1e-9)
+        assertNull(rig.ui.petAnim)
+        assertNull(rig.ui.refuse)
+        rig.settle()
+        assertEquals("and nothing is saved for opening it", saves, rig.store.saves.size)
     }
 
     @Test
@@ -622,11 +623,22 @@ class GameViewModelTest {
     }
 
     @Test
-    fun levelUpAddsTheLevelUpSound() {
+    fun aLevelUpFromTrainingAddsTheLevelUpSound() {
         val rig = Rig(gameOf(pets = arrayOf(jason(xp = 95)))).started()
         rig.vm.onCare(CareAction.TRAIN)
+        assertFalse("not yet: the game has not paid", "levelup" in rig.ui.sfx)
+        rig.vm.onTrainingOver(0)
         assertEquals(2, rig.jason.level)
-        assertEquals(listOf("train", "levelup"), rig.ui.sfx)
+        assertEquals(listOf("levelup"), rig.ui.sfx)
+    }
+
+    @Test
+    fun noLevelUpNoLevelUpSound() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.onCare(CareAction.TRAIN)
+        rig.vm.onTrainingOver(5)
+        assertEquals(1, rig.jason.level)
+        assertTrue(rig.ui.sfx.isEmpty())
     }
 
     @Test
@@ -650,16 +662,6 @@ class GameViewModelTest {
         // The next real action clears the refusal.
         rig.vm.onCare(CareAction.PLAY)
         assertNull(rig.ui.refuse)
-    }
-
-    @Test
-    fun trainingAStarvingPetIsRefused() {
-        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 90.0)))).started()
-        val before = rig.jason
-        rig.vm.onCare(CareAction.TRAIN)
-        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
-        assertEquals(Anim.FAIL, rig.ui.petAnim!!.anim)
-        assertEquals(before, rig.jason)
     }
 
     @Test
@@ -688,6 +690,232 @@ class GameViewModelTest {
         rig.vm.onWalk(1)
         rig.vm.onFightPressed()
         assertEquals(before, rig.ui)
+    }
+
+    // ---- training ----------------------------------------------------------------------------
+
+    /** A stable of just [pet]: nobody to be a mate, so only the solo games are on offer. */
+    private fun loneStable(pet: PetState = jason()) = GameState(pets = mapOf(pet.id to pet), selected = pet.id, lastSeenMs = T0)
+
+    /** Opens training on [game], as the puppet does, whatever the pick would have been. */
+    private fun Rig.trainAt(game: TrainingGame): Screen.Training {
+        vm.debugNextTraining = game
+        vm.onCare(CareAction.TRAIN)
+        return ui.screen as Screen.Training
+    }
+
+    @Test
+    fun trainingWithoutAMateOffersOnlySoloGames() {
+        val rig = Rig(loneStable()).started()
+        repeat(10) {
+            rig.vm.onCare(CareAction.TRAIN)
+            val training = rig.ui.screen as Screen.Training
+            assertEquals(listOf(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP), training.options)
+            assertTrue(training.game in training.options)
+            assertNull(training.mate)
+            rig.vm.onTrainingQuit()
+        }
+    }
+
+    @Test
+    fun trainingWithAMateMayPickAnyGame() {
+        val rig = Rig(gameOf(), pickRng = Random(3)).started()
+        val seen = mutableSetOf<TrainingGame>()
+        repeat(40) {
+            rig.vm.onCare(CareAction.TRAIN)
+            val training = rig.ui.screen as Screen.Training
+            assertEquals(TrainingGame.entries, training.options)
+            seen += training.game
+            if (training.game.needsMate) {
+                val mate = training.mate
+                assertNotNull("${training.game} needs a mate", mate)
+                assertNotEquals("the mate is another killer", PetId.JASON, mate)
+                assertTrue("from the stable", mate in rig.game.pets)
+            } else {
+                assertNull("${training.game} is played alone", training.mate)
+            }
+            rig.vm.onTrainingQuit()
+        }
+        assertEquals(TrainingGame.entries.toSet(), seen)
+    }
+
+    @Test
+    fun trainingNeverOpensTheSameGameTwiceInARow() {
+        for (stable in listOf(gameOf(), loneStable())) {
+            val rig = Rig(stable).started()
+            var last: TrainingGame? = null
+            repeat(30) {
+                rig.vm.onCare(CareAction.TRAIN)
+                val picked = (rig.ui.screen as Screen.Training).game
+                assertNotEquals(last, picked)
+                last = picked
+                rig.vm.onTrainingQuit()
+            }
+        }
+    }
+
+    @Test
+    fun aForcedGameOpensOnceAndOnlyWhenItIsOnOffer() {
+        val rig = Rig(gameOf()).started()
+        for (game in TrainingGame.entries) {
+            val training = rig.trainAt(game)
+            assertEquals(game, training.game)
+            assertEquals("a mate game has its mate", game.needsMate, training.mate != null)
+            assertNull("used up", rig.vm.debugNextTraining)
+            rig.vm.onTrainingQuit()
+        }
+
+        val alone = Rig(loneStable()).started()
+        val training = alone.trainAt(TrainingGame.QUICK_DRAW)
+        assertTrue("nobody to draw against: another game", training.game in training.options)
+        assertNull(alone.vm.debugNextTraining)
+    }
+
+    @Test
+    fun starvingPetStillRefusesTraining() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 90.0)))).started()
+        val before = rig.jason
+        rig.vm.debugNextTraining = TrainingGame.ORGAN_DROP
+        rig.vm.onCare(CareAction.TRAIN)
+        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
+        assertEquals(Anim.FAIL, rig.ui.petAnim!!.anim)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(before, rig.jason)
+        assertNull("a refused train uses the forced game up too", rig.vm.debugNextTraining)
+    }
+
+    @Test
+    fun trainingOverPaysOnceAndShowsTheResult() {
+        val rig = Rig(gameOf()).started()
+        val before = rig.jason
+        rig.trainAt(TrainingGame.SLASH_SAYS)
+        rig.vm.onTrainingOver(8)
+
+        // Par is 8, so the full 3x: strength +18 and xp +30, and hunger and fun as TRAIN has always moved them.
+        val paid = rig.jason
+        assertEquals(38.0, paid.strength, 1e-9)
+        assertEquals(30, paid.xp)
+        assertEquals(32.0, paid.hunger, 1e-9)
+        assertEquals(75.0, paid.funLevel, 1e-9)
+        assertEquals(applyTraining(before, TrainingGame.SLASH_SAYS, 8).pet, paid)
+        assertEquals(mapOf("SLASH_SAYS" to 8), paid.trainingBest)
+        val result = (rig.ui.screen as Screen.Training).result
+        assertEquals(TrainingResult(score = 8, best = 8, newBest = true, strength = 18.0, xp = 30, levelsGained = 0), result)
+        assertFalse(rig.ui.busy)
+        rig.settle()
+        assertEquals(rig.game, rig.store.last)
+
+        val card = rig.ui
+        val saves = rig.store.saves.size
+        rig.vm.onTrainingOver(8)
+        rig.vm.onTrainingOver(30)
+        rig.settle()
+        assertEquals("a second report pays nothing", card, rig.ui)
+        assertEquals(saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun aLowerScoreLeavesTheBestAlone() {
+        val rig = Rig(gameOf()).started()
+        rig.trainAt(TrainingGame.SLASH_SAYS)
+        rig.vm.onTrainingOver(8)
+        rig.vm.onTrainingDone()
+
+        rig.trainAt(TrainingGame.SLASH_SAYS)
+        rig.vm.onTrainingOver(5)
+        val result = (rig.ui.screen as Screen.Training).result!!
+        assertEquals(5, result.score)
+        assertEquals(8, result.best)
+        assertFalse(result.newBest)
+        assertEquals(mapOf("SLASH_SAYS" to 8), rig.jason.trainingBest)
+    }
+
+    @Test
+    fun trainingPaysThePetAsItIsWhenTheGameEnds() {
+        val rig = Rig(gameOf()).started()
+        rig.trainAt(TrainingGame.ORGAN_DROP)
+        rig.clock.now += 2 * HOUR
+        rig.vm.tick()
+        assertTrue("time passing does not end it", rig.ui.screen is Screen.Training)
+        val ticked = rig.jason
+        assertNotEquals(jason(), ticked)
+
+        rig.vm.onTrainingOver(0)
+        assertEquals(applyTraining(ticked, TrainingGame.ORGAN_DROP, 0).pet, rig.jason)
+    }
+
+    @Test
+    fun aTrainingGameMakesItsOwnKeySoundsUntilItsCard() {
+        val rig = Rig(gameOf()).started()
+        assertFalse("Home ticks", rig.ui.screen.ownsKeySounds)
+        rig.vm.onCare(CareAction.TRAIN)
+        assertTrue("the reel and the game", rig.ui.screen.ownsKeySounds)
+        rig.vm.onTrainingOver(0)
+        assertFalse("the card ticks like the others", rig.ui.screen.ownsKeySounds)
+    }
+
+    @Test
+    fun trainingMessagesOffTheTrainingScreenAreIgnored() {
+        val rig = Rig(gameOf()).started()
+        val before = rig.ui
+        rig.vm.onTrainingOver(8)
+        rig.vm.onTrainingDone()
+        rig.vm.onTrainingQuit()
+        assertEquals(before, rig.ui)
+    }
+
+    @Test
+    fun trainingDoneGoesHomeOnce() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.onCare(CareAction.TRAIN)
+        val reel = rig.ui
+        rig.vm.onTrainingDone()
+        assertEquals("nothing to dismiss yet", reel, rig.ui)
+
+        rig.vm.onTrainingOver(3)
+        rig.vm.onTrainingDone()
+        assertEquals(Screen.Home, rig.ui.screen)
+        val home = rig.ui
+        rig.vm.onTrainingDone()
+        assertEquals(home, rig.ui)
+    }
+
+    @Test
+    fun quittingDuringTheReelGivesNothing() {
+        val rig = Rig(gameOf()).started()
+        val before = rig.jason
+        rig.settle()
+        val saves = rig.store.saves.size
+
+        rig.vm.onCare(CareAction.TRAIN)
+        rig.vm.onTrainingQuit()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(before, rig.jason)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+        val home = rig.ui
+        rig.vm.onTrainingQuit()
+        assertEquals(home, rig.ui)
+
+        // Once the game has paid, Back no longer leaves for free: the card is dismissed with OK.
+        rig.vm.onCare(CareAction.TRAIN)
+        rig.vm.onTrainingOver(2)
+        val card = rig.ui
+        rig.vm.onTrainingQuit()
+        assertEquals(card, rig.ui)
+    }
+
+    @Test
+    fun aLevelUpFromTrainingOffersTheNewAttackAfterTheCard() {
+        val rig = Rig(gameOf(pets = arrayOf(jason(xp = 95)))).started()
+        rig.vm.onCare(CareAction.TRAIN)
+        rig.vm.onTrainingOver(0)
+        assertEquals(1, (rig.ui.screen as Screen.Training).result!!.levelsGained)
+        assertTrue("the card comes first", rig.ui.screen is Screen.Training)
+
+        rig.vm.onTrainingDone()
+        assertEquals(Screen.Learn(PetId.JASON, "jason_light_1"), rig.ui.screen)
+        assertTrue("unlock" in rig.ui.sfx)
     }
 
     // ---- walking -----------------------------------------------------------------------------
@@ -1326,7 +1554,7 @@ class GameViewModelTest {
         assertNull(rig.ui.petAnim!!.gag)
         rig.finishAllAnims()
         rig.vm.onCare(CareAction.TRAIN)
-        assertNull(rig.ui.petAnim!!.gag)
+        assertNull("training plays no animation of its own", rig.ui.petAnim)
     }
 
     @Test
@@ -1336,7 +1564,7 @@ class GameViewModelTest {
         assertNull(rig.ui.petAnim!!.food)
         rig.finishAllAnims()
         rig.vm.onCare(CareAction.TRAIN)
-        assertNull(rig.ui.petAnim!!.food)
+        assertNull("training plays no animation of its own", rig.ui.petAnim)
     }
 
     // ---- the stable: unlocking killers and switching between them ------------------------------
