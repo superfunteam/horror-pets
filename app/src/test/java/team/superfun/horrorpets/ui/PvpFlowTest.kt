@@ -18,7 +18,7 @@ import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.mirroredEvents
-import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITES
+import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
@@ -116,7 +116,7 @@ private class RelayHub {
  * training a new player owes before the first fight, so FIGHT (and the PvP behind it) is open.
  */
 private class App(pet: PetState, relay: PvpRelay?) {
-    private val trained = pet.copy(trainedGames = FIGHT_PREREQUISITES.map { it.name }.toSet())
+    private val trained = pet.copy(trainedGames = FIGHT_PREREQUISITE_NAMES)
     val scope = TestScope(StandardTestDispatcher())
     val hostCodes = mutableListOf<String?>()
     val vm = GameViewModel(

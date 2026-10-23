@@ -42,6 +42,9 @@ fun trainingMultiplier(game: TrainingGame, score: Int): Double =
 /** The training games a new killer must finish before its first fight: the two that need no stable mate. */
 val FIGHT_PREREQUISITES: Set<TrainingGame> = setOf(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP)
 
+/** [FIGHT_PREREQUISITES] by [TrainingGame.name], as a pet's `trainedGames` holds them. */
+val FIGHT_PREREQUISITE_NAMES: Set<String> = FIGHT_PREREQUISITES.map { it.name }.toSet()
+
 /** Whether any killer in the stable has fought: a win or a loss. A player who has is past the training gate for good. */
 fun GameState.hasEverFought(): Boolean = pets.values.any { it.wins + it.losses > 0 }
 
@@ -50,7 +53,7 @@ fun GameState.hasEverFought(): Boolean = pets.values.any { it.wins + it.losses >
  * has never fought (see [hasEverFought]) and whose [pet] has not yet finished both. A game with a mate does not count.
  */
 fun mustTrainBeforeFighting(game: GameState, pet: PetState): Boolean =
-    !game.hasEverFought() && !pet.trainedGames.containsAll(FIGHT_PREREQUISITES.map { it.name })
+    !game.hasEverFought() && !pet.trainedGames.containsAll(FIGHT_PREREQUISITE_NAMES)
 
 /** This pet's best score in [game], or 0 when it has not scored one. */
 fun PetState.bestAt(game: TrainingGame): Int = trainingBest[game.name] ?: 0

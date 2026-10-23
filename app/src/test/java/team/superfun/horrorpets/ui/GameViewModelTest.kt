@@ -31,7 +31,7 @@ import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
-import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITES
+import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
@@ -52,7 +52,7 @@ private const val NO_FEINT = 0.99
  * The training games a new player has to finish before their first fight (see mustTrainBeforeFighting). The fixtures
  * below have all done them, so FIGHT is open unless a test builds a new player's stable to see it shut.
  */
-private val TRAINED: Set<String> = FIGHT_PREREQUISITES.map { it.name }.toSet()
+private val TRAINED: Set<String> = FIGHT_PREREQUISITE_NAMES
 
 private fun gameOf(
     selected: PetId? = PetId.JASON,
@@ -810,7 +810,9 @@ class GameViewModelTest {
         assertEquals(30, paid.xp)
         assertEquals(32.0, paid.hunger, 1e-9)
         assertEquals(75.0, paid.funLevel, 1e-9)
-        assertEquals(applyTraining(before, TrainingGame.SLASH_SAYS, 8).pet, paid)
+        // The pay, and the game marked finished (whatever the pet had finished before).
+        val paidFor = applyTraining(before, TrainingGame.SLASH_SAYS, 8).pet
+        assertEquals(paidFor.copy(trainedGames = before.trainedGames + TrainingGame.SLASH_SAYS.name), paid)
         assertEquals(mapOf("SLASH_SAYS" to 8), paid.trainingBest)
         val result = (rig.ui.screen as Screen.Training).result
         assertEquals(TrainingResult(score = 8, best = 8, newBest = true, strength = 18.0, xp = 30, levelsGained = 0), result)
@@ -854,7 +856,8 @@ class GameViewModelTest {
         assertNotEquals(jason(), ticked)
 
         rig.vm.onTrainingOver(rig.session(), 0)
-        assertEquals(applyTraining(ticked, TrainingGame.ORGAN_DROP, 0).pet, rig.jason)
+        val paidFor = applyTraining(ticked, TrainingGame.ORGAN_DROP, 0).pet
+        assertEquals(paidFor.copy(trainedGames = ticked.trainedGames + TrainingGame.ORGAN_DROP.name), rig.jason)
     }
 
     @Test
@@ -1085,6 +1088,34 @@ class GameViewModelTest {
         rig.settle()
         assertEquals(setOf("ORGAN_DROP"), rig.store.last.pets.getValue(PetId.JASON).trainedGames)
         assertEquals(rig.game, rig.store.last)
+    }
+
+    @Test
+    fun aRejectedReportRecordsNothingForANewPlayer() {
+        val rig = Rig(newPlayer()).started()
+        rig.trainAt(TrainingGame.SLASH_SAYS)
+        val stale = rig.session()
+        rig.vm.onTrainingQuit(stale)
+        rig.trainAt(TrainingGame.ORGAN_DROP)
+        val now = rig.session()
+        assertNotEquals(stale, now)
+        val reel = rig.ui
+
+        // A report from the session before, or from one that never was: nothing paid, nothing recorded.
+        rig.vm.onTrainingOver(stale, 8)
+        rig.vm.onTrainingOver(now + 1_000L, 8)
+        assertEquals(reel, rig.ui)
+        assertTrue(rig.jason.trainedGames.isEmpty())
+
+        // Back on the reel, then the game's report coming in late for the very session that left.
+        rig.vm.onTrainingQuit(now)
+        rig.vm.onTrainingOver(now, 8)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertTrue(rig.jason.trainedGames.isEmpty())
+        rig.settle()
+        assertTrue(rig.store.last.pets.getValue(PetId.JASON).trainedGames.isEmpty())
+        rig.vm.onFightPressed()
+        assertEquals("still untrained", RefuseReason.NEEDS_TRAINING, rig.ui.refuse)
     }
 
     @Test

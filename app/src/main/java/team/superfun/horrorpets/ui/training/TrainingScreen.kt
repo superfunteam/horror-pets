@@ -141,6 +141,13 @@ fun TrainingScreen(
     }
 }
 
+/**
+ * One session's run of [TrainingScreen], from its reel. Nothing in it is saved (no `rememberSaveable`), on purpose: if
+ * the Activity is recreated mid-game (dark mode, locale or font scale changing, a multi-window resize), the run starts
+ * over from the reel with the same session, and nothing has been paid, since payment happens only in the view model's
+ * `onTrainingOver`. A later change that keeps a game across a recreation must keep its once-only report with it, or the
+ * game could pay twice.
+ */
 @Composable
 private fun TrainingRun(
     screen: Screen.Training,
