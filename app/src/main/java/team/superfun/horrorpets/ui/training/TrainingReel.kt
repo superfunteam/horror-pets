@@ -21,7 +21,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -438,12 +437,10 @@ private fun DrawScope.drawProp(image: ImageBitmap, center: Offset, height: Float
 }
 
 /**
- * Slash Says' dots, around and above, their colours (the mockups'); three are lit, in slash order, and slashed through.
+ * Slash Says' dots, around and above, in the game's colours ([SlashDotColors]); three are lit, in slash order, and
+ * slashed through.
  */
 private val SlashAngles = floatArrayOf(205f, 250f, 295f, 340f, 25f, 155f)
-private val SlashColors = listOf(
-    Color(0xFFFF4D57), Color(0xFFFFC43D), Color(0xFFB4FF39), Color(0xFF2FD8FF), Color(0xFFFF5CE6), Color(0xFFA078FF),
-)
 private val SlashLit = listOf(1, 2, 4)
 
 private fun DrawScope.drawSlashDots(c: Offset, s: Float) {
@@ -455,26 +452,12 @@ private fun DrawScope.drawSlashDots(c: Offset, s: Float) {
     val trail = Path().apply {
         SlashLit.forEachIndexed { i, dot -> if (i == 0) moveTo(dots[dot].x, dots[dot].y) else lineTo(dots[dot].x, dots[dot].y) }
     }
-    drawPath(trail, BloodGlow, alpha = 0.22f, style = Stroke(r * 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    drawPath(trail, BloodGlow, alpha = 0.5f, style = Stroke(r * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    drawPath(trail, Color.White, style = Stroke(r * 0.26f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    dots.forEachIndexed { i, p -> drawDot(p, r, SlashColors[i], lit = i in SlashLit) }
-}
-
-/** A Slash Says dot: a dark disc ringed in its [color], dim; lit, it grows, its core goes white and it glows. */
-private fun DrawScope.drawDot(p: Offset, r: Float, color: Color, lit: Boolean) {
-    if (lit) {
-        drawCircle(
-            Brush.radialGradient(0f to color.copy(alpha = 0.6f), 1f to Color.Transparent, center = p, radius = r * 2.2f),
-            radius = r * 2.2f,
-            center = p,
-        )
+    drawSlashTrail(trail, r)
+    dots.forEachIndexed { i, p ->
+        val lit = i in SlashLit
+        val color = SlashDotColors[i]
+        drawSlashDot(p, r, color, light = if (lit) 1f else 0f, glow = if (lit) slashDotGlow(color, r) else null)
     }
-    val rr = if (lit) r * 1.15f else r
-    val a = if (lit) 1f else 0.45f
-    drawCircle(Color(0xC80A060C), rr, p)
-    drawCircle(color, rr - r * 0.08f, p, alpha = a, style = Stroke(r * 0.16f))
-    drawCircle(if (lit) Color.White else color, rr * if (lit) 0.62f else 0.4f, p, alpha = a)
 }
 
 private val RingDark = Color(0xE618141A)
