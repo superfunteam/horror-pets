@@ -104,7 +104,7 @@ private const val DEAL_AHEAD_MS = 250L
 private const val ORGAN_HEIGHT = 0.11f
 
 /**
- * The catch line is this far up the pet's cell as drawn (display scale and all): its chest, where Slash Says centres
+ * The catch line is this far up the pet's cell as drawn (display scale and all): its chest, where Slasher Says centres
  * its ring.
  */
 private const val CHEST_AT = 0.5f

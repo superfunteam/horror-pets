@@ -391,7 +391,7 @@ private fun DrawScope.drawRingPart(ring: DrawRingShapes, call: DrawCall, lit: Bo
 internal enum class DrawPhase { READY, CALL, OVER }
 
 /**
- * One of a training game's killers (Quick Draw's two, Hide and Seek's): its animation, and its play count so that the
+ * One of a training game's killers (Quick Draw's two, Hide and Eek!'s): its animation, and its play count so that the
  * same one plays again. Main thread only.
  */
 @Stable

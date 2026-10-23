@@ -7,15 +7,18 @@ to be a little more fun, and a way to use the stable (the killers they've beaten
 becomes four short arcade games, each played until you mess up, each getting harder as it goes.
 
 Mockups (made from the game's real scenes and sprites, shown to and shaped by the player):
-`art-work/minigames/mockups/` — the reel spinning and landed, Slash Says on a phone and on a TV, Quick Draw's D-pad
-ring, Hide and Seek, Organ Drop.
+`art-work/minigames/mockups/` — the reel spinning and landed, Slasher Says on a phone and on a TV, Quick Draw's D-pad
+ring, Hide and Eek!, Organ Drop.
 
 ## Goals
 
 - TRAIN spins a film reel of the training games, slot-machine style, and lands on one at random; that game starts.
-- Four games, each short, each escalating until the first mistake: **Slash Says**, **Quick Draw**, **Hide and Seek**,
+- Four games, each short, each escalating until the first mistake: **Slasher Says**, **Quick Draw**, **Hide and Eek!**,
   **Organ Drop**.
-- Two of them (Quick Draw, Hide and Seek) put a stable mate on screen.
+- Two of them (Quick Draw, Hide and Eek!) put a stable mate on screen.
+- *(Renamed by the player after play-testing: Slash Says became Slasher Says, Hide and Seek became Hide and Eek!.
+  The code keeps the first names in its identifiers, save keys and puppet ids: `SLASH_SAYS`, `slash_says`,
+  `HideAndSeekGame`.)*
 - Every game plays with a TV remote (D-pad + OK) and with touch on a phone, as the rest of the game does.
 - Doing better earns more: strength and XP scale with the score; a per-killer best score per game.
 
@@ -39,8 +42,8 @@ ring, Hide and Seek, Organ Drop.
 
 - TRAIN with a starving pet (hunger at or above `Tuning.TRAIN_REFUSE_AT`) is refused exactly as today (FAIL, "Too
   hungry to train").
-- Otherwise the view model picks the game and opens a new full-screen `Screen.Training`. Eligible games: Slash Says
-  and Organ Drop always; Quick Draw and Hide and Seek only when the player has another killer in the stable. The
+- Otherwise the view model picks the game and opens a new full-screen `Screen.Training`. Eligible games: Slasher Says
+  and Organ Drop always; Quick Draw and Hide and Eek! only when the player has another killer in the stable. The
   pick is random among the eligible ones, never the same game twice in a row when there's a choice.
 - The stable mate, for the games that use one, is a random other killer from the stable.
 - The screen opens on a film reel (the trailer's environments reel look: black film edges with sprocket holes,
@@ -70,12 +73,12 @@ ring, Hide and Seek, Organ Drop.
 
 - Hunger and fun change as today's TRAIN does (`TRAIN_HUNGER`, `TRAIN_FUN`).
 - Strength gained = `TRAIN_STRENGTH × m` and XP = `round(XP_TRAIN × m)`, where `m = 1 + 2 × min(score, par) / par`
-  (1× at 0, up to 3× at the game's par). Par: Slash Says 8 rounds, Quick Draw 15 draws, Hide and Seek 8 rounds,
+  (1× at 0, up to 3× at the game's par). Par: Slasher Says 8 rounds, Quick Draw 15 draws, Hide and Eek! 8 rounds,
   Organ Drop 30 organs.
 - Best scores are kept per killer, per game, in the save (a new `PetState` field with an empty default; the save
   version doesn't change).
 
-### Slash Says
+### Slasher Says
 
 - Dots ring the killer (an ellipse around the pet, standing in the middle of the screen). Round 1 has 2 dots; each
   round adds one, up to 8; from then on every round has 8. Score = rounds completed.
@@ -100,7 +103,7 @@ ring, Hide and Seek, Organ Drop.
   ends it. Score = successful draws (the streak).
 - A success: your killer slashes (ATTACK), the mate flinches (FAIL). The losing call: the mate slashes, yours flinches.
 
-### Hide and Seek (needs a stable mate)
+### Hide and Eek! (needs a stable mate)
 
 - Three tombstones in a row, all three the same design in a round, so the shuffle has to be followed; the design
   changes from round to round (the new art: rounded, cross, slab). *(My call: three different stones would let the
@@ -151,7 +154,7 @@ ring, Hide and Seek, Organ Drop.
 - Exact timings and curves (show speed, windows, swap speed, fall speed, spawn spacing), within the shapes above,
   tuned by playing.
 - Animation details (reel physics, swap arcs, catch pop, trails), the HUD's exact type sizes.
-- Slash Says' ring: 8 fixed slots (matching the 8 tones), the dots taking a random subset each round.
+- Slasher Says' ring: 8 fixed slots (matching the 8 tones), the dots taking a random subset each round.
 - The art picks: the first candidate of each (the mockups' picks) unless one reads badly in the game.
 - The stable mate gains nothing from a game (it's training the selected killer).
 - How the game-rule state machines are structured, as long as they are plain Kotlin and tested.

@@ -146,7 +146,7 @@ private val SlashHelp = listOf(
 )
 
 /**
- * Slash Says: the pet stands in the middle of its scene, ringed by dots. Each round the dots are dealt anew
+ * Slasher Says: the pet stands in the middle of its scene, ringed by dots. Each round the dots are dealt anew
  * ([nextSlashRound]: one more each round, up to eight) and shown, "WATCH...", each lighting in turn with its tone
  * ([slashShowMs], faster each round). Then "YOUR TURN": the player slashes them in the same order, with a finger (a swipe
  * through them, or taps) or the remote (the arrows move an aim ring from dot to dot, [aimFrom], and OK slashes). Each
@@ -300,12 +300,12 @@ private fun SlashDots(play: SlashSaysPlay, dotR: Float, clock: GameClock) {
     )
 }
 
-/** Where a game of Slash Says is: the round being [WATCH]ed, the player's [TURN], the round [DONE], or [MISSED]. */
+/** Where a game of Slasher Says is: the round being [WATCH]ed, the player's [TURN], the round [DONE], or [MISSED]. */
 private enum class SlashPhase { WATCH, TURN, DONE, MISSED }
 
 /**
- * Where Slash Says' ring is in the play area, in px: centred on ([cx], [cy]), the pet's chest, its radii [rx] by [ry],
- * the dots [dotR] in radius.
+ * Where Slasher Says' ring is in the play area, in px: centred on ([cx], [cy]), the pet's chest, its radii [rx] by
+ * [ry], the dots [dotR] in radius.
  */
 @Immutable
 private class SlashRing(val cx: Float, val cy: Float, val rx: Float, val ry: Float, val dotR: Float) {
@@ -330,7 +330,7 @@ private class SlashRing(val cx: Float, val cy: Float, val rx: Float, val ry: Flo
 }
 
 /**
- * A game of Slash Says as it goes: [run] plays it, the remote's presses ([press]) and the finger ([touch], [lift])
+ * A game of Slasher Says as it goes: [run] plays it, the remote's presses ([press]) and the finger ([touch], [lift])
  * slash, and the composables draw what it holds. Main thread only.
  */
 @Stable
@@ -581,12 +581,12 @@ private const val DOT_GLOW = 2.2f
 /** The dark disc a dot sits on. */
 private val DotBack = Color(0xC80A060C)
 
-/** A Slash Says dot's glow in [color], for a dot [r] in radius: centred on (0, 0), for [drawSlashDot]. */
+/** A Slasher Says dot's glow in [color], for a dot [r] in radius: centred on (0, 0), for [drawSlashDot]. */
 internal fun slashDotGlow(color: Color, r: Float): Brush =
     Brush.radialGradient(0f to color.copy(alpha = 0.6f), 1f to Color.Transparent, center = Offset.Zero, radius = r * DOT_GLOW)
 
 /**
- * A Slash Says dot at [p], [r] in radius: a dark disc ringed in its [color], dim, with a small core of it; lit by
+ * A Slasher Says dot at [p], [r] in radius: a dark disc ringed in its [color], dim, with a small core of it; lit by
  * [light] (0 to 1), it grows, its ring brightens, its core goes white and it glows ([glow], from [slashDotGlow]).
  */
 internal fun DrawScope.drawSlashDot(p: Offset, r: Float, color: Color, light: Float, glow: Brush?) {
@@ -598,7 +598,7 @@ internal fun DrawScope.drawSlashDot(p: Offset, r: Float, color: Color, light: Fl
     drawCircle(lerp(color, Color.White, light), rr * (0.4f + 0.22f * light), p, alpha = alpha)
 }
 
-/** The slash through Slash Says' dots ([trail]; [r] their radius): a white line in a wide red glow. */
+/** The slash through Slasher Says' dots ([trail]; [r] their radius): a white line in a wide red glow. */
 internal fun DrawScope.drawSlashTrail(trail: Path, r: Float) {
     drawPath(trail, BloodGlow, alpha = 0.22f, style = Stroke(r * 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     drawPath(trail, BloodGlow, alpha = 0.5f, style = Stroke(r * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))

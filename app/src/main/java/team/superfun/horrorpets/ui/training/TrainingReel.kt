@@ -351,7 +351,7 @@ private fun DrawScope.drawGatePointers(w: Float, h: Float) {
 // ---- the frames' pictures ----
 
 /**
- * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows (and its shadow), the
+ * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Eek! shows (and its shadow), the
  * [organs] Organ Drop does (and their streak). The brushes are the reel's own: it draws off the main thread.
  */
 private class ReelArt(val scene: ImageBitmap, val tomb: ImageBitmap?, val organs: List<ImageBitmap>) {
@@ -390,8 +390,8 @@ private fun DrawScope.drawFramePicture(art: ReelArt, game: TrainingGame, crop: C
 }
 
 /**
- * [game]'s picture around [c], [s] its size unit (about half its height): Slash Says' glowing dots and a slash
- * through them, Quick Draw's D-pad ring with its call lit, a Hide and Seek tombstone, Organ Drop's falling organs.
+ * [game]'s picture around [c], [s] its size unit (about half its height): Slasher Says' glowing dots and a slash
+ * through them, Quick Draw's D-pad ring with its call lit, a Hide and Eek! tombstone, Organ Drop's falling organs.
  */
 private fun DrawScope.drawGameArt(game: TrainingGame, art: ReelArt, c: Offset, s: Float) {
     when (game) {
@@ -414,7 +414,7 @@ private val OrganSpots = listOf(Triple(-0.8f, -0.35f, 0.78f), Triple(0.72f, -0.5
 private val OrganTilts = floatArrayOf(-14f, 10f, -6f)
 
 /**
- * Slash Says' dots, around and above, in the game's colours ([SlashDotColors]); three are lit, in slash order, and
+ * Slasher Says' dots, around and above, in the game's colours ([SlashDotColors]); three are lit, in slash order, and
  * slashed through.
  */
 private val SlashAngles = floatArrayOf(205f, 250f, 295f, 340f, 25f, 155f)

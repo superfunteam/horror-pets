@@ -19,7 +19,7 @@ import team.superfun.horrorpets.game.training.TrainingKey
 import team.superfun.horrorpets.game.training.afterSwap
 import team.superfun.horrorpets.game.training.mateAfter
 
-/** Hide and Seek's play, on a [GameClock] fed frames by hand. */
+/** Hide and Eek!'s play, on a [GameClock] fed frames by hand. */
 @OptIn(ExperimentalCoroutinesApi::class) // runCurrent
 class HideAndSeekPlayTest {
     /** A game being played: its clock, the sounds it made, its score, and the scores it ended on. */

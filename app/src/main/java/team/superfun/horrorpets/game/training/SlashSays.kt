@@ -11,11 +11,11 @@ import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** The places on Slash Says' ring a dot can take, one for each of the eight tones. */
+/** The places on Slasher Says' ring a dot can take, one for each of the eight tones. */
 const val SLASH_SLOTS = 8
 
 /**
- * Slash Says' ring is an ellipse this many times as wide as it is tall (its x radius over its y radius, in pixels).
+ * Slasher Says' ring is an ellipse this many times as wide as it is tall (its x radius over its y radius, in pixels).
  * The game lays its dots out on it, and the test that every dot can be reached with the arrows checks this shape.
  */
 const val SLASH_RING_ASPECT = 1.5f
@@ -43,7 +43,7 @@ fun slotPosition(slot: Int, cx: Float, cy: Float, rx: Float, ry: Float): Pair<Fl
 fun slashDots(round: Int): Int = min(round + 1, SLASH_SLOTS)
 
 /**
- * One round of Slash Says: its dots, dot `i` at slot [slots]`[i]` (the slots all different, and dot `i` sounds
+ * One round of Slasher Says: its dots, dot `i` at slot [slots]`[i]` (the slots all different, and dot `i` sounds
  * `tone(slots[i])`), to be slashed in [order] (the dots' indexes, each once).
  */
 data class SlashRound(val round: Int, val slots: List<Int>, val order: List<Int>) {

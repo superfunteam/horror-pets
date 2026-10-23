@@ -12,5 +12,5 @@ internal val ORGAN_ART: List<String> = listOf("heart", "brain", "eyeball", "bone
 internal val TRAINING_SFX: List<String> = (0..7).map(::tone) +
     listOf("reel_spin", "reel_stop", "slash", "stone_slide", "squish", "splat", "game_over")
 
-/** Slash Says' i-th tone (0 to 7), low to high on the C-major pentatonic from C5. */
+/** Slasher Says' i-th tone (0 to 7), low to high on the C-major pentatonic from C5. */
 internal fun tone(i: Int): String = "tone_${i + 1}"

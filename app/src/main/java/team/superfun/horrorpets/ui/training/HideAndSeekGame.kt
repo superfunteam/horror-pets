@@ -167,7 +167,7 @@ private val SeekHelp = listOf(
 )
 
 /**
- * Hide and Seek: three tombstones in a row on the scene's floor, all of one design (the next design each round,
+ * Hide and Eek!: three tombstones in a row on the scene's floor, all of one design (the next design each round,
  * [tombDesign]), your killer watching from the left edge. Each round the stable mate rises in front of one, waves, and
  * ducks down out of sight at its foot; then the stones shuffle ([shuffleFor]: more swaps each round, faster), pairs
  * swapping places, one passing in front of the other. "WHERE'S <MATE>?": the remote's Left/Right move a pointer over
@@ -446,7 +446,7 @@ internal fun DrawScope.drawTombstone(
 }
 
 /**
- * Where Hide and Seek's stones stand in the play area, in px: [spacing] apart about [cx], their feet on [footY], each
+ * Where Hide and Eek!'s stones stand in the play area, in px: [spacing] apart about [cx], their feet on [footY], each
  * [stoneH] tall.
  */
 @Immutable
@@ -483,13 +483,13 @@ internal class TombRow(val cx: Float, val spacing: Float, val footY: Float, val 
 }
 
 /**
- * Where a game of Hide and Seek is: the mate going into [HIDE], the stones in the [SHUFFLE], the player's [PICK], the
+ * Where a game of Hide and Eek! is: the mate going into [HIDE], the stones in the [SHUFFLE], the player's [PICK], the
  * mate [FOUND] (the next round to come), or [MISSED] (over).
  */
 internal enum class SeekPhase { HIDE, SHUFFLE, PICK, FOUND, MISSED }
 
 /**
- * A game of Hide and Seek as it goes: [playOut] plays it on the [clock], the remote's presses ([press]) and the
+ * A game of Hide and Eek! as it goes: [playOut] plays it on the [clock], the remote's presses ([press]) and the
  * finger's taps ([tap]) pick a stone, and the composables draw what it holds. Each swap plays `stone_slide`, the
  * pointer moving `ui_move`; a right pick `boing` (and [score] goes to the rounds won), a wrong one `refuse`. Main
  * thread only.

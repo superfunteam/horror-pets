@@ -6,7 +6,7 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.random.Random
 
-/** Hide and Seek's tombstones: three in a row, at positions 0 (left), 1 and 2 (right). */
+/** Hide and Eek!'s tombstones: three in a row, at positions 0 (left), 1 and 2 (right). */
 const val SEEK_STONES = 3
 
 /** The tombstone designs the rounds cycle through (the game's art: rounded, cross, slab). */
