@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
@@ -353,10 +352,11 @@ private fun DrawScope.drawGatePointers(w: Float, h: Float) {
 
 /**
  * What the reel's frames are drawn from: the pet's [scene], the [tomb] Hide and Seek shows (and its shadow), the
- * [organs] Organ Drop does.
+ * [organs] Organ Drop does (and their streak). The brushes are the reel's own: it draws off the main thread.
  */
 private class ReelArt(val scene: ImageBitmap, val tomb: ImageBitmap?, val organs: List<ImageBitmap>) {
     val tombShadow = tombShadow()
+    val organStreak = organStreak()
 }
 
 /** The organs on Organ Drop's frame: the heart, the brain and the eyeball (indexes into [ORGAN_ART]). */
@@ -400,18 +400,9 @@ private fun DrawScope.drawGameArt(game: TrainingGame, art: ReelArt, c: Offset, s
         TrainingGame.HIDE_AND_SEEK -> art.tomb?.let { drawTombstone(it, art.tombShadow, Offset(c.x, c.y + 0.81f * s), 1.75f * s) }
         TrainingGame.ORGAN_DROP -> art.organs.forEachIndexed { i, organ ->
             val (dx, dy, size) = OrganSpots[i]
+            // Falling as the game has them, a little tilted, streaking at a middling speed.
             val at = Offset(c.x + dx * s, c.y + dy * s)
-            val height = size * s
-            // A speed streak above each one as it falls.
-            drawLine(
-                Color.White,
-                Offset(at.x, at.y - height * 1.2f),
-                Offset(at.x, at.y - height * 0.45f),
-                strokeWidth = height * 0.3f,
-                cap = StrokeCap.Round,
-                alpha = 0.16f,
-            )
-            drawProp(organ, at, height)
+            drawFallingOrgan(organ, art.organStreak, at, size * s, OrganTilts[i], fast = 0.4f)
         }
     }
 }
@@ -419,18 +410,8 @@ private fun DrawScope.drawGameArt(game: TrainingGame, art: ReelArt, c: Offset, s
 /** Where Organ Drop's frame puts each of [ReelOrgans]: x and y from the centre, and height, in size units. */
 private val OrganSpots = listOf(Triple(-0.8f, -0.35f, 0.78f), Triple(0.72f, -0.55f, 0.84f), Triple(0.02f, 0.45f, 0.62f))
 
-/** [image] [height] tall, centred on [center]. */
-private fun DrawScope.drawProp(image: ImageBitmap, center: Offset, height: Float) {
-    val width = height * image.width / image.height
-    drawImage(
-        image,
-        srcOffset = IntOffset.Zero,
-        srcSize = IntSize(image.width, image.height),
-        dstOffset = IntOffset((center.x - width / 2f).roundToInt(), (center.y - height / 2f).roundToInt()),
-        dstSize = IntSize(width.roundToInt(), height.roundToInt()),
-        filterQuality = FilterQuality.High,
-    )
-}
+/** How far each of [ReelOrgans] is turned on Organ Drop's frame, in degrees. */
+private val OrganTilts = floatArrayOf(-14f, 10f, -6f)
 
 /**
  * Slash Says' dots, around and above, in the game's colours ([SlashDotColors]); three are lit, in slash order, and

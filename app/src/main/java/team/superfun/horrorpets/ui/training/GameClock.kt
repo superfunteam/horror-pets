@@ -2,9 +2,12 @@ package team.superfun.horrorpets.ui.training
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import kotlin.coroutines.resume
@@ -26,7 +29,8 @@ private const val NO_FRAME = Long.MIN_VALUE
  *
  * The frame clock drives it ([tick], once a frame: see [rememberGameClock]); [nowMs] is the time so far, as snapshot
  * state, so a draw or a layout that reads it follows it. The first frame after a pause adds nothing (the gap since
- * the last frame before it is not game time), and no frame adds more than [MAX_FRAME_MS].
+ * the last frame before it is not game time), and no frame adds more than [MAX_FRAME_MS]. Whether it is [paused] is
+ * snapshot state too, for a game that must know when it stops and starts again.
  *
  * Main thread only, like the frame clock that drives it.
  */
@@ -35,6 +39,14 @@ class GameClock {
 
     /** The game time so far, in ms: 0 until the second frame after the clock starts. */
     val nowMs: Long get() = now.longValue
+
+    /**
+     * Whether the clock is paused: from a frame that said so ([tick]) until one that says it isn't. While training
+     * holds a game (the app away, then its "GET READY" beat) or shows its results card, this is true: a game holding
+     * input that may never be let go (a key whose coming up went to another app) lets go of it as this changes.
+     */
+    var paused: Boolean by mutableStateOf(false)
+        private set
 
     private var elapsedNanos = 0L
     private var lastFrameNanos = NO_FRAME
@@ -46,6 +58,7 @@ class GameClock {
      * first one after the pause only starts the count again.
      */
     fun tick(frameNanos: Long, paused: Boolean) {
+        if (paused != this.paused) this.paused = paused
         if (paused) {
             lastFrameNanos = NO_FRAME
             return

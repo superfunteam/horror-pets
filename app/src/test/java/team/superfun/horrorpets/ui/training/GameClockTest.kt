@@ -54,6 +54,24 @@ class GameClockTest {
     }
 
     @Test
+    fun itSaysWhenItIsPaused() {
+        val clock = GameClock()
+        assertFalse(clock.paused)
+        clock.tick(start, paused = false)
+        assertFalse(clock.paused)
+        // Paused from the frame that says so until the frame that says it isn't, however long between.
+        clock.tick(start + ms(16), paused = true)
+        assertTrue(clock.paused)
+        clock.tick(start + ms(32), paused = true)
+        assertTrue(clock.paused)
+        clock.tick(start + ms(3_000), paused = false)
+        assertFalse(clock.paused)
+        clock.tick(start + ms(3_016), paused = false)
+        assertFalse(clock.paused)
+        assertEquals(16L, clock.nowMs)
+    }
+
+    @Test
     fun aHugeFrameGapIsCapped() {
         val clock = GameClock()
         clock.tick(start, paused = false)

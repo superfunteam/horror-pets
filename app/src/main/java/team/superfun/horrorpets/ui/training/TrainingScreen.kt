@@ -66,7 +66,8 @@ private const val RESUME_BEAT_MS = 1_000L
  *   or the frame clock, so it stops dead while the app is away and through the "GET READY" beat after, and while its
  *   results card is up. It has been running since the reel started (`nowMs` is already about 4800 as a game begins),
  *   so a game measures its time from its own start: `nowMs` as it begins. While held, the shell also keeps every
- *   training key's press and every touch from the game;
+ *   training key's press and every touch from the game; [GameClock.paused] says when it stops and starts again (for a
+ *   game holding a key that may never come up);
  * - [sounds], where it plays its sounds: until the results card, the training screen's key presses make no UI ticks
  *   but the ones a game plays;
  * - [focus]: the game puts `Modifier.focusRequester(focus)` on a focusable element from its first composition, with
