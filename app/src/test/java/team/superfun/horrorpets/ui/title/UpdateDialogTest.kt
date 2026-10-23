@@ -15,7 +15,19 @@ class UpdateDialogTest {
     @Test
     fun theOfferSaysTheVersionTheSizeAndThatThePetsAreSafe() {
         assertEquals("UPDATE AVAILABLE", updateTitle(UpdateStep.Offer(V060)))
-        assertEquals("Version 0.6.0 is out (97 MB). Your pets stay just as they are.", offerText(V060))
+        assertEquals("Version 0.6.0 is out (97 MB).\nYour pets stay just as they are.", offerText(V060))
+    }
+
+    @Test
+    fun theOfferIsTwoLinesThatEachFitTheWindow() {
+        // The window has 480 dp for text on every screen, and 18sp Inter at the 1.15 font-scale cap fits about 40
+        // characters on a line: keep each well under that, even for a big version and size, so neither line wraps.
+        val big = V060.copy(version = "99.99.99", size = 999L * 1_048_576)
+        for (release in listOf(V060, big)) {
+            val lines = offerText(release).lines()
+            assertEquals(2, lines.size)
+            for (line in lines) assertTrue("\"$line\" is short enough for one line", line.length <= 36)
+        }
     }
 
     @Test

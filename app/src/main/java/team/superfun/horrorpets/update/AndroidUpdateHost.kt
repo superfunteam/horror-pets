@@ -3,7 +3,6 @@ package team.superfun.horrorpets.update
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
-import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -281,10 +280,7 @@ fun showInstallConfirmation(activity: Activity, confirm: Any): Boolean {
     return try {
         activity.startActivity(confirm)
         true
-    } catch (e: ActivityNotFoundException) {
-        Log.w(UPDATES_TAG, "Could not show the installer's confirmation", e)
-        false
-    } catch (e: SecurityException) {
+    } catch (e: RuntimeException) { // ActivityNotFoundException, SecurityException, or whatever an odd build throws
         Log.w(UPDATES_TAG, "Could not show the installer's confirmation", e)
         false
     }
@@ -299,9 +295,8 @@ fun openInstallSettings(context: Context): Boolean {
     return try {
         context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri()))
         true
-    } catch (e: ActivityNotFoundException) {
-        false
-    } catch (e: SecurityException) {
+    } catch (e: RuntimeException) { // ActivityNotFoundException (some TV builds), SecurityException, or odder
+        Log.w(UPDATES_TAG, "Could not open the install-unknown-apps setting", e)
         false
     }
 }

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,7 +89,9 @@ internal fun updateTitle(step: UpdateStep): String = when (step) {
 
 /** What the offer says about [release]. */
 internal fun offerText(release: Release): String =
-    "Version ${release.version} is out (${megabytes(release.size)} MB). Your pets stay just as they are."
+    // Two lines, broken by hand so neither wraps on its own: the window is 480 dp of text everywhere (a TV, a 4:3
+    // set, a phone: all on the 540-dp-tall canvas), and at 18sp, even at the 1.15 font-scale cap, each fits.
+    "Version ${release.version} is out (${megabytes(release.size)} MB).\nYour pets stay just as they are."
 
 /** "48 / 97 MB": the MB downloaded so far (whole ones, so it only reads the total at the end) of the [total]. */
 internal fun progressText(done: Long, total: Long): String {
@@ -201,8 +204,15 @@ internal fun UpdateDialog(step: UpdateStep, actions: UpdateActions, modifier: Mo
 /** A line or two of plain words, centred. */
 @Composable
 private fun Sentence(text: String, color: Color = TextHi) {
-    BasicText(text, style = bodyStyle(18.sp, color = color).copy(textAlign = TextAlign.Center), modifier = Modifier.fillMaxWidth())
+    BasicText(
+        text,
+        style = bodyStyle(18.sp, color = color).copy(textAlign = TextAlign.Center, lineBreak = BalancedLines),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
+
+/** Lines of about even length, so a wrapped sentence never leaves one word alone on its last line (Android 6+). */
+private val BalancedLines = LineBreak(LineBreak.Strategy.Balanced, LineBreak.Strictness.Normal, LineBreak.WordBreak.Default)
 
 /** The download's bar, filled to [fraction], with [label] under it. */
 @Composable
