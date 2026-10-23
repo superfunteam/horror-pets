@@ -113,6 +113,9 @@ class GameViewModel(
     private var lastGag: PlayGag? = null
     private var lastTraining: TrainingGame? = null
 
+    /** The next TRAIN's [Screen.Training.session]. */
+    private var nextTrainingSession = 1L
+
     /**
      * Debug builds only: the game the next TRAIN opens, when it is on offer (see the puppet's `train <game>`). Any
      * TRAIN uses it up, refused or not, so a forced game never waits around for a later one.
@@ -257,7 +260,8 @@ class GameViewModel(
         val options = eligibleGames(hasMate = mate != null)
         val game = forced?.takeIf { it in options } ?: pickTrainingGame(options, lastTraining, pickRng)
         lastTraining = game
-        _state.value = s.copy(screen = Screen.Training(game, mate.takeIf { game.needsMate }, options), refuse = null)
+        val training = Screen.Training(game, mate.takeIf { game.needsMate }, options, session = nextTrainingSession++)
+        _state.value = s.copy(screen = training, refuse = null)
     }
 
     /** Walks to the neighbouring scene: -1 is left, +1 is right, wrapping around. The scene changes after the run. */
@@ -281,13 +285,14 @@ class GameViewModel(
     // ---- training ----------------------------------------------------------------------------
 
     /**
-     * The training game ended with [score] (on its own, or Back cut it short): pays it out (see [applyTraining]),
-     * saves, and shows the results card, with the level-up sound when it was worth a level. Only a game that has not
-     * paid yet is paid, so a report that comes in again (Back on the frame the game ended) changes nothing.
+     * Training [session]'s game ended with [score] (on its own, or Back cut it short): pays it out (see
+     * [applyTraining]), saves, and shows the results card, with the level-up sound when it was worth a level. Only the
+     * session on screen is paid, and only once, so a report that comes in again (Back on the frame the game ended) or
+     * from another session changes nothing.
      */
-    fun onTrainingOver(score: Int) {
+    fun onTrainingOver(session: Long, score: Int) {
         val s = _state.value
-        val training = s.screen as? Screen.Training ?: return
+        val training = trainingSession(s, session) ?: return
         if (training.result != null) return
         val pet = s.game.selected?.let { s.game.pets[it] } ?: return
         val outcome = applyTraining(pet, training.game, score)
@@ -305,21 +310,31 @@ class GameViewModel(
         persist(game)
     }
 
-    /** OK on the results card: Home, where a level-up's new attack is offered as after any level-up. Ignored until the game has paid. */
-    fun onTrainingDone() {
+    /**
+     * OK on training [session]'s results card: Home, where a level-up's new attack is offered as after any level-up.
+     * Ignored until the game has paid, and from any session but the one on screen.
+     */
+    fun onTrainingDone(session: Long) {
         val s = _state.value
-        val training = s.screen as? Screen.Training ?: return
+        val training = trainingSession(s, session) ?: return
         if (training.result == null) return
         _state.value = s.goHome()
     }
 
-    /** Back on the reel: leaves training with nothing paid or spent. Ignored once the game has paid, which only OK carries on from. */
-    fun onTrainingQuit() {
+    /**
+     * Back on training [session]'s reel: leaves training with nothing paid or spent. Ignored once the game has paid,
+     * which only OK carries on from, and from any session but the one on screen.
+     */
+    fun onTrainingQuit(session: Long) {
         val s = _state.value
-        val training = s.screen as? Screen.Training ?: return
+        val training = trainingSession(s, session) ?: return
         if (training.result != null) return
         _state.value = s.goHome()
     }
+
+    /** The training screen in [s] when it is [session]'s; null on any other screen or session. */
+    private fun trainingSession(s: UiState, session: Long): Screen.Training? =
+        (s.screen as? Screen.Training)?.takeIf { it.session == session }
 
     // ---- the stable, the carousel, versus, fake death -----------------------------------------
 

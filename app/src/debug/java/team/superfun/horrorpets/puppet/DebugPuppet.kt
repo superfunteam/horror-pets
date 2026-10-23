@@ -297,7 +297,7 @@ private class Session(
             is PuppetCommand.Score -> {
                 val screen = state().screen as? Screen.Training ?: return Outcome.Refused("not training: train first")
                 if (screen.result != null) return Outcome.Refused("the game is over already: home, or train again")
-                vm.onTrainingOver(command.score)
+                vm.onTrainingOver(screen.session, command.score)
                 val result = (state().screen as? Screen.Training)?.result ?: return Outcome.Refused("training did not take the score")
                 val best = if (result.newBest) "a new best" else "best ${result.best}"
                 val strength = (result.strength * 10).roundToInt() / 10.0
@@ -368,7 +368,7 @@ private class Session(
                         when (val card = cue.screen) {
                             is Screen.Results -> vm.onResultsDone()
                             is Screen.Unlocked -> vm.onUnlockedDone()
-                            is Screen.Training -> vm.onTrainingDone()
+                            is Screen.Training -> vm.onTrainingDone(card.session)
                             is Screen.Learn -> {
                                 Log.i(TAG, "Autoplay: learns ${attackById(card.attack)?.name ?: card.attack}")
                                 vm.onLearn(learn = true)
@@ -439,7 +439,7 @@ private class Session(
                 is Screen.PvpLobby -> vm.onLobbyBack()
                 is Screen.Learn -> vm.onLearnLater()
                 Screen.Moves -> vm.onMovesBack()
-                is Screen.Training -> if (screen.result == null) vm.onTrainingQuit() else vm.onTrainingDone()
+                is Screen.Training -> if (screen.result == null) vm.onTrainingQuit(screen.session) else vm.onTrainingDone(screen.session)
                 is Screen.Fight -> return "in a fight: finish it first (autoplay on, or move run)"
                 is Screen.Unlocked -> vm.onUnlockedDone()
                 is Screen.Results -> vm.onResultsDone()

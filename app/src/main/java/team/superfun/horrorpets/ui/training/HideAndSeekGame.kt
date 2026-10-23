@@ -110,10 +110,10 @@ private const val BOB_MS = 900L
 /**
  * Your killer watches from the left edge, a small onlooker: its feet this far across the play area, [WATCHER_HEIGHT] of
  * the height tall (its cell, as `SpriteView` takes it; Home's pet is 0.46), but in a narrow play area no more than
- * [WATCHER_MAX_OF_WIDTH] of the width, so that even waving it keeps clear of the left stone (0.30 of the height on a
- * TV, 0.23 on 4:3).
+ * [WATCHER_MAX_OF_WIDTH] of the width, so that even waving it keeps clear of the left stone and of the frame's edge
+ * (0.30 of the height on a TV, 0.23 on 4:3).
  */
-private const val PET_X = 0.065f
+private const val PET_X = 0.07f
 private const val WATCHER_HEIGHT = 0.34f
 private const val WATCHER_MAX_OF_WIDTH = 0.2f
 

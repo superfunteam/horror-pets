@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.key
@@ -111,7 +112,7 @@ class TrainingEnv(
  * - its results card ([ResultsCard], once [Screen.Training.result] is set) shows over the frozen game until OK, a tap
  *   or Back carries on Home ([onDone]).
  *
- * Each entry ([focusEntry], see `RequestFocusOnEntry`) is a run of its own, from the reel.
+ * Each session ([Screen.Training.session]) is a run of its own, from the reel, and everything it reports names it.
  */
 @Composable
 fun TrainingScreen(
@@ -119,16 +120,15 @@ fun TrainingScreen(
     pet: PetState,
     mate: PetState?,
     loader: AssetLoader,
-    onOver: (Int) -> Unit,
-    onDone: () -> Unit,
-    onQuit: () -> Unit,
+    onOver: (session: Long, score: Int) -> Unit,
+    onDone: (session: Long) -> Unit,
+    onQuit: (session: Long) -> Unit,
     focusEntry: Any?,
 ) {
-    // The router can bring this screen back while it is still fading out (CONTINUE, then TRAIN at once); that is a new
-    // run from the reel, not the last run's results. While it fades out (no entry) the run it was on stays.
-    val entry = remember { arrayOfNulls<Any>(1) }
-    if (focusEntry != null) entry[0] = focusEntry
-    key(entry[0]) {
+    // A new session starts over from the reel, even on a screen that never left: the router can hand this one the next
+    // session while it still fades out (CONTINUE, then TRAIN at once), or without it ever leaving (the card, Home and
+    // TRAIN again within a frame, as the debug puppet's `train` does). While it fades out, its session's run stays.
+    key(screen.session) {
         TrainingRun(screen, pet, mate, loader, onOver, onDone, onQuit, focusEntry)
     }
 }
@@ -139,11 +139,13 @@ private fun TrainingRun(
     pet: PetState,
     mate: PetState?,
     loader: AssetLoader,
-    onOver: (Int) -> Unit,
-    onDone: () -> Unit,
-    onQuit: () -> Unit,
+    onOver: (session: Long, score: Int) -> Unit,
+    onDone: (session: Long) -> Unit,
+    onQuit: (session: Long) -> Unit,
     focusEntry: Any?,
 ) {
+    // The session this run plays: what it reports names it, so it can never act on another.
+    val session = remember { screen.session }
     val result = screen.result
     val sounds = LocalSoundSink.current
     val latestOnOver by rememberUpdatedState(onOver)
@@ -170,15 +172,15 @@ private fun TrainingRun(
         { s ->
             if (!ended) {
                 ended = true
-                latestOnOver(s)
+                latestOnOver(session, s)
             }
         }
     }
 
     GameBackHandler(enabled = focusEntry != null) {
         when {
-            screen.result != null -> onDone()
-            !gameOn -> onQuit()
+            screen.result != null -> onDone(session)
+            !gameOn -> onQuit(session)
             else -> finish(score.intValue) // once: after the game has ended, Back waits for its card
         }
     }
@@ -196,12 +198,18 @@ private fun TrainingRun(
     // The reel is opaque until the game starts under it (then it fades): the scene behind isn't drawn till then.
     val reelCovers = !paidOnEntry && !gameOn && result == null
 
+    // The screen holds focus itself only until the game or its card takes it. A focus target over theirs would take
+    // Back for itself: Compose answers an unused Back by moving focus out to the nearest focus target above, which ate
+    // the remote's first Back in a game (and left the game deaf to keys after it).
+    val holdsFocus = !gameShown && result == null
+
     // While held (away, then the GET READY beat) the game's clock is frozen, so it gets no presses either.
     Box(
         Modifier
             .fillMaxSize()
             .focusRequester(rootFocus)
             .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held = away.paused && result == null) }
+            .focusProperties { canFocus = holdsFocus }
             .focusable(),
     ) {
         RunningFilm(run = { if (gameOn || paidOnEntry) spin.total.toFloat() else spin.position(clock.nowMs) }) {
@@ -231,7 +239,7 @@ private fun TrainingRun(
                 )
             }
             if (away.beat && result == null) GetReady()
-            if (result != null) ResultsCard(screen.game, result, onDone, focusEntry)
+            if (result != null) ResultsCard(screen.game, result, { onDone(session) }, focusEntry)
         }
     }
 }

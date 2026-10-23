@@ -91,10 +91,11 @@ class AttacksFlowTest {
         val g = Game(PetState(PetId.JASON, level = 1, xp = 95)).start()
         assertEquals(Screen.Home, g.ui.screen)
         g.vm.onCare(CareAction.TRAIN)
-        g.vm.onTrainingOver(0)
+        val session = (g.ui.screen as Screen.Training).session
+        g.vm.onTrainingOver(session, 0)
         assertEquals(2, g.pet.level)
         assertTrue("not before the results card is dismissed", g.ui.screen is Screen.Training)
-        g.vm.onTrainingDone()
+        g.vm.onTrainingDone(session)
         assertEquals(Screen.Learn(PetId.JASON, "jason_light_1"), g.ui.screen)
     }
 

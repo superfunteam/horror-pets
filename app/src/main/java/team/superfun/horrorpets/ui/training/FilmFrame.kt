@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -79,12 +80,18 @@ private const val FLICKER_DIM = 0.035f
 fun FilmFrame(run: Float, content: @Composable BoxScope.() -> Unit) {
     val runNow = rememberUpdatedState(run)
     val grain = remember { filmGrain() }
-    // The film frame the grain and flicker are on; only the overlay's draw reads it.
+    // The film frame the grain and flicker are on; only the overlay's draw reads it. It steps on the first display
+    // frame of each film frame: it waits out the film frame, not asking for every display frame in between, and then
+    // for a display frame, so it stops with the frame clock (the app in the background) instead of waking the app.
     val filmFrame = remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
+        val start = withFrameMillis { it }
         while (true) {
-            delay(FILM_FRAME_MS)
-            filmFrame.intValue++
+            val now = withFrameMillis { ms ->
+                filmFrame.intValue = ((ms - start) / FILM_FRAME_MS).toInt()
+                ms
+            }
+            delay(FILM_FRAME_MS - (now - start) % FILM_FRAME_MS)
         }
     }
     // The run at the last draw, for how far the holes moved since: their streak.

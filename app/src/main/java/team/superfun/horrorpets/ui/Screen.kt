@@ -95,11 +95,16 @@ sealed interface Screen {
      * TRAIN: the selected pet plays [game], picked from [options] (the games on offer, which the reel shows), against
      * its stable [mate] when the game uses one (else null). [result] is null while the reel spins and the game plays,
      * and set the moment the game has paid, until the player carries on Home.
+     *
+     * [session] tells one TRAIN from the next (a new number each time): the screen plays each session from its reel,
+     * and what it reports (the score, Back, OK on the card) names its session, so that nothing of one can ever act on
+     * another, even when a new session follows the last one's card within a frame (as the debug puppet's `train` does).
      */
     data class Training(
         val game: TrainingGame,
         val mate: PetId?,
         val options: List<TrainingGame>,
+        val session: Long,
         val result: TrainingResult? = null,
     ) : Screen
 
