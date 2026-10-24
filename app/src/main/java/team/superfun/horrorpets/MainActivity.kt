@@ -40,6 +40,7 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.audio.keepsPlace
+import team.superfun.horrorpets.audio.play
 import team.superfun.horrorpets.audio.vibratorOf
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
@@ -172,7 +173,7 @@ class MainActivity : ComponentActivity() {
         val vibrator = vibratorOf(this) ?: return
         runCatching {
             if (Build.VERSION.SDK_INT >= 26) {
-                vibrator.vibrate(VibrationEffect.createOneShot(BUZZ_MS, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.play(VibrationEffect.createOneShot(BUZZ_MS, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(BUZZ_MS)

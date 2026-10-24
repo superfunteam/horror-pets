@@ -389,14 +389,14 @@ class GameAudio(context: Context) : SoundSink {
         }
     }
 
-    /** Vibrates [pulses] (ms, a pause between each two) as their sound starts; nothing without a vibrator. */
+    /** Vibrates [pulses] (alternating buzz and pause lengths in ms, starting with a buzz) as their sound starts. */
     private fun buzz(pulses: LongArray) {
         val vibrator = vibrator ?: return
         // A waveform starts with a pause, which here is none.
         val pattern = longArrayOf(0, *pulses)
         runCatching {
             if (Build.VERSION.SDK_INT >= 26) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                vibrator.play(VibrationEffect.createWaveform(pattern, -1))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(pattern, -1)
