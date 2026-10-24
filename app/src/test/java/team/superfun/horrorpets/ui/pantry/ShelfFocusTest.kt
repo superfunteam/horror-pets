@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.pantry.tasteOf
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 
@@ -142,5 +143,63 @@ class ShelfFocusTest {
         // A cleared board (a cook) clears both places; a board seen for the first time fills them in order.
         assertEquals(listOf(null, null), boardPlaces(listOf(7, 1), emptyList()))
         assertEquals(listOf(3, 0), boardPlaces(listOf(null, null), listOf(3, 0)))
+    }
+
+    // The shelf's labels.
+
+    @Test
+    fun aLabelBreaksOnlyBetweenWordsAndAfterHyphens() {
+        assertEquals(listOf("EGG"), labelWords("EGG"))
+        assertEquals(listOf("CAMP", "CRYSTAL", "FISH", "FRY"), labelWords("CAMP CRYSTAL FISH FRY"))
+        assertEquals(listOf("NOT-", "STRAWBERRY", "MILK"), labelWords("NOT-STRAWBERRY MILK"))
+        assertEquals(listOf("SUN-", "DRIED", "TOMATOES"), labelWords("SUN-DRIED TOMATOES"))
+        assertEquals(listOf("COCOA", "&", "MARSHMALLOWS"), labelWords("COCOA &  MARSHMALLOWS"))
+        // Every name's words, put back together, are the name.
+        for (item in PantryItem.entries) {
+            val label = item.title.uppercase()
+            assertEquals(label.replace(" ", ""), labelWords(label).joinToString(""))
+        }
+    }
+
+    /** A pretend typeface: every letter (and space) half its size wide, in a label [width] wide. */
+    private fun fit(label: String, width: Float): Float {
+        fun widthOf(text: String, sp: Float) = text.length * sp * 0.5f
+        // Greedy wrapping into [width], counting lines (a word too wide for a line takes one of its own).
+        fun linesOf(sp: Float): Int {
+            var lines = 1
+            var line = 0f
+            for (word in labelWords(label)) {
+                val w = widthOf(word, sp)
+                val gap = if (line == 0f || word.endsWith("-")) 0f else widthOf(" ", sp)
+                if (line > 0f && line + gap + w > width) {
+                    lines++
+                    line = w
+                } else {
+                    line += gap + w
+                }
+            }
+            return lines
+        }
+        return labelFontSize(label, width, maxSp = 13f, minSp = 10f, stepSp = 0.5f, widthOf = ::widthOf, linesOf = ::linesOf)
+    }
+
+    @Test
+    fun aLabelShrinksOnlyAsFarAsItMust() {
+        // A short name, and one that wraps onto two lines whole: the biggest size.
+        assertEquals(13f, fit("EGG", 70f), 0f)
+        assertEquals(13f, fit("PILE OF SLOP", 70f), 0f)
+        // A word too wide for the label shrinks it until the word fits (12 letters x 6 = 72 > 70; x 5.75 = 69).
+        assertEquals(11.5f, fit("COCOA & MARSHMALLOWS", 70f), 0f)
+        // Three lines at the biggest size shrink it to two.
+        assertEquals(13f, fit("A B C", 6.5f * 3f), 0f) // "A B" fits a line: two lines
+        val crowded = fit("AAAA BBBB CCCC", 26f * 2f) // 4 letters = 26 at 13: one word a line, three lines
+        assertTrue("$crowded", crowded < 13f)
+        // Nothing fits at all: the smallest, and the label ends in an ellipsis.
+        assertEquals(10f, fit("SUPERCALIFRAGILISTIC", 40f), 0f)
+        // Never bigger than it was asked, never smaller.
+        for (item in PantryItem.entries) for (width in listOf(40f, 70f, 90f)) {
+            val sp = fit(item.title.uppercase(), width)
+            assertTrue("${item.title} $width: $sp", sp in 10f..13f)
+        }
     }
 }

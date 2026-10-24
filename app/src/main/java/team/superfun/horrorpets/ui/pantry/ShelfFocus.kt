@@ -81,6 +81,41 @@ fun shelfWindow(focus: Int, size: Int, slots: Int, previous: Int): ShelfWindow {
  */
 fun shelfLead(size: Int, slots: Int): Float = if (size < slots) (slots - size) / 2f else 0f
 
+/** A shelf item's name label wraps onto at most this many lines. */
+internal const val LABEL_LINES = 2
+
+/**
+ * The runs of [label] that a line never breaks inside: its words, a hyphenated word split after each hyphen (where a
+ * line may break: "NOT-" and "STRAWBERRY").
+ */
+internal fun labelWords(label: String): List<String> =
+    label.split(' ').filter { it.isNotEmpty() }.flatMap { word -> Regex("[^-]*-|[^-]+").findAll(word).map { it.value }.toList() }
+
+/**
+ * The font size (sp) for [label] under a shelf item, in a label [width] wide: the biggest from [maxSp] down to
+ * [minSp], in steps of [stepSp], at which no word is wider than the label (so none is ever split mid-word) and the
+ * whole name takes at most [LABEL_LINES] lines. [widthOf] is how wide a run of text is on one line at a size, and
+ * [linesOf] how many lines the whole label wraps to at a size, in the label's width. When nothing fits it is [minSp],
+ * and the label is cut short with an ellipsis.
+ */
+internal fun labelFontSize(
+    label: String,
+    width: Float,
+    maxSp: Float,
+    minSp: Float,
+    stepSp: Float,
+    widthOf: (text: String, sp: Float) -> Float,
+    linesOf: (sp: Float) -> Int,
+): Float {
+    val words = labelWords(label)
+    var sp = maxSp
+    while (sp > minSp) {
+        if (words.all { widthOf(it, sp) <= width } && linesOf(sp) <= LABEL_LINES) return sp
+        sp -= stepSp
+    }
+    return minSp
+}
+
 /**
  * The dish that wears a heart on [pet]'s visit: its favorite, once it has been fed it, and never before (a favorite
  * is never telegraphed).
