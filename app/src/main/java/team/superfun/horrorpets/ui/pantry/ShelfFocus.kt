@@ -85,7 +85,7 @@ fun shelfLead(size: Int, slots: Int): Float = if (size < slots) (slots - size) /
 internal const val LABEL_LINES = 2
 
 /** A zero-width space: where a label's line may break with nothing to show for it. */
-private const val BREAK = '​'
+private const val BREAK = '\u200B'
 
 /**
  * [title] as a shelf label sets it: in capitals, and free to break a line after each hyphen ("NOT-" / "STRAWBERRY
