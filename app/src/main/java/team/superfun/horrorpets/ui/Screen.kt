@@ -178,7 +178,8 @@ sealed interface Screen {
      * - [refusedCook] and [tooFull] are tokens that change on every refusal (a botch with anything but another botch
      *   can not be cooked, a killer too full to eat can not be fed), 0 until the first one, so the screen reacts to
      *   each.
-     * - [fed] is set once the killer has eaten, and ends the visit's doing: from then on only leaving does anything.
+     * - [fed] is set once the killer has eaten, and ends the visit's doing: from then on only leaving, or FEED again
+     *   (a new visit, while the killer could eat more), does anything.
      */
     data class Pantry(
         val session: Long,

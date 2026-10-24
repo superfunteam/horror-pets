@@ -270,8 +270,9 @@ private fun PantryVisit(
     }
 
     // Fed: the meal, the munch and the reaction, then Home, on the show's own clock (stopped while the app is away, and
-    // only running while the show plays). A visit that started with the meal eaten (the Activity was made again on it)
-    // shows the reaction finished and silent: it has played once already.
+    // only running while the show plays), unless the killer could eat more: then the kitchen waits for OK (FEED again)
+    // or Back (Home). A visit that started with the meal eaten (the Activity was made again on it) shows the reaction
+    // finished and silent: it has played once already.
     val feedStage = remember { FeedStage() }
     val showClock = rememberGameClock(paused = away.paused || !feedStage.playing)
     val fedAtStart = remember { fed != null }
@@ -280,7 +281,7 @@ private fun PantryVisit(
     LaunchedEffect(fed) {
         if (fed == null) return@LaunchedEffect
         playFeedShow(fed, loader, manifest, feedStage, actor, sounds, showClock, replay = fedAtStart) {
-            latestOnDone(session)
+            if (!(canEat(latestPet) && latestShelf.isNotEmpty())) latestOnDone(session)
         }
     }
     // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now): a
@@ -402,10 +403,14 @@ private fun PantryVisit(
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = hungerColor(pet.hunger), tracking = HUD_STATUS_TRACKING, halo = true),
                 maxLines = 1,
             )
+            // Out of the way of the killer's speech bubble, which comes up this high over its head.
+            val bubbleUp = feedStage.line != null || tooFull != null
+            val recipesShown by animateFloatAsState(if (bubbleUp) 0f else 1f, tween(200), label = "recipesShown")
             BasicText(
                 "RECIPES ${dishesFound(found)} / ${DISHES.size}",
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
                 maxLines = 1,
+                modifier = Modifier.graphicsLayer { alpha = recipesShown },
             )
         }
 

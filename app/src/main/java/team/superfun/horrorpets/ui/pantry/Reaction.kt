@@ -213,7 +213,8 @@ internal class Meal(val image: ImageBitmap, val crumbs: List<Color>) {
  * - then the reaction, as [reactionCue] has it: its pose and sound, the line over its head, the gains over the board
  *   ([gainsOf]), the favorite's hearts, and a level-up's words and sound a beat later; OK or a tap carries on once
  *   [FeedStage.carryOn] says so;
- * - and [REACTION_HOLD_MS] later, the kitchen carries on Home by itself.
+ * - and [REACTION_HOLD_MS] later the show is over ([onDone]): the kitchen carries on Home by itself, unless the killer
+ *   could eat more, when it waits for OK (FEED again) or Back.
  *
  * Every wait is on [clock], the show's own, which stops while the app is away (and for the beat after it comes back),
  * so nothing plays off screen and it never carries on behind the player's back. [replay] starts at the reaction,

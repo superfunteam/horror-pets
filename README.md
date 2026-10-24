@@ -29,11 +29,15 @@ nothing else.
   the grill, a severed foot left in the sun, worms in the pot), using five ways to cook that get used up like any
   ingredient. Some dishes are gross on purpose; a wrong pair makes slop, and slop only cooks with more slop (two
   piles squash into one, to make room on the shelf). Every visit stocks the shelf with at least two pairs that cook
-  into something good, and every item wears its name. Feed one to your killer and it reacts to its taste: better food
-  pays more, and every killer has a secret favorite to find.
+  into something good, and every item wears its name. The shelf keeps its kinds together (ways to cook, raw foods,
+  snacks, meals, then slop), and the pantry says how hungry your killer is and how many of the recipes you have found;
+  put one item on the board and anything you have already made a dish with wears a check. Feed one to your killer and
+  it reacts to its taste: better food pays more, and every killer has a secret favorite to find. Still hungry? OK
+  feeds again without leaving.
 - **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
   your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
-  killer trains (up to triple the strength and XP), and it keeps its best in each. Quick Draw and Hide and Eek! need a
+  killer trains (up to triple the strength and XP), and it keeps its best in each. Dropped it? TRY AGAIN on the
+  results card plays the same game once more, no reel. Quick Draw and Hide and Eek! need a
   stable mate, so they only come up once you have a second killer. A new killer trains at both solo games (Slasher
   Says and Organ Drop) before its first fight, or FIGHT says "Train more first!".
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
