@@ -63,7 +63,7 @@ class SceneCatalogTest {
         val scene = """{"id":"a","title":"A","file":"x/a.webp","floorY":0.75,"tint":"#000000",
             "tintStrength":0.1,"shadowOpacity":0.5,"accent":"#FFFFFF"}"""
         val json = """{"Jason":[$scene],"freddy":[$scene],"PINHEAD":[$scene],"ghostface":[$scene],"Chucky":[$scene],
-            "MICHAEL":[$scene],"LeatherFace":[$scene],"bigfoot":[$scene]}"""
+            "MICHAEL":[$scene],"LeatherFace":[$scene],"JaWs":[$scene],"bigfoot":[$scene]}"""
         val parsed = parseScenes(json)
         assertEquals(PetId.entries.toSet(), parsed.keys)
         assertNotNull(parsed[PetId.JASON])
@@ -74,7 +74,7 @@ class SceneCatalogTest {
         val scene = """{"id":"a","title":"A","file":"x/a.webp","floorY":0.75,"tint":"#000000",
             "tintStrength":0.1,"shadowOpacity":0.5,"accent":"#FFFFFF"}"""
         val others = """"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene],"chucky":[$scene],"michael":[$scene],
-            "leatherface":[$scene]"""
+            "leatherface":[$scene],"jaws":[$scene]"""
         assertEquals(PetId.entries.toSet(), parseScenes("""{"jason":[$scene],$others}""").keys)
         assertThrows(IllegalArgumentException::class.java) {
             parseScenes("""{$others}""")
@@ -91,6 +91,10 @@ class SceneCatalogTest {
             parseScenes(
                 """{"jason":[$scene],"freddy":[$scene],"pinhead":[$scene],"ghostface":[$scene],"chucky":[$scene],"michael":[$scene]}""",
             )
+        }
+        // And one without the secret killer's scenes: he is in the roster, so Home needs them.
+        assertThrows(IllegalArgumentException::class.java) {
+            parseScenes("""{"jason":[$scene],${others.substringBefore(",\"jaws\"")}}""")
         }
     }
 

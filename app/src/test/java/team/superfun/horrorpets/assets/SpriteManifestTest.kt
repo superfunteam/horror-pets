@@ -60,7 +60,7 @@ class SpriteManifestTest {
     }
 
     @Test
-    fun theSixOriginalManifestsParseAsBeforeWithoutADance() {
+    fun thePlainManifestsHaveTheTwelveRequiredAnimsAndNoOptionalOnes() {
         for (pet in plainPets) {
             val m = parseManifest(AssetFixtures.manifest(pet))
             assertEquals(pet, 12, m.animations.size)

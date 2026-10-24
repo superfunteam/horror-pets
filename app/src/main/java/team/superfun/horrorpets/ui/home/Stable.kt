@@ -52,6 +52,7 @@ import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.KeyCap
 import team.superfun.horrorpets.ui.common.RingMedallion
@@ -192,16 +193,17 @@ internal fun StableBadge(
 }
 
 /**
- * The stable, over a dimmed Home: all of the killers in roster order. Unlocked ones are [RingMedallion]s with their
- * name and level (the one on screen tagged HERE); locked ones are dark silhouettes, "???" and BEAT TO UNLOCK. A
- * header says how many are unlocked. Left and Right move between the unlocked ones (the focused slot lights up
- * blood red), starting on [first]; OK or a tap goes to see that one ([onPick]); Back, or a tap outside the window,
- * closes it ([onClose]).
+ * The stable, over a dimmed Home: every killer the player may see ([visiblePets]: not a secret one before its
+ * reveal) in roster order. Unlocked ones are [RingMedallion]s with their name and level (the one on screen tagged
+ * HERE); locked ones are dark silhouettes, "???" and BEAT TO UNLOCK. A header says how many of those are unlocked.
+ * Left and Right move between the unlocked ones (the focused slot lights up blood red), starting on [first]; OK or a
+ * tap goes to see that one ([onPick]); Back, or a tap outside the window, closes it ([onClose]).
  */
 @Composable
 internal fun StableMenu(game: GameState, first: PetId?, loader: AssetLoader, onPick: (PetId) -> Unit, onClose: () -> Unit) {
     GameBackHandler(onBack = onClose)
     val touch = isTouchInput()
+    val shown = remember(game.pets.keys, game.revealed) { game.visiblePets() }
     val requesters = remember { PetId.entries.associateWith { FocusRequester() } }
     LaunchedEffect(Unit) {
         val start = first?.takeIf { game.isUnlocked(it) } ?: game.pets.keys.firstOrNull { it != game.selected } ?: game.selected
@@ -228,7 +230,7 @@ internal fun StableMenu(game: GameState, first: PetId?, loader: AssetLoader, onP
                 BasicText("YOUR STABLE", style = displayStyle(30.sp, tracking = 0.04f), maxLines = 1)
                 Spacer(Modifier.weight(1f))
                 BasicText(
-                    "${game.pets.size} / ${PetId.entries.size} UNLOCKED",
+                    "${game.pets.size} / ${shown.size} UNLOCKED",
                     style = displayStyle(16.sp, color = Gold, tracking = 0.16f),
                     maxLines = 1,
                 )
@@ -241,7 +243,7 @@ internal fun StableMenu(game: GameState, first: PetId?, loader: AssetLoader, onP
                     .background(Brush.horizontalGradient(listOf(Amber.copy(alpha = 0.55f), Color.Transparent))),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (id in PetId.entries) {
+                for (id in shown) {
                     val pet = game.pets[id]
                     StableSlot(
                         id = id,

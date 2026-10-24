@@ -9,9 +9,9 @@ import org.junit.Test
 
 class ModelTest {
     @Test
-    fun sevenPetsWithDisplayNames() {
+    fun theKillersAndTheirDisplayNames() {
         assertEquals(
-            listOf("Jason", "Freddy", "Pinhead", "Ghostface", "Chucky", "Michael", "Leatherface"),
+            listOf("Jason", "Freddy", "Pinhead", "Ghostface", "Chucky", "Michael", "Leatherface", "Jaws"),
             PetId.entries.map { it.displayName },
         )
     }

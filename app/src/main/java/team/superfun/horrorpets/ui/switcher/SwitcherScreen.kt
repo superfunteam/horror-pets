@@ -93,7 +93,9 @@ import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Starters
 import team.superfun.horrorpets.model.spec
+import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.SwitcherMode
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -182,10 +184,10 @@ private const val IDLE_STAGGER_MS = 230L
  * carries on to the next, or further), with the same nudge at either end. The back gesture is Back, and a
  * touch that starts in the system's gesture strips along the edges is left to the system.
  *
- * It picks the starter of a new game ([SwitcherMode.ONBOARD]): any killer, each showing its special, since none
- * has stats yet. The same stage picks a fight opponent ([SwitcherMode.OPPONENT]), with the player's own pet left
- * out: killers in the stable show their level and status, locked ones a KILL TO UNLOCK tag (still pickable), and
- * a counter says how many are unlocked.
+ * It picks the starter of a new game ([SwitcherMode.ONBOARD]): any killer but a secret one, each showing its special,
+ * since none has stats yet. The same stage picks a fight opponent ([SwitcherMode.OPPONENT]) from the killers the
+ * player may see, with the player's own pet left out: killers in the stable show their level and status, locked ones
+ * a KILL TO UNLOCK tag (still pickable), and a counter says how many of the visible ones are unlocked (see [lineup]).
  *
  * The row starts on the first pet. While onboarding there is nothing to go back to, so Back leaves the app
  * ([onExit]).
@@ -212,9 +214,7 @@ fun SwitcherScreen(
 ) {
     val sounds = LocalSoundSink.current
     val scope = rememberCoroutineScope()
-    val pets = remember(mode, game.selected) {
-        PetId.entries.filter { mode != SwitcherMode.OPPONENT || it != game.selected }
-    }
+    val pets = remember(mode, game.selected, game.pets.keys, game.revealed) { lineup(mode, game) }
     // Picking an opponent, PvP Battle is one more stop at the end of the row.
     val pvpSlot = pvp && mode == SwitcherMode.OPPONENT
     val count = pets.size + if (pvpSlot) 1 else 0
@@ -447,7 +447,7 @@ fun SwitcherScreen(
             )
             Spacer(Modifier.height(14.dp))
             TitleRule()
-            val locked = PetId.entries.count { !game.isUnlocked(it) }
+            val locked = game.visiblePets().count { !game.isUnlocked(it) }
             val subtitle = when {
                 mode == SwitcherMode.ONBOARD -> "YOU START WITH ONE  ·  BEAT THE OTHERS TO UNLOCK THEM"
                 locked > 0 -> "BEAT A LOCKED KILLER TO UNLOCK THEM"
@@ -461,6 +461,7 @@ fun SwitcherScreen(
         if (mode == SwitcherMode.OPPONENT) {
             UnlockedCount(
                 game.pets.size,
+                game.visiblePets().size,
                 Modifier.align(Alignment.BottomEnd).padding(end = safe.horizontal, bottom = safe.vertical),
             )
         }
@@ -481,9 +482,18 @@ private enum class LineupLabel {
     LOCKED,
 }
 
-/** "N / 7 UNLOCKED" in a small gold frame. */
+/**
+ * Who stands in the row, in roster order: for the starter pick every killer but a secret one (even once revealed: a
+ * new game starts with one of the seven); for an opponent every killer the player may see but the one fighting.
+ */
+internal fun lineup(mode: SwitcherMode, game: GameState): List<PetId> = when (mode) {
+    SwitcherMode.ONBOARD -> Starters
+    SwitcherMode.OPPONENT -> game.visiblePets().filter { it != game.selected }
+}
+
+/** "UNLOCKED N / [total]" in a small gold frame: [total] is the killers the player may see. */
 @Composable
-private fun UnlockedCount(unlocked: Int, modifier: Modifier = Modifier) {
+private fun UnlockedCount(unlocked: Int, total: Int, modifier: Modifier = Modifier) {
     Row(
         modifier
             .gameFrame(topEnd = 7.dp, bottomStart = 7.dp, inner = false)
@@ -492,7 +502,7 @@ private fun UnlockedCount(unlocked: Int, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText("UNLOCKED", style = displayStyle(14.sp, tracking = 0.14f))
-        BasicText("$unlocked / ${PetId.entries.size}", style = displayStyle(14.sp, color = Gold, tracking = 0.14f))
+        BasicText("$unlocked / $total", style = displayStyle(14.sp, color = Gold, tracking = 0.14f))
     }
 }
 

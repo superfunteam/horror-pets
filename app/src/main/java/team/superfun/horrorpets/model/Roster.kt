@@ -28,6 +28,7 @@ enum class SpecialStyle(val displayName: String, val effect: SpecialEffect, val 
     VOODOO_STAB("Voodoo Stab", SpecialEffect.DAZE),
     THE_SHAPE("The Shape", SpecialEffect.DAZE),
     SAW_DANCE("Saw Dance", SpecialEffect.BLEED, danced = true),
+    OXYGEN_TANK("Oxygen Tank", SpecialEffect.DAZE),
 }
 
 /**
@@ -64,6 +65,8 @@ data class Passive(
  * (`sprites/<pet>/`, `scenes.json`, `music/<pet>.ogg`, `sfx/special_<pet>.wav`, `voice/<pet>.wav`,
  * `voice/<pet>_never_dies.wav`), and the manifest's `displayScale` sets how tall it stands. A manifest that
  * ships the optional `dance` animation plays it for PLAY on Home (and for a [SpecialStyle.danced] special).
+ * [tagline] is what its fake death's poster says as it comes back (see [PetId.tagline]): null for the usual
+ * "<NAME> NEVER DIES.", or its own line, said by its `_never_dies` voice line.
  *
  * Adding a killer: a [PetId] entry, an entry here, and those asset folders.
  */
@@ -73,6 +76,7 @@ data class PetSpec(
     val special: SpecialStyle,
     val specialHitMs: Long,
     val walkSpeed: Float = 1f,
+    val tagline: String? = null,
 )
 
 /** Every killer's [PetSpec], in [PetId] order. */
@@ -96,7 +100,17 @@ val Roster: Map<PetId, PetSpec> = listOf(
         specialHitMs = 0,
         walkSpeed = 0.9f,
     ),
+    PetSpec(
+        PetId.JAWS,
+        Passive("Apex", heavyMult = FightTuning.JAWS_HEAVY_MULT),
+        SpecialStyle.OXYGEN_TANK,
+        specialHitMs = 780,
+        tagline = "YOU'RE GONNA NEED A BIGGER BOAT.",
+    ),
 ).associateBy { it.id }
 
 /** This pet's [Roster] entry. */
 val PetId.spec: PetSpec get() = Roster.getValue(this)
+
+/** The line along the bottom of this pet's fake death as it comes back: its own [PetSpec.tagline], or "<NAME> NEVER DIES." */
+val PetId.tagline: String get() = spec.tagline ?: "${displayName.uppercase()} NEVER DIES."

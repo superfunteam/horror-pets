@@ -29,6 +29,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.pantryItems
+import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.fakedeath.FakeDeathScreen
 import team.superfun.horrorpets.ui.fight.UnlockedScreen
@@ -267,6 +268,7 @@ fun HorrorPetsApp(
                 is Screen.Unlocked -> UnlockedScreen(
                     pet = screen.pet,
                     unlocked = state.game.pets.size,
+                    total = state.game.visiblePets().size,
                     loader = loader,
                     arena = lastFight?.let { arenaScene(loader, it.opponent, arenaRoll) },
                     onDone = vm::onUnlockedDone,

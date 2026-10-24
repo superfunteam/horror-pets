@@ -137,4 +137,5 @@ fun tasteOf(pet: PetId): Taste = when (pet) {
     PetId.CHUCKY -> Taste(Flavor.SWEET, Flavor.GROSS, Flavor.SAVORY, BIRTHDAY_CAKE)
     PetId.MICHAEL -> Taste(Flavor.SWEET, Flavor.SAVORY, Flavor.GROSS, PUMPKIN_PIE)
     PetId.LEATHERFACE -> Taste(Flavor.GROSS, Flavor.SAVORY, Flavor.SWEET, TEXAS_BBQ_PLATTER)
+    PetId.JAWS -> Taste(Flavor.GROSS, Flavor.SAVORY, Flavor.SWEET, FOOT_AND_POTATOES)
 }

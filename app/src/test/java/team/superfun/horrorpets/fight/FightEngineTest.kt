@@ -808,10 +808,17 @@ class FightEngineTest {
 
     @Test
     fun nobodyElseGetsTheHeavyBonus() {
-        for (id in PetId.entries - PetId.LEATHERFACE) {
+        for (id in PetId.entries - PetId.LEATHERFACE - PetId.JAWS) {
             val r = resolve(stateOf(player = fighter(id = id)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
             assertEquals("$id", 29, (r.events.single() as Hit).damage)
         }
+    }
+
+    @Test
+    fun jawsApexHeavyHitsHarderToo() {
+        // 16 * 1.8 * 1.15 = 33.12 -> 33, against everyone else's 29 (and Leatherface's 35).
+        val r = resolve(stateOf(player = fighter(id = PetId.JAWS)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll()))
+        assertEquals(33, (r.events.single() as Hit).damage)
     }
 
     @Test

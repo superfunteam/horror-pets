@@ -49,7 +49,10 @@ import team.superfun.horrorpets.ui.theme.TextLo
 /** Who made the chibi figure a killer is loosely based on, by their [username]. */
 data class ArtCredit(val pet: PetId, val username: String)
 
-/** Every killer's credit, in the roster's order. The landing page's footer (site/index.html) lists the same. */
+/**
+ * Every killer's credit but a secret one's, in the roster's order: the credits are on the title screen, before anything
+ * is revealed, so they never name him. The landing page's footer (site/index.html) lists the same.
+ */
 val ArtCredits = listOf(
     ArtCredit(PetId.JASON, "Ninomalbinho"),
     ArtCredit(PetId.FREDDY, "novYTerra"),

@@ -18,7 +18,7 @@
 // Errors are {error} with: bad_request (400), forbidden (403), no_room (404), full or version (409), busy (503).
 import { getStore } from "@netlify/blobs";
 
-const PETS = ["JASON", "FREDDY", "PINHEAD", "GHOSTFACE", "CHUCKY", "MICHAEL", "LEATHERFACE"];
+const PETS = ["JASON", "FREDDY", "PINHEAD", "GHOSTFACE", "CHUCKY", "MICHAEL", "LEATHERFACE", "JAWS"];
 const MOVES = ["STRIKE", "HEAVY", "BLOCK", "SPECIAL", "POTION", "RUN"];
 
 /** A code nobody has joined is free again after this long. */

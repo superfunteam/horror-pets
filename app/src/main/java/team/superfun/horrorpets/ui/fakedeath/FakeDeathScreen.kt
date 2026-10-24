@@ -72,6 +72,7 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.tagline
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
@@ -100,7 +101,7 @@ private const val REVEAL_AT = 3_600L
 /** "GOTCHA." lands (its scale reaches 1.0): the screen shakes, flashes red and the stone cracks. */
 private const val IMPACT_AT = REVEAL_AT + 180L
 
-/** "{NAME} NEVER DIES." with its voice line, just after the 0.7s "gotcha!" ends. */
+/** "{NAME} NEVER DIES." (or the pet's own tagline) with its voice line, just after the 0.7s "gotcha!" ends. */
 private const val NEVER_DIES_AT = 4_400L
 
 private const val TOTAL_MS = 6_500L
@@ -141,7 +142,8 @@ private const val RISE_MS = 260L
  * - 3.0–3.6s: the picture tears (sliced sideways, RGB split, flicker) with the `gotcha` sting.
  * - 3.6–6.5s: `GOTCHA.` falls in (scale 1.6 → 1.0) and lands with a shake and a red flash, the voice
  *   says "gotcha!", the stone cracks and the pet rises from the grave playing JUMP, then WAIT. At 4.4s
- *   `{NAME} NEVER DIES.` fades up with the pet's voice line.
+ *   `{NAME} NEVER DIES.` fades up with the pet's voice line (Jaws's says "YOU'RE GONNA NEED A BIGGER BOAT.": the
+ *   pet's [tagline]).
  *
  * OK skips to the end after 2s. [onDone] is called exactly once, by the skip or at the end. Back does
  * nothing: the reveal has to be seen.
@@ -335,7 +337,7 @@ fun FakeDeathScreen(
                 }
                 if (stage >= Stage.NEVER_DIES) {
                     Tagline(
-                        name = name,
+                        text = pet.tagline,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .graphicsLayer {
@@ -910,11 +912,11 @@ private fun Gotcha(modifier: Modifier = Modifier) {
     }
 }
 
-/** "{NAME} NEVER DIES." along the bottom, like a poster's tagline. */
+/** The pet's [tagline] ("{NAME} NEVER DIES.") along the bottom, like a poster's tagline. */
 @Composable
-private fun Tagline(name: String, modifier: Modifier = Modifier) {
+private fun Tagline(text: String, modifier: Modifier = Modifier) {
     BasicText(
-        text = "$name NEVER DIES.",
+        text = text,
         style = displayStyle(46.sp, color = TextHi, tracking = 0.12f, halo = true, lineHeight = 46.sp)
             .copy(textAlign = TextAlign.Center),
         maxLines = 1,

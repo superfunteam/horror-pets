@@ -7,8 +7,10 @@ import team.superfun.horrorpets.model.PetId
 
 class CreditsTest {
     @Test
-    fun everyKillerIsCreditedOnceInTheRostersOrder() {
-        assertEquals(PetId.entries.toList(), ArtCredits.map { it.pet })
+    fun everyKillerButTheSecretOneIsCreditedOnceInTheRostersOrder() {
+        // The credits name no secret killer: they are on the title screen, before anything is revealed.
+        assertEquals(PetId.entries.filterNot { it.secret }, ArtCredits.map { it.pet })
+        assertFalse(ArtCredits.any { it.pet.secret })
     }
 
     @Test

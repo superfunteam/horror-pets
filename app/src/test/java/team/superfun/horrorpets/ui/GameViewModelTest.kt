@@ -61,6 +61,7 @@ import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.pantryItems
+import team.superfun.horrorpets.ui.switcher.lineup
 
 // A realistic epoch (2027-01-15), safely past Tuning.MIN_VALID_EPOCH_MS.
 private const val T0 = 1_800_000_000_000L
@@ -432,9 +433,11 @@ class GameViewModelTest {
         rig.vm.onFightPressed()
         assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
         assertFalse(rig.ui.busy)
-        // The UI derives the candidates from game.selected: everyone else, so six of seven pets.
-        val opponents = PetId.entries.filter { it != rig.game.selected }
-        assertEquals(6, opponents.size)
+        // The UI derives the candidates from the game: every killer it may see but the one fighting. This stable has
+        // the whole roster (the secret killer included, so he is visible), so seven of eight.
+        val opponents = lineup(SwitcherMode.OPPONENT, rig.game)
+        assertEquals(PetId.entries - PetId.JASON, opponents)
+        assertEquals(7, opponents.size)
         assertFalse(PetId.JASON in opponents)
 
         rig.vm.onSwitcherPick(PetId.JASON) // never a legal opponent

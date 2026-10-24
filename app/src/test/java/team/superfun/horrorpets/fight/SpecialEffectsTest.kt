@@ -34,6 +34,7 @@ class SpecialEffectsTest {
             PetId.CHUCKY to SpecialEffect.DAZE,
             PetId.MICHAEL to SpecialEffect.DAZE,
             PetId.LEATHERFACE to SpecialEffect.BLEED,
+            PetId.JAWS to SpecialEffect.DAZE,
         )
         assertEquals(PetId.entries.toSet(), expected.keys)
         for ((pet, effect) in expected) {

@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.model.Attacks
 import team.superfun.horrorpets.model.ItemKind
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
@@ -39,12 +40,23 @@ class RosterAssetsTest {
             val manifest = parseManifest(file("sprites-final/$dir/manifest.json").readText())
             assertEquals("$id", dir, manifest.pet)
             for (anim in Anim.entries) {
-                // An optional animation (the dance) need not be there, but one the manifest lists must be.
+                // An optional animation (the dance, the thrash, the barrels) need not be there, but one the manifest
+                // lists must be.
                 if (anim.optional && !manifest.has(anim)) continue
                 assertTrue("$id ${anim.key}", file("sprites-final/$dir/${manifest.spec(anim).file}").isFile)
             }
             assertTrue("$id feed", runCatching { manifest.feedAnim() }.isSuccess)
+            assertTrue("$id head", file("sprites-final/$dir/head.webp").isFile)
+            // An attack that names its own animation (Jaws's Barrel Breach and Ultra Thrash) finds it in the manifest.
+            for (attack in Attacks.filter { it.pet == id && it.anim != null }) {
+                val anim = Anim.fromKey(attack.anim!!)
+                assertTrue("${attack.name}: ${attack.anim} is an animation", anim != null)
+                assertTrue("${attack.name}: $dir ships ${attack.anim}", manifest.has(anim!!))
+            }
         }
+        // Jaws ships both of his extra moves.
+        val jaws = parseManifest(file("sprites-final/jaws/manifest.json").readText())
+        assertTrue(jaws.has(Anim.THRASH) && jaws.has(Anim.BARRELS))
     }
 
     @Test
@@ -52,17 +64,6 @@ class RosterAssetsTest {
         val manifest = parseManifest(file("sprites-final/leatherface/manifest.json").readText())
         assertTrue(manifest.has(Anim.DANCE))
         assertTrue(file("sprites-final/leatherface/${manifest.spec(Anim.DANCE).file}").isFile)
-    }
-
-    @Test
-    fun jawsHasEveryStripWithHisThrashAndBarrels() {
-        // Not in the roster yet, so everyPetHasItsSprites doesn't reach him: check his folder by name.
-        val manifest = parseManifest(file("sprites-final/jaws/manifest.json").readText())
-        assertEquals("jaws", manifest.pet)
-        for (anim in Anim.required + Anim.THRASH + Anim.BARRELS) {
-            assertTrue(anim.key, file("sprites-final/jaws/${manifest.spec(anim).file}").isFile)
-        }
-        assertTrue(file("sprites-final/jaws/head.webp").isFile)
     }
 
     @Test
@@ -86,6 +87,8 @@ class RosterAssetsTest {
         // special_leatherface opens at full level: its first 10 ms window (nothing before it) rises highest, so
         // its hit is at 0 ms; the rev at about 320 ms rises far less over the already-loud pull before it.
         assertEquals(0L, PetId.LEATHERFACE.spec.specialHitMs)
+        // special_jaws: the tank's hiss and whoosh, then the explosion at 780 ms (the blow).
+        assertEquals(780L, PetId.JAWS.spec.specialHitMs)
     }
 
     /**

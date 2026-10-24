@@ -15,7 +15,7 @@ object FightTuning {
     // Damage: (BASE_DAMAGE + strength / STRENGTH_DIVISOR) * variance * move multiplier * crit
     // * the defender's damage-taken multiplier, where variance is uniform in 1 +- DAMAGE_VARIANCE,
     // rounded once at the end, and at least 1. The move multiplier includes the attacker's passive
-    // (CHUCKY_STRIKE_MULT on a STRIKE, LEATHERFACE_HEAVY_MULT on a HEAVY), so it applies before the crit.
+    // (CHUCKY_STRIKE_MULT on a STRIKE, LEATHERFACE_HEAVY_MULT or JAWS_HEAVY_MULT on a HEAVY), so it applies before the crit.
     const val BASE_DAMAGE = 8.0
     const val STRENGTH_DIVISOR = 8.0
     const val DAMAGE_VARIANCE = 0.15
@@ -27,6 +27,7 @@ object FightTuning {
     const val CHUCKY_STRIKE_MULT = 1.15 // Chucky's STRIKE (not his counters, heavies or special)
     const val MICHAEL_DAMAGE_TAKEN_MULT = 0.85 // everything that hits Michael, after crits
     const val LEATHERFACE_HEAVY_MULT = 1.2 // Leatherface's HEAVY (not his strikes, counters or special)
+    const val JAWS_HEAVY_MULT = 1.15 // Jaws's HEAVY, his Apex passive (not his strikes, counters or special)
 
     // Crits: chance = CRIT_BASE + mood / 100 * CRIT_MOOD_SPAN + the pet's passive bonus (FREDDY_CRIT_BONUS).
     const val CRIT_BASE = 0.05

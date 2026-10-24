@@ -254,6 +254,7 @@ class CookbookTest {
             PetId.CHUCKY to BIRTHDAY_CAKE,
             PetId.MICHAEL to PUMPKIN_PIE,
             PetId.LEATHERFACE to TEXAS_BBQ_PLATTER,
+            PetId.JAWS to FOOT_AND_POTATOES,
         )
         assertEquals(PetId.entries.toSet(), favorites.keys)
         for (pet in PetId.entries) {
@@ -275,6 +276,7 @@ class CookbookTest {
             PetId.CHUCKY to Taste(SWEET, GROSS, SAVORY, BIRTHDAY_CAKE),
             PetId.MICHAEL to Taste(SWEET, SAVORY, GROSS, PUMPKIN_PIE),
             PetId.LEATHERFACE to Taste(GROSS, SAVORY, SWEET, TEXAS_BBQ_PLATTER),
+            PetId.JAWS to Taste(GROSS, SAVORY, SWEET, FOOT_AND_POTATOES),
         )
         for (pet in PetId.entries) {
             val taste = tasteOf(pet)

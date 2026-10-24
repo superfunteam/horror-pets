@@ -70,13 +70,14 @@ private val Gold = Color(0xFFF5C543)
 /**
  * "UNLOCKED!": the player just beat [pet], a killer they did not have, and it joined their stable. Its head turns up
  * in a gold medallion with light rays turning behind it, over the fight's [arena] dimmed, with "<NAME> JOINS YOUR
- * STABLE" and how many of the killers are unlocked now ([unlocked] of [PetId.entries]). OK, Back or a tap carries
- * on to the results ([onDone]).
+ * STABLE" and how many of the killers are unlocked now ([unlocked] of the [total] the player may see: a secret one
+ * counts only once revealed). OK, Back or a tap carries on to the results ([onDone]).
  */
 @Composable
 fun UnlockedScreen(
     pet: PetId,
     unlocked: Int,
+    total: Int,
     loader: AssetLoader,
     arena: SceneSpec?,
     onDone: () -> Unit,
@@ -153,7 +154,7 @@ fun UnlockedScreen(
             )
             Spacer(Modifier.height(6.dp))
             BasicText(
-                "$unlocked / ${PetId.entries.size} UNLOCKED",
+                "$unlocked / $total UNLOCKED",
                 style = displayStyle(13.sp, FontWeight.Bold, color = Amber, tracking = 0.2f),
             )
             Spacer(Modifier.height(16.dp))

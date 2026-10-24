@@ -5,8 +5,13 @@ import kotlinx.serialization.Serializable
 /**
  * Every killer, in roster order (the pet switcher's order). A pet's facts (its passive, its special, how it
  * walks) live in its [Roster] entry; its art and sounds live in folders named `name.lowercase()`.
+ *
+ * A [secret] killer is in the roster but nowhere a player can see (the starter pick, the stable, the opponent
+ * switcher, the counters) until the save reveals it or it joins the stable: see [GameState.isVisible]. Only the
+ * save, the PvP relay, the scene catalog and the debug puppet look past that, through [PetId.entries]; everything a
+ * player sees goes through [GameState.visiblePets].
  */
-enum class PetId(val displayName: String) {
+enum class PetId(val displayName: String, val secret: Boolean = false) {
     JASON("Jason"),
     FREDDY("Freddy"),
     PINHEAD("Pinhead"),
@@ -14,7 +19,11 @@ enum class PetId(val displayName: String) {
     CHUCKY("Chucky"),
     MICHAEL("Michael"),
     LEATHERFACE("Leatherface"),
+    JAWS("Jaws", secret = true),
 }
+
+/** The killers a new game may start with: every one but the secret ones, even once they are revealed. */
+val Starters: List<PetId> = PetId.entries.filterNot { it.secret }
 
 /**
  * One pet's persistent state. Stats are 0..100 doubles so real-time decay composes exactly.
@@ -62,6 +71,10 @@ data class PetState(
  * [pantry] is the player's one shelf for the whole stable: the [PantryItem.id] of everything on it, in shelf order
  * (the same item can appear more than once). It is ids, not items, so a save written by a later build that knows
  * more items still loads here; [pantryItems] is the shelf as items.
+ *
+ * [revealed] is the [PetId.secret] killers the player has met, by [PetId.name]: each one's challenger entrance has
+ * started, so it is in every list and counter from then on (see [isVisible]). Names, not ids, like [pantry]; a build
+ * that does not know the field ignores it.
  */
 @Serializable
 data class GameState(
@@ -70,10 +83,25 @@ data class GameState(
     val selected: PetId? = null,
     val lastSeenMs: Long? = null,
     val pantry: List<String> = emptyList(),
+    val revealed: Set<String> = emptySet(),
 ) {
     /** Whether [id] is in the stable. */
     fun isUnlocked(id: PetId): Boolean = id in pets
 }
+
+/** Whether the player may see [pet] anywhere yet: it is not [PetId.secret], or it has been [GameState.revealed], or it is in the stable. */
+fun GameState.isVisible(pet: PetId): Boolean = !pet.secret || pet.name in revealed || pet in pets
+
+/** The killers the player may see, in [PetId] order: what every list and "n / N" counter in the game counts. */
+fun GameState.visiblePets(): List<PetId> = PetId.entries.filter { isVisible(it) }
+
+/**
+ * The secret killer whose challenger entrance the next FIGHT plays: one not yet visible, once every killer that is
+ * not secret is in the stable (however long ago that happened, so a save that had them all before he existed gets
+ * him too). Null while any of them is still to beat, or once he has been revealed or has joined.
+ */
+fun GameState.challengerDue(): PetId? =
+    if (Starters.all { it in pets }) PetId.entries.firstOrNull { it.secret && !isVisible(it) } else null
 
 /** The [GameState.pantry] as items, in shelf order. An id this build does not know is skipped. */
 fun GameState.pantryItems(): List<PantryItem> = pantry.mapNotNull(::pantryItemById)

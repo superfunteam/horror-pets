@@ -12,9 +12,15 @@ import team.superfun.horrorpets.model.bestAttack
 
 // The shortcuts the puppet's commands take past play, as plain edits of the game, for GameViewModel.debugEdit.
 
-/** [this] game with every killer in the stable, the ones joining at their defaults, and one active if none was. */
-fun GameState.withAllUnlocked(): GameState =
-    copy(pets = PetId.entries.associateWith { pets[it] ?: PetState(it) }, selected = selected ?: PetId.entries.first())
+/**
+ * [this] game with every killer but a secret one in the stable (in roster order), the ones joining at their defaults,
+ * and one active if none was. A secret killer already in the stable stays; one that is not is left out, so the next
+ * FIGHT plays his challenger entrance as it would for a player who unlocked the rest.
+ */
+fun GameState.withAllUnlocked(): GameState = copy(
+    pets = PetId.entries.filter { !it.secret || it in pets }.associateWith { pets[it] ?: PetState(it) },
+    selected = selected ?: PetId.entries.first(),
+)
 
 /** [this] game with [pet] active, joining the stable at its defaults if it is not in it. */
 fun GameState.withActive(pet: PetId): GameState = copy(pets = pets + (pet to (pets[pet] ?: PetState(pet))), selected = pet)

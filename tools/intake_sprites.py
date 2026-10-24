@@ -7,7 +7,9 @@ A few optional fields cover art that doesn't stand on feet or that was fitted to
 - an animation's "refScale" scales its reference row about the row's bottom centre before registering, for a row
   the sheet fitted at a different size from the rest of the pet;
 - an animation's "groundOffset" is how far (cell px) the pet's own ground sits above the animation's lowest
-  pixels, for effects that hang below him.
+  pixels, for effects that hang below him. Jaws's thrash uses 20, a hand-tuned compromise: his swooshes and bite
+  marks fill almost the whole cell, so standing him lower or bigger would cut them off at its edge, and he sits a
+  little high (about 23 px) instead.
 
 Usage: tools/.venv/bin/python -I tools/intake_sprites.py --out sprites-final --qa art-work/sprite-qa
 """

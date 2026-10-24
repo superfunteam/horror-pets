@@ -40,7 +40,8 @@ sealed interface Trait {
 /**
  * One of a killer's attacks for one [slot]. [tier] 0 is the attack every killer starts with; tiers 1-3 unlock at
  * [level] (see [UNLOCK_LEVELS]). [power] is its damage multiplier (see [ATTACK_POWER]) and [traits] its perks and
- * catches. [id] is stable across renames: it is what a save remembers.
+ * catches. [id] is stable across renames: it is what a save remembers. [anim] is the sprite animation it swings
+ * with, by its manifest key (Jaws's Barrel Breach plays `barrels`), or null for the usual `attack` swing.
  */
 data class Attack(
     val id: String,
@@ -51,6 +52,7 @@ data class Attack(
     val level: Int,
     val power: Double,
     val traits: List<Trait> = emptyList(),
+    val anim: String? = null,
 ) {
     val critBonus: Double get() = traits.filterIsInstance<Trait.Crit>().sumOf { it.bonus }
 
@@ -95,7 +97,10 @@ fun specialTraits(effect: SpecialEffect, tier: Int): List<Trait> = when (effect)
     }[tier]
 }
 
-/** One killer's attack names, tiers 0-3 per slot (its special's tier 0 is its roster special), and tiers 2-3's traits. */
+/**
+ * One killer's attack names, tiers 0-3 per slot (its special's tier 0 is its roster special), tiers 2-3's traits, and
+ * the attacks that swing with their own animation ([anims], by slot and tier, a manifest key: see [Attack.anim]).
+ */
 private class Moveset(
     val pet: PetId,
     val light: List<String>,
@@ -103,6 +108,7 @@ private class Moveset(
     val special: List<String>,
     val lightTraits: List<List<Trait>>,
     val heavyTraits: List<List<Trait>>,
+    val anims: Map<Pair<Slot, Int>, String> = emptyMap(),
 )
 
 private val Movesets = listOf(
@@ -162,9 +168,18 @@ private val Movesets = listOf(
         lightTraits = listOf(listOf(Trait.Bleed(2), Trait.Accuracy(-0.04)), listOf(Trait.Crit(0.08), Trait.Meter(20))),
         heavyTraits = listOf(listOf(Trait.Bleed(2), Trait.Accuracy(-0.05)), listOf(Trait.Daze(0.30), Trait.Accuracy(-0.07))),
     ),
+    Moveset(
+        PetId.JAWS,
+        light = listOf("Fin Swipe", "Tail Slap", "Nibble", "Bump the Boat"),
+        heavy = listOf("Chomp", "Death Roll", "Barrel Breach", "Ultra Thrash"),
+        special = listOf("Bigger Boat", "Amity Island", "Smile!"),
+        lightTraits = listOf(listOf(Trait.Bleed(2), Trait.Meter(20)), listOf(Trait.Daze(0.20), Trait.Accuracy(-0.05))),
+        heavyTraits = listOf(listOf(Trait.Shatter(25), Trait.Accuracy(-0.05)), listOf(Trait.Bleed(3), Trait.Accuracy(-0.07))),
+        anims = mapOf((Slot.HEAVY to 2) to "barrels", (Slot.HEAVY to 3) to "thrash"),
+    ),
 )
 
-private fun attack(pet: PetId, slot: Slot, tier: Int, name: String, traits: List<Trait>) = Attack(
+private fun Moveset.attack(slot: Slot, tier: Int, name: String, traits: List<Trait>) = Attack(
     id = "${pet.name.lowercase()}_${slot.name.lowercase()}_$tier",
     pet = pet,
     slot = slot,
@@ -173,14 +188,15 @@ private fun attack(pet: PetId, slot: Slot, tier: Int, name: String, traits: List
     level = UNLOCK_LEVELS.getValue(slot)[tier],
     power = ATTACK_POWER.getValue(slot)[tier],
     traits = traits,
+    anim = anims[slot to tier],
 )
 
 /** Every killer's attacks: 3 slots × 4 tiers each, in [PetId], then [Slot], then tier order. */
 val Attacks: List<Attack> = Movesets.sortedBy { it.pet.ordinal }.flatMap { m ->
     val effect = m.pet.spec.special.effect
-    (0..3).map { t -> attack(m.pet, Slot.LIGHT, t, m.light[t], if (t >= 2) m.lightTraits[t - 2] else emptyList()) } +
-        (0..3).map { t -> attack(m.pet, Slot.HEAVY, t, m.heavy[t], if (t >= 2) m.heavyTraits[t - 2] else emptyList()) } +
-        (0..3).map { t -> attack(m.pet, Slot.SPECIAL, t, if (t == 0) m.pet.spec.special.displayName else m.special[t - 1], specialTraits(effect, t)) }
+    (0..3).map { t -> m.attack(Slot.LIGHT, t, m.light[t], if (t >= 2) m.lightTraits[t - 2] else emptyList()) } +
+        (0..3).map { t -> m.attack(Slot.HEAVY, t, m.heavy[t], if (t >= 2) m.heavyTraits[t - 2] else emptyList()) } +
+        (0..3).map { t -> m.attack(Slot.SPECIAL, t, if (t == 0) m.pet.spec.special.displayName else m.special[t - 1], specialTraits(effect, t)) }
 }
 
 private val ById: Map<String, Attack> = Attacks.associateBy { it.id }

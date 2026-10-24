@@ -15,13 +15,13 @@ class RosterTest {
 
     @Test
     fun theNewKillersComeLastInOrder() {
-        assertEquals(listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE), PetId.entries.drop(4))
+        assertEquals(listOf(PetId.CHUCKY, PetId.MICHAEL, PetId.LEATHERFACE, PetId.JAWS), PetId.entries.drop(4))
     }
 
     @Test
     fun specialNamesAreTheSignatureMoves() {
         assertEquals(
-            listOf("Machete Frenzy", "Dream Claws", "Chains", "Knife Flurry", "Voodoo Stab", "The Shape", "Saw Dance"),
+            listOf("Machete Frenzy", "Dream Claws", "Chains", "Knife Flurry", "Voodoo Stab", "The Shape", "Saw Dance", "Oxygen Tank"),
             PetId.entries.map { it.spec.special.displayName },
         )
     }
@@ -40,9 +40,31 @@ class RosterTest {
         assertEquals(FightTuning.CHUCKY_STRIKE_MULT, PetId.CHUCKY.spec.passive.strikeMult, 0.0)
         assertEquals(FightTuning.MICHAEL_DAMAGE_TAKEN_MULT, PetId.MICHAEL.spec.passive.damageTakenMult, 0.0)
         assertEquals(FightTuning.LEATHERFACE_HEAVY_MULT, PetId.LEATHERFACE.spec.passive.heavyMult, 0.0)
+        assertEquals(FightTuning.JAWS_HEAVY_MULT, PetId.JAWS.spec.passive.heavyMult, 0.0)
         assertEquals(1.15, FightTuning.CHUCKY_STRIKE_MULT, 0.0)
         assertEquals(0.85, FightTuning.MICHAEL_DAMAGE_TAKEN_MULT, 0.0)
         assertEquals(1.2, FightTuning.LEATHERFACE_HEAVY_MULT, 0.0)
+        assertEquals(1.15, FightTuning.JAWS_HEAVY_MULT, 0.0)
+    }
+
+    @Test
+    fun jawsIsAnApexWithAnOxygenTankThatDazes() {
+        val jaws = PetId.JAWS.spec
+        assertEquals("Jaws", PetId.JAWS.displayName)
+        assertEquals("Apex", jaws.passive.name)
+        assertEquals(SpecialStyle.OXYGEN_TANK, jaws.special)
+        assertEquals("Oxygen Tank", jaws.special.displayName)
+        assertEquals(SpecialEffect.DAZE, jaws.special.effect)
+        assertEquals(false, jaws.special.danced)
+        assertEquals(780L, jaws.specialHitMs)
+        assertEquals(1f, jaws.walkSpeed, 0f)
+    }
+
+    @Test
+    fun theFakeDeathTaglineIsNeverDiesButJawsNeedsABiggerBoat() {
+        assertEquals("YOU'RE GONNA NEED A BIGGER BOAT.", PetId.JAWS.tagline)
+        assertEquals("JASON NEVER DIES.", PetId.JASON.tagline)
+        for (id in PetId.entries - PetId.JAWS) assertEquals("$id", "${id.displayName.uppercase()} NEVER DIES.", id.tagline)
     }
 
     @Test
@@ -50,6 +72,7 @@ class RosterTest {
         assertEquals("Scrappy", PetId.CHUCKY.spec.passive.name)
         assertEquals("Relentless", PetId.MICHAEL.spec.passive.name)
         assertEquals("Chainsaw", PetId.LEATHERFACE.spec.passive.name)
+        assertEquals("Apex", PetId.JAWS.spec.passive.name)
         assertTrue(PetId.entries.all { it.spec.passive.name.isNotBlank() })
     }
 

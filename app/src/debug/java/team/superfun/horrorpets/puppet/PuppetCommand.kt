@@ -12,7 +12,7 @@ import team.superfun.horrorpets.versionCodeOf
 
 /** One puppet command, as [parseCommand] reads it from adb (see "Puppet mode" in the README). */
 sealed interface PuppetCommand {
-    /** `unlock_all`: every killer joins the stable. */
+    /** `unlock_all`: every killer but the secret one joins the stable (so the next FIGHT brings him on). */
     data object UnlockAll : PuppetCommand
 
     /** `pet <killer>`: [pet] becomes the active pet, joining the stable first if it is not in it, and Home comes up. */

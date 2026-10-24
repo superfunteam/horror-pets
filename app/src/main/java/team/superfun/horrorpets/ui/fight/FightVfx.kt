@@ -93,6 +93,8 @@ private val VoodooPale = Color(0xFFF1E6FF)
  * - Leatherface, Saw Dance: three white-hot chainsaw blades whirl around the target on two tilted orbits,
  *   trailing orange arcs (dimmer where they pass behind it) and biting as they sweep across its front,
  *   while a shower of orange-yellow sparks flies off the blades and falls.
+ * - Jaws, Oxygen Tank: TEMPORARY, a generic blast (a white flash, a swelling fireball and a ring) until his own
+ *   tank-and-explosion effect is drawn.
  * Everything is lines, arcs, circles and ovals placed by [hash01], with brushes and strokes built once
  * per showing, so a frame allocates nothing.
  */
@@ -125,6 +127,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                 val voodoo = VoodooKit(unit, fx)
                 val shape = ShapeKit(w, h, fx)
                 val saw = SawKit(fx)
+                val blastRing = Stroke(6f * unit)
                 onDrawBehind {
                     val p = progress()
                     if (p <= 0f || p >= 1f) return@onDrawBehind
@@ -137,6 +140,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                         SpecialStyle.VOODOO_STAB -> voodooStab(f, p, unit, voodoo)
                         SpecialStyle.THE_SHAPE -> theShape(f, p, unit, shape)
                         SpecialStyle.SAW_DANCE -> sawDance(f, p, unit, saw)
+                        SpecialStyle.OXYGEN_TANK -> genericBlast(f, p, blastRing)
                     }
                 }
             },
@@ -677,4 +681,22 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
         drawLine(color, Offset(tx, ty), Offset(hx, hy), strokeWidth = (2.5f + 2f * (1f - age)) * unit, cap = StrokeCap.Round, alpha = alpha)
         if (age < 0.4f) drawCircle(SawHot, 3f * unit, Offset(hx, hy), alpha = alpha)
     }
+}
+
+private val BlastFire = Color(0xFFFF8A1F)
+private val BlastCore = Color(0xFFFFE08A)
+
+/**
+ * TEMPORARY: a generic blast over the target, standing in for Jaws's Oxygen Tank until its own effect (the tank's
+ * arc and the explosion) replaces it. A white flash, a fireball that swells and fades, and a white [ring] flaring out.
+ */
+private fun DrawScope.genericBlast(f: SpecialFx, p: Float, ring: Stroke) {
+    val center = Offset(f.cx, f.cy)
+    if (p < 0.18f) drawRect(Color.White, alpha = 0.35f * (1f - p / 0.18f))
+    val swell = easeOut((p / 0.45f).coerceAtMost(1f))
+    val fade = if (p < 0.5f) 1f else 1f - (p - 0.5f) / 0.5f
+    drawCircle(BlastFire, radius = f.bodyH * (0.15f + 0.4f * swell), center = center, alpha = 0.55f * fade)
+    drawCircle(BlastCore, radius = f.bodyH * (0.08f + 0.22f * swell), center = center, alpha = 0.85f * fade)
+    val flare = (p / 0.6f).coerceIn(0f, 1f)
+    if (flare < 1f) drawCircle(Color.White, radius = f.bodyH * (0.2f + 0.6f * flare), center = center, alpha = 1f - flare, style = ring)
 }

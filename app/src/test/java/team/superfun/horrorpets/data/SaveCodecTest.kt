@@ -221,7 +221,58 @@ class SaveCodecTest {
         // The pantry is read on its own, but a wrongly typed version or lastSeenMs still makes the save unusable.
         assertNull(SaveCodec.decodeOrNull("""{"version":2,"pantry":["grill"],"lastSeenMs":"yesterday"}"""))
         assertNull(SaveCodec.decodeOrNull("""{"version":3,"pantry":["grill"]}"""))
+        // The same goes for the reveal, read on its own too.
+        assertNull(SaveCodec.decodeOrNull("""{"version":2,"revealed":["JAWS"],"lastSeenMs":"yesterday"}"""))
         assertEquals(defaults, SaveCodec.decode("""{"version":1,"pantry":["grill"]}"""))
+    }
+
+    @Test
+    fun revealedRoundTrips() {
+        val state = GameState(
+            pets = PetId.entries.filterNot { it.secret }.associateWith { PetState(it) },
+            selected = PetId.MICHAEL,
+            revealed = setOf("JAWS"),
+        )
+        val json = SaveCodec.encode(state)
+        assertTrue(json, json.contains("\"revealed\":[\"JAWS\"]"))
+        assertTrue("the reveal is no new save version", json.contains("\"version\":2"))
+        assertEquals(state, SaveCodec.decode(json))
+        // Nothing revealed is the default, and a save from before the secret (no key at all) has nothing revealed.
+        assertTrue(defaults.revealed.isEmpty())
+        assertTrue(SaveCodec.decode(v2(""""JASON":{"level":5}""", selected = "JASON")).revealed.isEmpty())
+        // He joins the stable like anyone: a save with him in it keeps him.
+        val withHim = state.copy(pets = state.pets + (PetId.JAWS to PetState(PetId.JAWS, level = 4)), selected = PetId.JAWS)
+        assertEquals(withHim, SaveCodec.decode(SaveCodec.encode(withHim)))
+    }
+
+    @Test
+    fun aWronglyTypedRevealedKeepsThePets() {
+        // A reveal that is not a list reads as nothing revealed; it never costs the player their killers.
+        for (bad in listOf("\"JAWS\"", "{\"JAWS\":true}", "42", "true", "{}", "null")) {
+            val json = v2(""""JASON":{"level":3,"wins":4},"FREDDY":{"level":2}""", selected = "FREDDY", extra = ""","revealed":$bad,"lastSeenMs":1760000000000""")
+            val decoded = SaveCodec.decodeOrNull(json)
+            assertNotNull(bad, decoded)
+            decoded!!
+            assertTrue(bad, decoded.revealed.isEmpty())
+            assertEquals(bad, setOf(PetId.JASON, PetId.FREDDY), decoded.pets.keys)
+            assertEquals(bad, 3, decoded.pets.getValue(PetId.JASON).level)
+            assertEquals(bad, PetId.FREDDY, decoded.selected)
+            assertEquals(bad, 1_760_000_000_000L, decoded.lastSeenMs)
+        }
+    }
+
+    @Test
+    fun unknownRevealedNamesAreDropped() {
+        // A killer a later build added, a wrongly cased name, an empty one and entries that are not strings at all.
+        val json = v2(
+            """"JASON":{"level":2}""",
+            selected = "JASON",
+            extra = ""","revealed":["PENNYWISE","jaws","",7,null,true,["JAWS"],{"id":"JAWS"},"JAWS","JAWS"]""",
+        )
+        val decoded = SaveCodec.decode(json)
+        assertEquals(setOf("JAWS"), decoded.revealed)
+        assertEquals(2, decoded.pets.getValue(PetId.JASON).level)
+        assertEquals(emptySet<String>(), SaveCodec.decode(v2(""""JASON":{}""", extra = ""","revealed":["PENNYWISE"]""")).revealed)
     }
 
     @Test

@@ -111,4 +111,19 @@ class AttacksTest {
         val answered = seven.copy(known = setOf("jason_light_1", "jason_heavy_1", "jason_special_1"))
         assertEquals(listOf("jason_light_2", "jason_heavy_2"), pendingAttacks(answered).map { it.id })
     }
+
+    @Test
+    fun jawsHasHisMovesAndHisHeaviesPlayTheirOwnAnimations() {
+        assertEquals(listOf("Fin Swipe", "Tail Slap", "Nibble", "Bump the Boat"), attacksOf(PetId.JAWS, Slot.LIGHT).map { it.name })
+        assertEquals(listOf("Chomp", "Death Roll", "Barrel Breach", "Ultra Thrash"), attacksOf(PetId.JAWS, Slot.HEAVY).map { it.name })
+        assertEquals(listOf("Oxygen Tank", "Bigger Boat", "Amity Island", "Smile!"), attacksOf(PetId.JAWS, Slot.SPECIAL).map { it.name })
+        assertEquals(listOf(null, null, "barrels", "thrash"), attacksOf(PetId.JAWS, Slot.HEAVY).map { it.anim })
+        // Everything else swings with its ATTACK animation, as always.
+        val named = Attacks.filter { it.anim != null }.map { it.id }
+        assertEquals(listOf("jaws_heavy_2", "jaws_heavy_3"), named)
+        // His specials daze, and shatter more as they tier up.
+        val specials = attacksOf(PetId.JAWS, Slot.SPECIAL)
+        assertTrue(specials.all { it.daze == 1.0 })
+        assertEquals(listOf(0, 25, 50, FightTuning.METER_MAX), specials.map { it.shatter })
+    }
 }

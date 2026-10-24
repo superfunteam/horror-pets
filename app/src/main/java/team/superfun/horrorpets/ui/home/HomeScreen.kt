@@ -80,6 +80,7 @@ import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.spec
+import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.UiState
 import team.superfun.horrorpets.ui.common.BUBBLE_ABOVE_FEET
 import team.superfun.horrorpets.ui.common.BUBBLE_MS
@@ -187,8 +188,9 @@ fun HomeScreen(
 
     val playFocus = remember { FocusRequester() }
     val badgeFocus = remember { FocusRequester() }
-    // The stable's other killers, in roster order, and the one the badge is showing (the stable opens on them).
-    val others = remember(state.game.pets, petId) { PetId.entries.filter { it != petId }.mapNotNull { state.game.pets[it] } }
+    // The stable's other killers, in roster order, and the one the badge is showing (the stable opens on them). A
+    // killer in the stable is always visible, so the secret one shows here only once he has joined.
+    val others = remember(state.game.pets, petId) { state.game.visiblePets().filter { it != petId }.mapNotNull { state.game.pets[it] } }
     val badgeShown = others.isNotEmpty() && state.toast == null
     var badgeShows by remember { mutableStateOf<PetId?>(null) }
     var badgeFocused by remember { mutableStateOf(false) }

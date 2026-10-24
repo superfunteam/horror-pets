@@ -26,9 +26,9 @@ import team.superfun.horrorpets.ui.common.hash01
 /**
  * The marks a learned attack leaves on its target, in its killer's style, scaled by its [slot] and [tier] (see
  * [markPlan]): Jason's machete arcs, Freddy's claw rakes, Pinhead's hooked chains, Ghostface's knife slashes,
- * Chucky's stabs and voodoo pins, Michael's long diagonal cut, Leatherface's jagged saw tears. A target's body is
- * centred on ([cx], [cy]) and drawn [bodyH] tall. [seed] varies where the marks fall; a new instance is a new
- * showing.
+ * Chucky's stabs and voodoo pins, Michael's long diagonal cut, Leatherface's jagged saw tears, Jaws's bites. A
+ * target's body is centred on ([cx], [cy]) and drawn [bodyH] tall. [seed] varies where the marks fall; a new
+ * instance is a new showing.
  */
 @Immutable
 internal class MarkFx(val pet: PetId, val slot: Slot, val tier: Int, val cx: Float, val cy: Float, val bodyH: Float, val seed: Int = 0)
@@ -69,6 +69,7 @@ private fun inkOf(pet: PetId): MarkInk = when (pet) {
     PetId.CHUCKY -> MarkInk(Color(0xFFB24DFF), Color(0xFF59FF8C), Color(0xFFF1E6FF))
     PetId.MICHAEL -> MarkInk(Color(0xFFFFB3A0), Color(0xFFF2F2F2), Color(0xFFFFFFFF))
     PetId.LEATHERFACE -> MarkInk(Color(0xFFFF8A1F), Color(0xFFE0262F), Color(0xFFFFE08A))
+    PetId.JAWS -> MarkInk(Color(0xFF3FB8FF), Color(0xFFD7263D), Color(0xFFFFFFFF))
 }
 
 /** The marks layer: [fx]'s marks at [progress] (0..1 over its plan's length). Draws nothing without one. */
@@ -228,6 +229,22 @@ private fun DrawScope.drawMark(pet: PetId, a: Offset, b: Offset, cut: Float, alp
                 }
             }
             layered(path, alpha, width * 0.8f, ink)
+        }
+        // A bite: two bowed rows of tooth punctures, an upper jaw and a lower one, closing on the line of the cut.
+        PetId.JAWS -> {
+            val teeth = 7
+            for (k in 0 until (teeth * cut).toInt().coerceAtLeast(1)) {
+                val t = (k + 0.5f) / teeth
+                val bow = sin(PI.toFloat() * t) * width * 2.2f
+                for (jaw in 0..1) {
+                    val side = if (jaw == 0) -1f else 1f
+                    val root = a + d * t + normal * (side * (width * 1.4f + bow))
+                    val tip = root - normal * (side * width * 1.3f)
+                    drawLine(ink.glow.copy(alpha = alpha * 0.5f), root, tip, strokeWidth = width * 1.3f, cap = StrokeCap.Round)
+                    drawLine(ink.body.copy(alpha = alpha), root, tip, strokeWidth = width * 0.8f, cap = StrokeCap.Round)
+                    drawLine(ink.core.copy(alpha = alpha), root, tip, strokeWidth = width * 0.3f, cap = StrokeCap.Round)
+                }
+            }
         }
     }
 }
