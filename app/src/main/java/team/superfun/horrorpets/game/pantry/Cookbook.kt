@@ -15,11 +15,6 @@ sealed interface CookResult {
 }
 
 /**
- * Every recipe, keyed by the two items it takes (order on the board never matters, so a set): the spec's snacks and
- * meals, then the botches it names for particular wrong pairs. A pair not listed here falls to the general rules in
- * [cook].
- */
-/**
  * Every dish the cookbook makes, each once: what "recipes found" counts against. The named botches some pairs make on
  * purpose (Stinky Fish, Cursed Cake...) are not dishes: they are never a recipe found.
  */
@@ -31,6 +26,11 @@ fun dishesFound(found: Set<String>): Int = DISHES.count { it.id in found }
 /** The dish [a] and [b] make, when the player has made it before (its id is in [found]); null otherwise. */
 fun knownDish(a: PantryItem, b: PantryItem, found: Set<String>): PantryItem? = RECIPES[setOf(a, b)]?.takeIf { it.id in found }
 
+/**
+ * Every recipe, keyed by the two items it takes (order on the board never matters, so a set): the spec's snacks and
+ * meals, then the botches it names for particular wrong pairs. A pair not listed here falls to the general rules in
+ * [cook].
+ */
 val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
     // Snacks: a food and a way to cook
     setOf(RAW_STEAK, GRILL) to STEAK,

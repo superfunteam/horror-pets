@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -80,7 +81,6 @@ import team.superfun.horrorpets.ui.switcher.carouselFlingTarget
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextHi
-import androidx.compose.ui.graphics.StrokeCap
 
 /** A shelf item stands in a box this big (its picture fitted inside, standing on the plank). */
 internal val ShelfItemSize = 64.dp

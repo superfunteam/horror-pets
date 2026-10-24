@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.ui.pantry
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.ui.theme.BloodGlow
@@ -17,6 +18,8 @@ class HungerLineTest {
         assertEquals("HUNGER 40", hungerLine(40.0))
         assertEquals("HUNGER 10", hungerLine(Tuning.FEED_REFUSE_BELOW))
         assertEquals("HUNGER 6 · FULL", hungerLine(6.0))
+        assertEquals("floored, as the thresholds compare", "HUNGER 9 · FULL", hungerLine(9.6))
+        assertEquals("HUNGER 59", hungerLine(59.6))
     }
 
     @Test
@@ -24,6 +27,6 @@ class HungerLineTest {
         assertEquals(BloodGlow, hungerColor(90.0))
         assertEquals(TrainingGold, hungerColor(40.0))
         assertEquals(TrainingGold, hungerColor(3.0))
-        assert(hungerColor(70.0) != TrainingGold && hungerColor(70.0) != BloodGlow)
+        assertTrue(hungerColor(70.0) != TrainingGold && hungerColor(70.0) != BloodGlow)
     }
 }

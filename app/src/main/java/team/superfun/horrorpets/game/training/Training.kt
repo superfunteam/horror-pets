@@ -42,6 +42,9 @@ fun trainingMultiplier(game: TrainingGame, score: Int): Double =
 /** The training games a new killer must finish before its first fight: the two that need no stable mate. */
 val FIGHT_PREREQUISITES: Set<TrainingGame> = setOf(TrainingGame.SLASH_SAYS, TrainingGame.ORGAN_DROP)
 
+/** The games of [FIGHT_PREREQUISITES] that [pet] has not finished yet, in their order. */
+fun gamesStillToTrain(pet: PetState): List<TrainingGame> = FIGHT_PREREQUISITES.filter { it.name !in pet.trainedGames }
+
 /** [FIGHT_PREREQUISITES] by [TrainingGame.name], as a pet's `trainedGames` holds them. */
 val FIGHT_PREREQUISITE_NAMES: Set<String> = FIGHT_PREREQUISITES.map { it.name }.toSet()
 

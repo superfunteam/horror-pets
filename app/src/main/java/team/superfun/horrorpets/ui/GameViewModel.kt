@@ -24,9 +24,9 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.applyFightResult
 import team.superfun.horrorpets.fight.buildFighter
+import team.superfun.horrorpets.fight.cpuPlan
 import team.superfun.horrorpets.fight.forfeit
 import team.superfun.horrorpets.fight.other
-import team.superfun.horrorpets.fight.cpuPlan
 import team.superfun.horrorpets.fight.planCpu
 import team.superfun.horrorpets.fight.resolveTurn
 import team.superfun.horrorpets.fight.startFight
@@ -38,6 +38,7 @@ import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.canFight
 import team.superfun.horrorpets.game.canTrain
 import team.superfun.horrorpets.game.pantry.CookResult
+import team.superfun.horrorpets.game.pantry.canEat
 import team.superfun.horrorpets.game.pantry.cook
 import team.superfun.horrorpets.game.pantry.feed
 import team.superfun.horrorpets.game.pantry.topUp
@@ -55,9 +56,9 @@ import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.TrainingGame
-import team.superfun.horrorpets.model.nextPlayGag
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.challengerDue
+import team.superfun.horrorpets.model.nextPlayGag
 import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.model.pendingAttacks
 import team.superfun.horrorpets.pvp.PvpException
@@ -65,7 +66,6 @@ import team.superfun.horrorpets.pvp.PvpMatch
 import team.superfun.horrorpets.pvp.PvpRelay
 import team.superfun.horrorpets.pvp.Role
 import team.superfun.horrorpets.pvp.resolvePvpTurn
-import team.superfun.horrorpets.game.pantry.canEat
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -473,17 +473,18 @@ class GameViewModel(
     }
 
     /**
-     * OK on pantry [session]'s reaction while the killer could eat more (see [canEat], and something is on the shelf):
-     * FEED again without the walk Home and back, as a new visit (the shelf topped up, as FEED does). Where Home would
-     * not be Home (a level-up's new attack to offer first), that comes first instead; a killer that could not eat more
-     * just goes Home, as [onPantryDone]. Ignored until the killer has eaten, and from any session but the one on screen.
+     * OK on pantry [session]'s reaction while the killer could eat more (see [canEat]): FEED again without the walk
+     * Home and back, as a new visit (the shelf topped up, as FEED does, so an emptied shelf is restocked). Where Home
+     * would not be Home (a level-up's new attack to offer first), that comes first instead; a killer that could not eat
+     * more just goes Home, as [onPantryDone]. Ignored until the killer has eaten, and from any session but the one on
+     * screen.
      */
     fun onPantryMore(session: Long) {
         val s = _state.value
         pantrySession(s, session)?.takeIf { it.fed != null } ?: return
         val pet = s.game.selected?.let { s.game.pets[it] } ?: return
         val home = s.goHome()
-        if (home.screen != Screen.Home || !canEat(pet) || s.game.pantry.isEmpty()) {
+        if (home.screen != Screen.Home || !canEat(pet)) {
             _state.value = home
             return
         }

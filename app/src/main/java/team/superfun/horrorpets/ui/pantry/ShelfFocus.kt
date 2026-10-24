@@ -10,7 +10,8 @@ import team.superfun.horrorpets.ui.BOARD_PLACES
 /**
  * The pantry's shelf, kept free of Compose so it can be tested: where the remote's focus goes when the shelf changes
  * under it, which stretch of a long shelf the carousel shows, which dish wears the heart and where each item on the
- * board sits. Indices are shelf indices (the view model's `Screen.Pantry.board` holds them too).
+ * board sits. Indices are the shelf's slots as shown (see `ShelfView`: the view model's `Screen.Pantry.board` holds
+ * shelf indices, which the screen maps to slots at its door and back).
  */
 
 /**

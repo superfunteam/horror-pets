@@ -165,8 +165,8 @@ internal data class Gain(val text: String, val loss: Boolean)
  * nothing.
  */
 internal fun gainsOf(fed: FedShow): List<Gain> = buildList {
-    val fed_ = (fed.hungerBefore - fed.hungerAfter).roundToInt()
-    if (fed_ > 0) add(Gain("-$fed_ HUNGER", loss = false))
+    val hungerOff = (fed.hungerBefore - fed.hungerAfter).roundToInt()
+    if (hungerOff > 0) add(Gain("-$hungerOff HUNGER", loss = false))
     if (fed.xp > 0) add(Gain("+${fed.xp} XP", loss = false))
     for ((amount, name) in listOf(fed.strength to "STRENGTH", fed.funLevel to "FUN", fed.mood to "MOOD")) {
         val n = amount.roundToInt()

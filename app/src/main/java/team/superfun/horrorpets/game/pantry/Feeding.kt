@@ -166,6 +166,9 @@ private val FOODS: List<PantryItem> = PantryItem.entries.filter { it.kind == Ite
 /** The raw recipes made of a way to cook and a food ("raw steak on the grill"), the ones the top-up leans toward. */
 private val ON_THE_HEAT: List<Set<PantryItem>> = RAW_RECIPES.filter { pair -> pair.any { it.kind == ItemKind.METHOD } }
 
+/** Whether [pet] can eat: hunger at or above [Tuning.FEED_REFUSE_BELOW]. The pantry turns a fuller killer away. */
+fun canEat(pet: PetState): Boolean = pet.hunger >= Tuning.FEED_REFUSE_BELOW
+
 /**
  * Brings [pantry] up to what every visit to the kitchen starts with, by adding random ingredients on the end:
  *
@@ -188,9 +191,6 @@ private val ON_THE_HEAT: List<Set<PantryItem>> = RAW_RECIPES.filter { pair -> pa
  * one with only a few places left fills them as best it can, a pair that only needs one more item first, and a way
  * to cook before anything when there is none.
  */
-/** Whether [pet] can eat: hunger at or above [Tuning.FEED_REFUSE_BELOW]. The pantry turns a fuller killer away. */
-fun canEat(pet: PetState): Boolean = pet.hunger >= Tuning.FEED_REFUSE_BELOW
-
 fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
     if (pantry.isEmpty()) return startingHandful(rng)
     val shelf = pantry.toMutableList()

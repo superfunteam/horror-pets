@@ -77,8 +77,10 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.training.gamesStillToTrain
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
+import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.UiState
@@ -103,7 +105,6 @@ import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
-import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITES
 
 /** The pet's whole cell is this tall, as a fraction of the screen height (the same on 4:3 and 16:9). */
 const val HOME_PET_HEIGHT = 0.46f
@@ -259,7 +260,8 @@ fun HomeScreen(
         variety = null
         request.gag?.let { playing = Playing(it, request.token) }
         if (state.refuse != null) {
-            bubble = Bubble(refusalText(state.refuse, lastWasFight))
+            val pet = state.game.selected?.let { state.game.pets[it] }
+            bubble = Bubble(refusalText(state.refuse, lastWasFight, pet?.let(::gamesStillToTrain).orEmpty()))
         }
         val dir = when (request.anim) {
             Anim.RUN_RIGHT -> 1
@@ -562,10 +564,17 @@ fun HomeScreen(
     }
 }
 
-/** What the killer says when FIGHT or TRAIN is refused: why, and what to do about it. */
-internal fun refusalText(reason: RefuseReason, fight: Boolean): String = when (reason) {
+/**
+ * What the killer says when FIGHT or TRAIN is refused: why, and what to do about it ([toTrain]: the games it has still
+ * to train at). Two lines of the bubble at most, at the largest font scale, so two games get the shorter form.
+ */
+internal fun refusalText(reason: RefuseReason, fight: Boolean, toTrain: List<TrainingGame>): String = when (reason) {
     RefuseReason.TOO_HUNGRY -> if (fight) "Too hungry to fight. Feed me!" else "Too hungry to train. Feed me!"
-    RefuseReason.NEEDS_TRAINING -> "Train at ${FIGHT_PREREQUISITES.joinToString(" and ") { it.title }} first!"
+    RefuseReason.NEEDS_TRAINING -> when (toTrain.size) {
+        0 -> "Train more first!"
+        1 -> "Train at ${toTrain.single().title} first!"
+        else -> "${toTrain.joinToString(" and ") { it.title }} first!"
+    }
 }
 
 /** A local (not view-model) animation; each instance is a distinct playback key. */

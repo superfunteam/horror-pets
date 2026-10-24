@@ -1263,6 +1263,28 @@ class GameViewModelTest {
     }
 
     @Test
+    fun feedMoreAfterALevelUpOffersTheNewAttackFirst() {
+        val rig = pantryRig(SHELF + STEAK, pet = jason(xp = 95, hunger = 70.0))
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        assertTrue(rig.visit.fed!!.levelsGained > 0)
+        rig.vm.onPantryMore(session)
+        assertEquals(Screen.Learn(PetId.JASON, "jason_light_1"), rig.ui.screen)
+    }
+
+    @Test
+    fun feedMoreRestocksAnEmptiedShelf() {
+        val rig = pantryRig(listOf(RAW_STEAK), pet = jason(hunger = 70.0))
+        val session = rig.openPantry().session
+        rig.pick(rig.shelf.indexOf(RAW_STEAK))
+        rig.vm.onPantryFeed(session)
+        rig.vm.onPantryMore(session)
+        assertNotEquals(session, rig.visit.session)
+        assertTrue("stocked for the new visit", rig.shelf.size >= Tuning.PANTRY_MIN_RAW)
+    }
+
+    @Test
     fun feedMoreGoesHomeOnceTheKillerIsFull() {
         val rig = pantryRig(pet = jason(hunger = Tuning.FEED_REFUSE_BELOW + 1))
         val session = rig.openPantry().session

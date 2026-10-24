@@ -39,7 +39,7 @@ nothing else.
   killer trains (up to triple the strength and XP), and it keeps its best in each. Dropped it? TRY AGAIN on the
   results card plays the same game once more, no reel. Quick Draw and Hide and Eek! need a
   stable mate, so they only come up once you have a second killer. A new killer trains at both solo games (Slasher
-  Says and Organ Drop) before its first fight, or FIGHT says "Train more first!".
+  Says and Organ Drop) before its first fight, or FIGHT names the game still to train at.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS card:** every fight opens on a Street Fighter Alpha-style VS card: anime speed streaks in each killer's
   colors, each name in its own film's lettering, and the VS logo of the killer you're facing.

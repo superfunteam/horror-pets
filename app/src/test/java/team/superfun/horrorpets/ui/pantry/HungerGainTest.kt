@@ -21,7 +21,7 @@ class HungerGainTest {
     @Test
     fun nothingTakenOffReadsNothing() {
         assertEquals(emptyList<Gain>(), gainsOf(fed(20.0, 20.0)))
-        assertEquals("a show from before the hunger was kept", emptyList<Gain>(), gainsOf(fed(0.0, 0.0)))
+        assertEquals("no hunger known reads nothing", emptyList<Gain>(), gainsOf(fed(0.0, 0.0)))
         assertEquals(listOf("-1 HUNGER"), gainsOf(fed(40.6, 40.0)).map { it.text })
     }
 }

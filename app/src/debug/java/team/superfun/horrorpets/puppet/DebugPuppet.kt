@@ -75,7 +75,8 @@ private const val CARD_HOLD_MS = 2_500L
 
 /**
  * Autoplay leaves a pantry's meal this long before carrying on: its toss, munch and reaction play out first, and the
- * kitchen carries on Home by itself a few seconds into the reaction, so this only matters when nothing is drawing it.
+ * kitchen carries on Home by itself a few seconds into the reaction (unless the killer could eat more, when it waits),
+ * so this mostly matters when nothing is drawing it.
  */
 private const val MEAL_HOLD_MS = 9_000L
 

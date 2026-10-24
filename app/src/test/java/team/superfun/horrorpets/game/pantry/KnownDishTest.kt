@@ -18,7 +18,8 @@ class KnownDishTest {
         assertTrue(DISHES.all { it.kind == ItemKind.SNACK || it.kind == ItemKind.MEAL })
         assertTrue(FRIED_EGG in DISHES)
         assertTrue("the botches some pairs make on purpose are no dishes", RECIPES.values.any { it.kind == ItemKind.BOTCHED })
-        assertEquals(DISHES.size, RECIPES.values.filterNot { it.kind == ItemKind.BOTCHED }.toSet().size)
+        // One recipe per dish: what lets a found dish mark exactly the pair that made it.
+        assertEquals(DISHES.size, RECIPES.values.count { it.kind != ItemKind.BOTCHED })
     }
 
     @Test

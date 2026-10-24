@@ -1,7 +1,6 @@
 package team.superfun.horrorpets.ui.pantry
 
 import androidx.compose.ui.graphics.Color
-import kotlin.math.roundToInt
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.training.TrainingGold
@@ -12,7 +11,8 @@ import team.superfun.horrorpets.ui.training.TrainingGold
  * (the pantry turns a killer that full away, see `canEat`).
  */
 internal fun hungerLine(hunger: Double): String {
-    val n = hunger.roundToInt()
+    // Floored, so the number never says FULL or HUNGRY a point early (the thresholds compare the real value).
+    val n = hunger.toInt()
     val state = when {
         hunger >= Tuning.STARVING_AT -> "STARVING"
         hunger >= Tuning.HUNGRY_AT -> "HUNGRY"

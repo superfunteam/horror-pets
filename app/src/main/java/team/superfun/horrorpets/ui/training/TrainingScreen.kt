@@ -188,7 +188,7 @@ private fun TrainingRun(
     val focus = remember { FocusRequester() }
     val score = remember { mutableIntStateOf(0) }
     val env = remember { TrainingEnv(loader, pet, mate, scene, pet.bestAt(screen.game), clock, sounds, focus, score) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(focusEntry) {
         if (skipReel && !gameOn && focusEntry != null) {
             away.startBeat()
             gameStartMs = clock.nowMs
@@ -207,7 +207,8 @@ private fun TrainingRun(
     GameBackHandler(enabled = focusEntry != null) {
         when {
             screen.result != null -> onDone(session)
-            !gameOn -> onQuit(session)
+            // Before the game: the reel, or a TRY AGAIN's GET READY (its game is on, but nothing has been played).
+            !gameOn || (skipReel && away.beat) -> onQuit(session)
             else -> finish(score.intValue) // once: after the game has ended, Back waits for its card
         }
     }

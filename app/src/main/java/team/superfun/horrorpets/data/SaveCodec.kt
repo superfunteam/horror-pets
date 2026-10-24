@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.clampMoodBonus
 import team.superfun.horrorpets.game.clampStat
+import team.superfun.horrorpets.game.pantry.DISHES
 import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
@@ -17,7 +18,6 @@ import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.canUse
 import team.superfun.horrorpets.model.pantryItemById
-import team.superfun.horrorpets.game.pantry.DISHES
 
 /** The save file format: [GameState] as JSON. Decoding never throws; an unusable save is reported as null or becomes a fresh game. */
 object SaveCodec {

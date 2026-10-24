@@ -52,6 +52,10 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.pantry.DISHES
+import team.superfun.horrorpets.game.pantry.canEat
+import team.superfun.horrorpets.game.pantry.dishesFound
+import team.superfun.horrorpets.game.pantry.knownDish
 import team.superfun.horrorpets.game.training.TrainingKey
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetState
@@ -94,10 +98,6 @@ import team.superfun.horrorpets.ui.training.rememberGameClock
 import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
 import team.superfun.horrorpets.ui.training.trainingKeyOf
-import team.superfun.horrorpets.game.pantry.canEat
-import team.superfun.horrorpets.game.pantry.DISHES
-import team.superfun.horrorpets.game.pantry.dishesFound
-import team.superfun.horrorpets.game.pantry.knownDish
 
 /** How long a refused cook's note stays up, over the shaking board (see [REFUSED_COOK_NOTE]). */
 private const val NOTE_MS = 1_500L
@@ -137,7 +137,8 @@ private const val SERVED_ALPHA = 0.35f
  * A cook is shown (see [CookShowView]): the two items meet in the board's middle, poof, the dish pops up with its
  * name and flies to its slot. A refused cook shakes the board. Once the killer has been fed, its meal is tossed to its
  * feet and munched, and it reacts (see [playFeedShow]); OK or a tap then carries on Home, or it does by itself after a
- * few seconds. A killer too full to eat fails and says so. All of it plays from the view model's tokens and shows,
+ * few seconds. While the killer could eat more, OK is FEED again instead (a new visit), the kitchen waits for it or
+ * for Back, and the shelf says so. A killer too full to eat fails and says so. All of it plays from the view model's tokens and shows,
  * never from the shelf, and nothing runs once it has played but the killer's idle.
  *
  * The remote's focus is this screen's own, not Compose focus (see [KitchenCursor]), and so are its key sounds (see
@@ -235,8 +236,9 @@ private fun PantryVisit(
         val on = shelf.getOrNull(index) ?: return@remember emptySet()
         shelf.indices.filterTo(mutableSetOf()) { it != index && knownDish(on, shelf[it], found) != null }
     }
-    // Once fed: whether OK feeds again (the killer could eat more, and there is something to eat) rather than go Home.
-    val feedMore = fed != null && canEat(pet) && shelf.isNotEmpty()
+    // Once fed: whether OK feeds again (the killer could eat more) rather than carry on Home. A meal worth a level
+    // carries on: the new attack it unlocked is offered first.
+    val feedMore = fed != null && fed.levelsGained == 0 && canEat(pet)
 
     // The cook on show, from its token: one already made when the visit started is not shown again.
     val cook = screen.cook
@@ -281,7 +283,7 @@ private fun PantryVisit(
     LaunchedEffect(fed) {
         if (fed == null) return@LaunchedEffect
         playFeedShow(fed, loader, manifest, feedStage, actor, sounds, showClock, replay = fedAtStart) {
-            if (!(canEat(latestPet) && latestShelf.isNotEmpty())) latestOnDone(session)
+            if (!(fed.levelsGained == 0 && canEat(latestPet))) latestOnDone(session)
         }
     }
     // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now): a
@@ -291,7 +293,7 @@ private fun PantryVisit(
         if (feedStage.carryOn && !away.paused) {
             feedStage.carryOn = false
             sounds.sfx("ui_select")
-            if (canEat(latestPet) && latestShelf.isNotEmpty()) latestOnMore(session) else latestOnDone(session)
+            if (latestScreen.fed?.levelsGained == 0 && canEat(latestPet)) latestOnMore(session) else latestOnDone(session)
         }
     }
 
@@ -339,8 +341,8 @@ private fun PantryVisit(
             .fillMaxSize()
             .focusRequester(rootFocus)
             .ignoreOkUnless(okReady)
-            // Once the killer has eaten the reaction has the keys: OK carries on Home once it is up, and nothing else
-            // reaches the kitchen (Back is the back handler's own).
+            // Once the killer has eaten the reaction has the keys: OK carries on (Home, or FEED again) once it is up,
+            // and nothing else reaches the kitchen (Back is the back handler's own).
             .onPreviewKeyEvent { event ->
                 if (fed == null) return@onPreviewKeyEvent false
                 val key = trainingKeyOf(event.key) ?: return@onPreviewKeyEvent false
@@ -397,7 +399,7 @@ private fun PantryVisit(
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
                 maxLines = 1,
             )
-            // How hungry the killer is (live: it drops as the meal goes down), so the player knows what to feed.
+            // How hungry the killer is (it drops as the meal is served), so the player knows what to feed.
             BasicText(
                 hungerLine(pet.hunger),
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = hungerColor(pet.hunger), tracking = HUD_STATUS_TRACKING, halo = true),
