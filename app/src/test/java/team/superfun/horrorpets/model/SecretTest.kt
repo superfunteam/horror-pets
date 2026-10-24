@@ -67,8 +67,20 @@ class SecretTest {
     }
 
     @Test
-    fun theStarterPickIsTheSevenEvenAfterTheReveal() {
+    fun theStartersAreTheNonSecretKillers() {
+        // The starter pick itself, before and after the reveal, is LineupTest's.
         assertEquals(seven, Starters)
         assertFalse(PetId.JAWS in Starters)
+    }
+
+    @Test
+    fun theChallengerIsDueOnceEveryNonSecretKillerIsInTheStable() {
+        // Every killer that is not secret, in any order, and nothing else: whoever may start a game does not matter.
+        val nonSecret = PetId.entries.filterNot { it.secret }
+        assertEquals(PetId.JAWS, stableOf(nonSecret).challengerDue())
+        assertEquals(PetId.JAWS, stableOf(nonSecret.reversed()).challengerDue())
+        for (missing in nonSecret) assertNull("without $missing", stableOf(nonSecret - missing).challengerDue())
+        // Every non-secret killer but one, with him in the stable instead: nothing is due (he is already visible).
+        assertNull(stableOf(nonSecret.drop(1) + PetId.JAWS).challengerDue())
     }
 }

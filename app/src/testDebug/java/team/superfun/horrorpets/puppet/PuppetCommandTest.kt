@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.puppet
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.fight.Move
@@ -60,6 +61,18 @@ class PuppetCommandTest {
         assertInvalid("pet bob", "freddy")
         assertInvalid("fight", "pinhead")
         assertInvalid("pet freddy jason", "one killer")
+    }
+
+    @Test
+    fun theListOfKillersNeverNamesASecretOneButTheyStillWork() {
+        for (text in listOf("pet bob", "fight", "fight shark")) {
+            val reason = (parseCommand(text) as PuppetCommand.Invalid).reason
+            for (secret in PetId.entries.filter { it.secret }) {
+                assertFalse("$text: \"$reason\" names $secret", reason.contains(secret.name, ignoreCase = true))
+            }
+        }
+        assertEquals(PuppetCommand.Pet(PetId.JAWS), parseCommand("pet jaws"))
+        assertEquals(PuppetCommand.Fight(PetId.JAWS), parseCommand("fight jaws"))
     }
 
     @Test

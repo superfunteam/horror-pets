@@ -92,7 +92,8 @@ const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight 
     "stock <id>..., cook <id> <id>, serve <id>, home, " +
     "wait <seconds>|home, status, fake_version <x.y.z>|off, check_update"
 
-private val KILLERS = PetId.entries.joinToString(", ") { it.name.lowercase() }
+/** The killers an error lists: never a secret one, whose name stays out of the log. [killerNamed] still finds it. */
+private val KILLERS = PetId.entries.filterNot { it.secret }.joinToString(", ") { it.name.lowercase() }
 private val TRAINING_GAMES = TrainingGame.entries.joinToString(", ") { it.name.lowercase() }
 
 /** A line of commands split into one per command: they are separated by `;` or new lines, and blanks are dropped. */

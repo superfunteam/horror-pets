@@ -6,10 +6,13 @@ import kotlinx.serialization.Serializable
  * Every killer, in roster order (the pet switcher's order). A pet's facts (its passive, its special, how it
  * walks) live in its [Roster] entry; its art and sounds live in folders named `name.lowercase()`.
  *
- * A [secret] killer is in the roster but nowhere a player can see (the starter pick, the stable, the opponent
- * switcher, the counters) until the save reveals it or it joins the stable: see [GameState.isVisible]. Only the
- * save, the PvP relay, the scene catalog and the debug puppet look past that, through [PetId.entries]; everything a
- * player sees goes through [GameState.visiblePets].
+ * A [secret] killer is in the roster but nowhere a player can see (the stable, the opponent switcher, the counters)
+ * until the save reveals it or it joins the stable: see [GameState.isVisible]. Every list a player picks from and
+ * every counter goes through [GameState.visiblePets]. What looks past that does so on purpose:
+ * - the starter pick ([Starters]), which never offers a secret killer, even once it is revealed;
+ * - [GameState.challengerDue], which needs every killer that is not secret and finds the secret one due;
+ * - a fight, its VS card and the challenger entrance, which show whoever is fighting;
+ * - the save, the PvP relay, the scene catalog and the debug puppet, which know every killer ([PetId.entries]).
  */
 enum class PetId(val displayName: String, val secret: Boolean = false) {
     JASON("Jason"),
@@ -100,8 +103,10 @@ fun GameState.visiblePets(): List<PetId> = PetId.entries.filter { isVisible(it) 
  * not secret is in the stable (however long ago that happened, so a save that had them all before he existed gets
  * him too). Null while any of them is still to beat, or once he has been revealed or has joined.
  */
-fun GameState.challengerDue(): PetId? =
-    if (Starters.all { it in pets }) PetId.entries.firstOrNull { it.secret && !isVisible(it) } else null
+fun GameState.challengerDue(): PetId? {
+    val nonSecret = PetId.entries.filterNot { it.secret }
+    return if (nonSecret.all { it in pets }) PetId.entries.firstOrNull { it.secret && !isVisible(it) } else null
+}
 
 /** The [GameState.pantry] as items, in shelf order. An id this build does not know is skipped. */
 fun GameState.pantryItems(): List<PantryItem> = pantry.mapNotNull(::pantryItemById)
