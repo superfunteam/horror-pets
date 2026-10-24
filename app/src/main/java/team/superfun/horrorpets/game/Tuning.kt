@@ -99,15 +99,13 @@ object Tuning {
     const val PANTRY_MIN_METHODS = 1
     const val PANTRY_MIN_FOODS = 2
 
-    // The pantry's first handful (an empty shelf) and how often an open top-up draw is a way to cook
-    const val PANTRY_START_METHODS = 2
-    const val PANTRY_START_FOODS = 4
-    const val PANTRY_METHOD_ODDS = 0.4
-
     // The cookable pairs of raw items every visit starts with (two that each cook into a real dish, sharing nothing),
     // and how often a pair the top-up draws is a way to cook and a food rather than two foods
     const val PANTRY_PAIRS = 2
     const val PANTRY_PAIR_METHOD_ODDS = 0.8
+
+    // The pantry's first handful (an empty shelf): a way to cook and a food for each pair, then foods up to this many
+    const val PANTRY_START_FOODS = 4
 }
 
 internal fun clampStat(v: Double): Double = v.coerceIn(Tuning.STAT_MIN, Tuning.STAT_MAX)

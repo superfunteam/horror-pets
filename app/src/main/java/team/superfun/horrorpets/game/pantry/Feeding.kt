@@ -175,12 +175,11 @@ private val ON_THE_HEAT: List<Set<PantryItem>> = RAW_RECIPES.filter { pair -> pa
  *    of its two items the shelf can't spare is added. The draws lean toward a way to cook and a food
  *    ([Tuning.PANTRY_PAIR_METHOD_ODDS]) over two foods, and a shelf with no way to cook on it always draws one.
  * 2. The minimums, which the pairs nearly always meet already: at least [Tuning.PANTRY_MIN_RAW] raw items, at
- *    least [Tuning.PANTRY_MIN_METHODS] ways to cook and at least [Tuning.PANTRY_MIN_FOODS] foods. An open draw leans
- *    toward a way to cook ([Tuning.PANTRY_METHOD_ODDS]), since a food alone can only be fed raw.
+ *    least [Tuning.PANTRY_MIN_METHODS] ways to cook and at least [Tuning.PANTRY_MIN_FOODS] foods.
  *
- * An empty pantry gets a starting handful instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and
- * [Tuning.PANTRY_START_FOODS] foods, two of each pairing up on a recipe like Raw Steak + Grill). A shelf that already
- * has enough comes back as it was.
+ * An empty pantry gets a starting handful instead (shuffled: a way to cook and a food for each of its pairs, on a
+ * recipe like Raw Steak + Grill, then foods up to [Tuning.PANTRY_START_FOODS]). A shelf that already has enough comes
+ * back as it was.
  *
  * The shelf never grows past [Tuning.PANTRY_MAX] (the save keeps only that many, so anything more would vanish on the
  * next load). A shelf without room for what it needs first throws out its oldest botches (the ones nearest the
@@ -206,7 +205,6 @@ fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
 private fun startingHandful(rng: Random): List<PantryItem> {
     val handful = mutableListOf<PantryItem>()
     repeat(Tuning.PANTRY_PAIRS) { handful += ON_THE_HEAT.random(rng) }
-    while (handful.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_START_METHODS) handful += WAYS_TO_COOK.random(rng)
     while (handful.count { it.kind == ItemKind.FOOD } < Tuning.PANTRY_START_FOODS) handful += FOODS.random(rng)
     handful.shuffle(rng)
     return handful
@@ -229,9 +227,7 @@ private fun topUpItems(shelf: List<PantryItem>, room: Int, rng: Random): List<Pa
     // The minimums, in order of importance.
     while (added.size < room && count(ItemKind.METHOD) < Tuning.PANTRY_MIN_METHODS) added += WAYS_TO_COOK.random(rng)
     while (added.size < room && count(ItemKind.FOOD) < Tuning.PANTRY_MIN_FOODS) added += FOODS.random(rng)
-    while (added.size < room && shelf.count { it.raw } + added.count { it.raw } < Tuning.PANTRY_MIN_RAW) {
-        added += if (rng.nextDouble() < Tuning.PANTRY_METHOD_ODDS) WAYS_TO_COOK.random(rng) else FOODS.random(rng)
-    }
+    // No fill for PANTRY_MIN_RAW: two pairs are four raw items, and the tests' assertMeetsTheMinimums keeps it so.
     return added
 }
 
