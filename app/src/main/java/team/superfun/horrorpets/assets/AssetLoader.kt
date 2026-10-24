@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import java.util.EnumMap
 import java.util.concurrent.ConcurrentHashMap
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.PantryItem
@@ -34,6 +33,23 @@ fun vsLogoFile(pet: PetId): String = "$VS_ART/${pet.name.lowercase()}-vs.webp"
 const val CHALLENGER_BANNER_FILE = "$VS_ART/challenger.webp"
 
 /**
+ * How many pictures of VS art [AssetLoader] keeps decoded: the VS card draws three (both names and the opponent's
+ * logo), the challenger entrance before it two (the banner and his name, which the card then reuses). Four covers
+ * both, about 7 MB decoded at most.
+ */
+internal const val MAX_VS_ART = 4
+
+/**
+ * Where [pet]'s strip for [anim] is cached: by its file, so animations that show the same frames (Jaws's wait and
+ * work are his idle) share one decode and one slot.
+ */
+internal data class StripKey(val pet: PetId, val file: String)
+
+/** The [StripKey] of [pet]'s [anim], by its [manifest]. */
+internal fun stripKey(pet: PetId, manifest: SpriteManifest, anim: Anim): StripKey =
+    StripKey(pet, manifest.spec(anim).file)
+
+/**
  * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the player's
  * glove (`sprites/hand/...`), the pantry's items
  * (`sprites/pantry/...`), the VS card's lettering and logos (`sprites/vs/...`) and scene backdrops (`scenes/...`, the
@@ -45,7 +61,8 @@ const val CHALLENGER_BANNER_FILE = "$VS_ART/challenger.webp"
  * its own lock, so a slow scene decode never blocks a sprite strip and vice versa; a decode only blocks
  * other callers of the same cache:
  *  - manifests and the scene catalog are parsed once (under [metaLock]);
- *  - sprite strips live in an LRU of at most [MAX_STRIPS] entries keyed by (pet, anim) (under [stripLock]);
+ *  - sprite strips live in an LRU of at most [MAX_STRIPS] entries keyed by (pet, file) (under [stripLock]), so
+ *    animations that share a strip share its decode (see [stripKey]);
  *  - scene bitmaps live in an LRU of at most [MAX_SCENES], so the one being left can fade out while the
  *    next fades in, and anything older is dropped (a scene is about 10 MB decoded) (under [sceneLock]);
  *  - props are kept once decoded (under [propLock]): the hand's poses, the heads, the cutting board, the potion, the
@@ -53,7 +70,8 @@ const val CHALLENGER_BANNER_FILE = "$VS_ART/challenger.webp"
  *    (1920 x 1080, about 8 MB) and logo (about 3 MB) are the big ones;
  *  - the VS art (each killer's name lettering and VS logo, and the challenger banner, 1 to 2.8 MB each decoded) lives
  *    in an LRU of at most [MAX_VS_ART] (under [vsLock]): a VS card shows three at once, the entrance two, and all
- *    seventeen kept for good would pin about 24 MB. [prop] hands any `sprites/vs/` path to it too;
+ *    seventeen kept for good would pin about 24 MB. Load them with [vsName], [vsLogo] and [challengerBanner], never
+ *    [prop];
  *  - pantry items live in an LRU of at most [MAX_PANTRY_ITEMS] (under [pantryLock]): there are over a hundred, and
  *    a shelf scrolled end to end would otherwise keep every one it passed.
  * Lock order: [stripLock] may take [metaLock] (a strip needs its manifest), never the other way round.
@@ -72,7 +90,9 @@ class AssetLoader(context: Context) {
     private val propLock = Any()
     private val pantryLock = Any()
     private val vsLock = Any()
-    private val manifests = EnumMap<PetId, SpriteManifest>(PetId::class.java)
+
+    /** Parsed manifests: written under [metaLock], readable without it (see [readyStrip]). */
+    private val manifests = ConcurrentHashMap<PetId, SpriteManifest>()
     private var catalog: Map<PetId, List<SceneSpec>>? = null
     private var kitchenSpec: SceneSpec? = null
     private val strips = lru<StripKey>(MAX_STRIPS) { ready.remove(it) }
@@ -90,14 +110,17 @@ class AssetLoader(context: Context) {
      */
     private val ready = ConcurrentHashMap<StripKey, ImageBitmap>()
 
-    fun manifest(pet: PetId): SpriteManifest = synchronized(metaLock) {
+    fun manifest(pet: PetId): SpriteManifest = manifests[pet] ?: synchronized(metaLock) {
         manifests.getOrPut(pet) { parseManifest(readText("sprites/${pet.dir}/manifest.json")) }
     }
 
-    /** The strip for [anim]: [AnimSpec.frames] cells of `manifest.cell` side by side. */
+    /**
+     * The strip for [anim]: [AnimSpec.frames] cells of `manifest.cell` side by side. Animations that point at the
+     * same file get the same strip.
+     */
     fun strip(pet: PetId, anim: Anim): ImageBitmap = synchronized(stripLock) {
-        val key = StripKey(pet, anim)
-        strips.getOrPut(key) { decode("sprites/${pet.dir}/${manifest(pet).spec(anim).file}") }.also { ready[key] = it }
+        val key = stripKey(pet, manifest(pet), anim)
+        strips.getOrPut(key) { decode("sprites/${pet.dir}/${key.file}") }.also { ready[key] = it }
     }
 
     /**
@@ -105,7 +128,11 @@ class AssetLoader(context: Context) {
      * progress, so it is safe on the main thread. A sprite uses it to show its first frame at once (a pet
      * sliding into the pet switcher whose strip was prefetched). It does not count as a use for the LRU.
      */
-    fun readyStrip(pet: PetId, anim: Anim): ImageBitmap? = ready[StripKey(pet, anim)]
+    fun readyStrip(pet: PetId, anim: Anim): ImageBitmap? {
+        // No manifest yet: no strip of this pet has been decoded. No such animation: nothing to show.
+        val spec = manifests[pet]?.animations?.get(anim.key) ?: return null
+        return ready[StripKey(pet, spec.file)]
+    }
 
     /**
      * The scene catalog. Throws [IllegalStateException] unless every pet has exactly
@@ -159,13 +186,10 @@ class AssetLoader(context: Context) {
     fun challengerBanner(): ImageBitmap = vs(CHALLENGER_BANNER_FILE)
 
     /**
-     * A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. VS art
-     * (`sprites/vs/...`) is too big to keep for good: it goes to the VS LRU instead, as [vsName] does.
+     * A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. Not for VS
+     * art (`sprites/vs/...`), which is too big to keep for good: load it with [vsName], [vsLogo] or [challengerBanner].
      */
-    fun prop(path: String): ImageBitmap {
-        if (path.startsWith("$VS_ART/")) return vs(path)
-        return synchronized(propLock) { props.getOrPut(path) { decode(path) } }
-    }
+    fun prop(path: String): ImageBitmap = synchronized(propLock) { props.getOrPut(path) { decode(path) } }
 
     private fun vs(path: String): ImageBitmap = synchronized(vsLock) {
         vsArt.getOrPut(path) { decode(path) }
@@ -184,8 +208,6 @@ class AssetLoader(context: Context) {
         bitmap.setHasMipMap(true)
         return bitmap.asImageBitmap()
     }
-
-    private data class StripKey(val pet: PetId, val anim: Anim)
 
     private val PetId.dir: String get() = name.lowercase()
 
@@ -207,12 +229,6 @@ class AssetLoader(context: Context) {
          * (under a dozen slots, on a 20:9 phone), the two it decodes ahead either side, the board's two and some to spare.
          */
         const val MAX_PANTRY_ITEMS = 24
-
-        /**
-         * The VS card draws three pictures (both names and the opponent's logo); the challenger entrance before it two
-         * (the banner and his name, which the card then reuses). Four covers both, about 7 MB decoded at most.
-         */
-        const val MAX_VS_ART = 4
 
         /** Access-ordered map that drops its least recently used entry beyond [max], telling [onEvict]. */
         fun <K> lru(max: Int, onEvict: (K) -> Unit = {}): LinkedHashMap<K, ImageBitmap> =

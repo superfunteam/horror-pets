@@ -1599,9 +1599,7 @@
             160
           ],
           "loop": true,
-          "hires": [
-            "sprites-source/jaws/work/great-white-v2/decoded/idle.png"
-          ]
+          "derive": "same:idle"
         },
         "work": {
           "row": 0,
@@ -1615,9 +1613,7 @@
             150
           ],
           "loop": false,
-          "hires": [
-            "sprites-source/jaws/work/great-white-v2/decoded/idle.png"
-          ]
+          "derive": "same:idle"
         },
         "review": {
           "row": 8,

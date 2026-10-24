@@ -52,7 +52,10 @@ class SpriteManifestTest {
                 if (anim.optional && !m.has(anim)) continue
                 assertTrue("$pet ${anim.key}", m.has(anim))
                 val spec = m.spec(anim)
-                assertEquals("$pet ${anim.key} file", "${anim.key}.png", spec.file)
+                // Its own strip, or another animation's own strip (Jaws's wait and work show his idle).
+                val owner = m.animations[spec.file.removeSuffix(".png")]
+                val ownOrShared = spec.file == "${anim.key}.png" || owner?.file == spec.file
+                assertTrue("$pet ${anim.key} file ${spec.file}", ownOrShared)
                 assertEquals("$pet ${anim.key} timeline", spec.frames, spec.durationsMs.size)
                 assertTrue("$pet ${anim.key} durations", spec.durationsMs.all { it > 0 })
             }

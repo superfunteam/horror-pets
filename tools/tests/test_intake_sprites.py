@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -6,7 +7,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from intake_sprites import IntakeError, align_baselines, ground_row, scale_refs, shift_down  # noqa: E402
+from intake_sprites import (  # noqa: E402
+    IntakeError,
+    align_baselines,
+    ground_row,
+    process_anim,
+    scale_refs,
+    shift_down,
+    write_outputs,
+)
 
 
 def cell_with_feet(foot: int, h: int = 40, w: int = 20) -> np.ndarray:
@@ -93,3 +102,29 @@ def test_scale_refs_scales_a_whole_row_about_its_bottom_centre():
     assert [h.shape for h in half] == [r.shape for r in row]  # same cell size
     assert bbox(half[0]) == (15, 20, 25, 30)                  # about the row's bottom centre (20, 30): his ground stays
     assert bbox(half[1]) == (17, 22, 23, 30)                  # the second frame keeps its place in the row
+
+
+def test_an_animation_that_shows_anothers_frames_points_at_its_strip(tmp_path):
+    # Jaws's wait and work are his idle frames with timings of their own: one strip, shipped once.
+    idle = {"cells": [cell_with_feet(30), cell_with_feet(30)], "ious": [1.0, 1.0], "fallback": [],
+            "spec": {"durationsMs": [150, 150], "loop": True}}
+    wait = {"cells": [c.copy() for c in idle["cells"]], "ious": [1.0, 1.0], "fallback": [],
+            "spec": {"durationsMs": [160, 160], "loop": True, "derive": "same:idle"}}
+    write_outputs("pet", {"idle": idle, "wait": wait}, 30, "review", (20, 40), tmp_path / "out", tmp_path / "qa")
+    manifest = json.loads((tmp_path / "out/pet/manifest.json").read_text())
+    assert manifest["animations"]["wait"] == {"file": "idle.png", "frames": 2, "durationsMs": [160, 160], "loop": True}
+    assert manifest["animations"]["idle"]["file"] == "idle.png"
+    assert (tmp_path / "out/pet/idle.png").is_file()
+    assert not (tmp_path / "out/pet/wait.png").exists()
+
+
+def test_a_same_derive_copies_the_frames_and_checks_their_count():
+    done = {"idle": {"cells": [cell_with_feet(30), cell_with_feet(28)]}}
+    sheet = np.concatenate(done["idle"]["cells"], axis=1)  # its reference row: the same frames
+    spec = {"row": 0, "frames": 2, "durationsMs": [160, 160], "loop": True, "derive": "same:idle"}
+    got = process_anim("pet", "wait", spec, sheet, (20, 40), (20, 40), done, [])
+    assert all((a == b).all() for a, b in zip(got["cells"], done["idle"]["cells"]))
+    assert got["cells"][0] is not done["idle"]["cells"][0]  # its own copy: shifting one never moves the other
+    with pytest.raises(IntakeError):
+        too_many = {**spec, "frames": 3, "durationsMs": [1, 1, 1]}
+        process_anim("pet", "wait", too_many, sheet, (20, 40), (20, 40), done, [])

@@ -9,7 +9,10 @@ A few optional fields cover art that doesn't stand on feet or that was fitted to
 - an animation's "groundOffset" is how far (cell px) the pet's own ground sits above the animation's lowest
   pixels, for effects that hang below him. Jaws's thrash uses 20, a hand-tuned compromise: his swooshes and bite
   marks fill almost the whole cell, so standing him lower or bigger would cut them off at its edge, and he sits a
-  little high (about 23 px) instead.
+  little high (about 23 px) instead;
+- an animation's "derive" makes it from one listed before it instead of from hi-res art: "mirror:<anim>" flips that
+  one's frames (a run the other way); "same:<anim>" shows that one's frames with timings of its own, and its manifest
+  entry points at that one's strip, so the frames ship once (Jaws's wait and work are his idle).
 
 Usage: tools/.venv/bin/python -I tools/intake_sprites.py --out sprites-final --qa art-work/sprite-qa
 """
@@ -108,10 +111,16 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
     whole_row = False  # True when no hi-res candidate worked and every frame is the upscaled reference
     if "derive" in spec:
         kind, src = spec["derive"].split(":")
-        assert kind == "mirror", spec["derive"]
-        cells = [c[:, ::-1].copy() for c in done[src]["cells"]]
+        assert kind in ("mirror", "same"), spec["derive"]
+        if kind == "mirror":
+            cells = [c[:, ::-1].copy() for c in done[src]["cells"]]
+            chosen = f"mirror of {src}"
+        else:
+            if len(done[src]["cells"]) != spec["frames"]:
+                raise IntakeError(f"{pet}/{name}: {spec['frames']} frames, but {src} has {len(done[src]['cells'])}")
+            cells = [c.copy() for c in done[src]["cells"]]
+            chosen = f"same as {src}"
         ious = [iou_vs_reference(c, r) for c, r in zip(cells, refs)]
-        chosen = f"mirror of {src}"
     else:
         best = None
         for p in spec["hires"]:
@@ -206,10 +215,15 @@ def write_outputs(pet: str, anims: dict, baseline: int, feed: str, cell, out: Pa
     manifest = {"pet": pet, "cell": list(cell), "baselineY": baseline, "anchorX": cell[0] // 2,
                 "displayScale": display_scale, "feed": feed, "animations": {}}
     for name, a in anims.items():
-        strip = np.concatenate(a["cells"], axis=1)
-        Image.fromarray(strip, "RGBA").save(pdir / f"{name}.png", optimize=True)
         spec = a["spec"]
-        manifest["animations"][name] = {"file": f"{name}.png", "frames": len(a["cells"]),
+        kind, _, src = spec.get("derive", "").partition(":")
+        if kind == "same":
+            file = f"{src}.png"  # that animation's frames: its strip, not a copy of it
+        else:
+            file = f"{name}.png"
+            strip = np.concatenate(a["cells"], axis=1)
+            Image.fromarray(strip, "RGBA").save(pdir / file, optimize=True)
+        manifest["animations"][name] = {"file": file, "frames": len(a["cells"]),
                                         "durationsMs": spec["durationsMs"], "loop": spec["loop"]}
     (pdir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 

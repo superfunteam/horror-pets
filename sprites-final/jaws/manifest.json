@@ -91,7 +91,7 @@
       "loop": false
     },
     "wait": {
-      "file": "wait.png",
+      "file": "idle.png",
       "frames": 6,
       "durationsMs": [
         160,
@@ -104,7 +104,7 @@
       "loop": true
     },
     "work": {
-      "file": "work.png",
+      "file": "idle.png",
       "frames": 6,
       "durationsMs": [
         150,

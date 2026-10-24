@@ -5,6 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
@@ -57,6 +58,32 @@ class RosterAssetsTest {
         // Jaws ships both of his extra moves.
         val jaws = parseManifest(file("sprites-final/jaws/manifest.json").readText())
         assertTrue(jaws.has(Anim.THRASH) && jaws.has(Anim.BARRELS))
+    }
+
+    @Test
+    fun jawsWaitsAndWorksOnHisIdleFramesWithoutCopiesOfThem() {
+        // His wait and work are his idle frames with their own timing: they point at idle's strip, so it ships once.
+        val jaws = parseManifest(file("sprites-final/jaws/manifest.json").readText())
+        val idle = jaws.spec(Anim.IDLE)
+        for (anim in listOf(Anim.WAIT, Anim.WORK)) {
+            val spec = jaws.spec(anim)
+            assertEquals("$anim", idle.file, spec.file)
+            assertEquals("$anim", idle.frames, spec.frames)
+            assertFalse("no copy of idle for $anim", file("sprites-final/jaws/${anim.key}.png").exists())
+        }
+        assertEquals(listOf(160, 160, 160, 160, 160, 160), jaws.spec(Anim.WAIT).durationsMs)
+        assertTrue(jaws.spec(Anim.WAIT).loop)
+        assertFalse(jaws.spec(Anim.WORK).loop)
+    }
+
+    @Test
+    fun animationsThatShareAStripShareItsFrameCount() {
+        for (id in PetId.entries) {
+            val manifest = parseManifest(file("sprites-final/${id.name.lowercase()}/manifest.json").readText())
+            for ((strip, specs) in manifest.animations.values.groupBy { it.file }) {
+                assertEquals("$id $strip", 1, specs.map { it.frames }.toSet().size)
+            }
+        }
     }
 
     @Test
