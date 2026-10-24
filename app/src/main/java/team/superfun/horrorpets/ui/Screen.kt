@@ -151,6 +151,9 @@ sealed interface Screen {
      * [session] tells one TRAIN from the next (a new number each time): the screen plays each session from its reel,
      * and what it reports (the score, Back, OK on the card) names its session, so that nothing of one can ever act on
      * another, even when a new session follows the last one's card within a frame (as the debug puppet's `train` does).
+     *
+     * [again] is TRY AGAIN from the last session's card: the same game once more, with no reel to spin (the card has
+     * already said what it is), a GET READY beat instead.
      */
     data class Training(
         val game: TrainingGame,
@@ -158,6 +161,7 @@ sealed interface Screen {
         val options: List<TrainingGame>,
         val session: Long,
         val result: TrainingResult? = null,
+        val again: Boolean = false,
     ) : Screen
 
     /**

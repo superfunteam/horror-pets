@@ -118,9 +118,10 @@ class TrainingEnv(
  * - the game plays on the training clock, which stops while the app is away and for a "GET READY" beat after it comes
  *   back; it ends itself, or Back ends it, with its score ([onOver], reported once);
  * - its results card ([ResultsCard], once [Screen.Training.result] is set) shows over the frozen game until OK, a tap
- *   or Back carries on Home ([onDone]).
+ *   or Back carries on Home ([onDone]), or TRY AGAIN asks for the same game again ([onAgain]).
  *
- * Each session ([Screen.Training.session]) is a run of its own, from the reel, and everything it reports names it.
+ * Each session ([Screen.Training.session]) is a run of its own, from the reel (or, for a TRY AGAIN, from a GET READY
+ * beat), and everything it reports names it.
  */
 @Composable
 fun TrainingScreen(
@@ -130,6 +131,7 @@ fun TrainingScreen(
     loader: AssetLoader,
     onOver: (session: Long, score: Int) -> Unit,
     onDone: (session: Long) -> Unit,
+    onAgain: (session: Long) -> Unit,
     onQuit: (session: Long) -> Unit,
     focusEntry: Any?,
 ) {
@@ -137,7 +139,7 @@ fun TrainingScreen(
     // session while it still fades out (CONTINUE, then TRAIN at once), or without it ever leaving (the card, Home and
     // TRAIN again within a frame, as the debug puppet's `train` does). While it fades out, its session's run stays.
     key(screen.session) {
-        TrainingRun(screen, pet, mate, loader, onOver, onDone, onQuit, focusEntry)
+        TrainingRun(screen, pet, mate, loader, onOver, onDone, onAgain, onQuit, focusEntry)
     }
 }
 
@@ -156,6 +158,7 @@ private fun TrainingRun(
     loader: AssetLoader,
     onOver: (session: Long, score: Int) -> Unit,
     onDone: (session: Long) -> Unit,
+    onAgain: (session: Long) -> Unit,
     onQuit: (session: Long) -> Unit,
     focusEntry: Any?,
 ) {
@@ -170,6 +173,8 @@ private fun TrainingRun(
     val spin = remember { ReelSpin.of(screen.options, screen.game) }
     // Opened on a game already paid for (the Activity was recreated on its card): no reel and no game, just the card.
     val paidOnEntry = remember { result != null }
+    // A TRY AGAIN: no reel, the game at once under a GET READY beat (as after coming back from away).
+    val skipReel = remember { screen.again && result == null }
 
     var reelLoaded by remember { mutableStateOf(false) }
     var gameOn by remember { mutableStateOf(false) }
@@ -183,6 +188,13 @@ private fun TrainingRun(
     val focus = remember { FocusRequester() }
     val score = remember { mutableIntStateOf(0) }
     val env = remember { TrainingEnv(loader, pet, mate, scene, pet.bestAt(screen.game), clock, sounds, focus, score) }
+    LaunchedEffect(Unit) {
+        if (skipReel && !gameOn && focusEntry != null) {
+            away.startBeat()
+            gameStartMs = clock.nowMs
+            gameOn = true
+        }
+    }
     val finish: (Int) -> Unit = remember {
         { s ->
             if (!ended) {
@@ -208,10 +220,10 @@ private fun TrainingRun(
     }
 
     // Read in the composition, so that only its flip recomposes (not the clock's every frame).
-    val fading by remember { derivedStateOf { reelFading(gameOn, clock.nowMs, gameStartMs) } }
-    val reelShown = !paidOnEntry && (!gameOn || fading)
+    val fading by remember { derivedStateOf { reelFading(gameOn && !skipReel, clock.nowMs, gameStartMs) } }
+    val reelShown = !paidOnEntry && !skipReel && (!gameOn || fading)
     // The reel is opaque until the game starts under it (then it fades): the scene behind isn't drawn till then.
-    val reelCovers = !paidOnEntry && !gameOn && result == null
+    val reelCovers = !paidOnEntry && !skipReel && !gameOn && result == null
 
     // The screen holds focus itself only until the game or its card takes it. A focus target over theirs would take
     // Back for itself: Compose answers an unused Back by moving focus out to the nearest focus target above, which ate
@@ -258,7 +270,7 @@ private fun TrainingRun(
             // Over the game and the fading reel, under GET READY and the card: while held, no touch reaches the game.
             if (held) Spacer(Modifier.fillMaxSize().swallowTouches())
             if (away.beat && result == null) GetReady()
-            if (result != null) ResultsCard(screen.game, result, { onDone(session) }, focusEntry)
+            if (result != null) ResultsCard(screen.game, result, onDone = { onDone(session) }, onAgain = { onAgain(session) }, focusEntry = focusEntry)
         }
     }
 }
@@ -297,6 +309,12 @@ internal class AwayPause {
 
     /** How many times the app has come back, to start each beat. */
     var returns by mutableIntStateOf(0)
+
+    /** A beat without having been away: a TRY AGAIN's GET READY. */
+    fun startBeat() {
+        beat = true
+        returns++
+    }
 
     val paused: Boolean get() = away || beat
 }

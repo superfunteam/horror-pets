@@ -336,6 +336,29 @@ class GameViewModel(
     }
 
     /**
+     * TRY AGAIN on training [session]'s results card: the same game once more, as a new session with no reel. Where
+     * Home would not be Home (a level-up's new attack to offer first), that comes first instead, and refused like TRAIN
+     * when the pet has grown too hungry meanwhile. Ignored until the game has paid, and from any session but the one
+     * on screen.
+     */
+    fun onTrainingAgain(session: Long) {
+        val s = _state.value
+        val training = trainingSession(s, session) ?: return
+        if (training.result == null) return
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        val home = s.goHome()
+        if (home.screen != Screen.Home) {
+            _state.value = home
+            return
+        }
+        if (!canTrain(pet)) {
+            refuse(home, RefuseReason.TOO_HUNGRY)
+            return
+        }
+        _state.value = home.copy(screen = training.copy(result = null, session = nextTrainingSession++, again = true))
+    }
+
+    /**
      * Back on training [session]'s reel: leaves training with nothing paid or spent. Ignored once the game has paid,
      * which only OK carries on from, and from any session but the one on screen.
      */

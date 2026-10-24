@@ -63,13 +63,14 @@ private val ScoreFill = Brush.verticalGradient(listOf(Color(0xFFFFE9A8), Amber, 
 /**
  * A finished training game's results, in a game window over the frozen game: [game]'s title, the score big, the pet's
  * best (NEW BEST! in gold when this score set it), what training paid (`+N STRENGTH`, `+N XP`, and LEVEL UP! when it
- * was worth a level), and a focused CONTINUE pill: OK or a tap calls [onDone] (the shell's Back does too). OK and taps
- * are ignored for a moment after the card comes up (see `rememberOkReady`), so one mashed through the game's end cannot
- * skip it; nothing under the card takes a touch. `game_over` plays as it appears, unless the view model has queued
+ * was worth a level), then TRY AGAIN and a focused CONTINUE pill: OK or a tap on CONTINUE calls [onDone] (the shell's
+ * Back does too), TRY AGAIN calls [onAgain] for the same game once more. OK and taps are ignored for a moment after the
+ * card comes up (see `rememberOkReady`), so one mashed through the game's end cannot skip it; nothing under the card
+ * takes a touch. `game_over` plays as it appears, unless the view model has queued
  * `levelup` for a level gained. [focusEntry] is the screen's: null while it leaves, when the card stops taking input.
  */
 @Composable
-internal fun ResultsCard(game: TrainingGame, result: TrainingResult, onDone: () -> Unit, focusEntry: Any?) {
+internal fun ResultsCard(game: TrainingGame, result: TrainingResult, onDone: () -> Unit, onAgain: () -> Unit, focusEntry: Any?) {
     val focus = remember { FocusRequester() }
     val entry = if (focusEntry != null) result else null
     RequestFocusOnEntry(focus, entry)
@@ -145,12 +146,15 @@ internal fun ResultsCard(game: TrainingGame, result: TrainingResult, onDone: () 
                 LevelUpChip()
             }
             Spacer(Modifier.height(14.dp))
-            FocusPill(
-                "Continue",
-                onClick = { if (focusEntry != null) onDone() },
-                modifier = Modifier.focusRequester(focus),
-                minWidth = 200.dp,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FocusPill("Try again", onClick = { if (focusEntry != null) onAgain() }, minWidth = 150.dp)
+                FocusPill(
+                    "Continue",
+                    onClick = { if (focusEntry != null) onDone() },
+                    modifier = Modifier.focusRequester(focus),
+                    minWidth = 150.dp,
+                )
+            }
         }
     }
 }

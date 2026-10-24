@@ -235,6 +235,7 @@ fun HorrorPetsApp(
                             loader = loader,
                             onOver = vm::onTrainingOver,
                             onDone = vm::onTrainingDone,
+                            onAgain = vm::onTrainingAgain,
                             onQuit = vm::onTrainingQuit,
                             focusEntry = focusEntry,
                         )

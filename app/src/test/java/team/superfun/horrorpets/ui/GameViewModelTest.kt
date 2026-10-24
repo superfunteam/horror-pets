@@ -668,6 +668,41 @@ class GameViewModelTest {
     }
 
     @Test
+    fun tryAgainPlaysTheSameGameWithoutTheReel() {
+        val rig = Rig(gameOf()).started()
+        rig.vm.onCare(CareAction.TRAIN)
+        val first = rig.ui.screen as Screen.Training
+        assertFalse(first.again)
+        rig.vm.onTrainingAgain(first.session)
+        assertEquals("not before the game has paid", first, rig.ui.screen)
+        rig.vm.onTrainingOver(first.session, 3)
+        rig.vm.onTrainingAgain(first.session + 1)
+        assertNotNull("another session's press changes nothing", (rig.ui.screen as Screen.Training).result)
+        rig.vm.onTrainingAgain(first.session)
+        val again = rig.ui.screen as Screen.Training
+        assertEquals(first.game, again.game)
+        assertEquals(first.mate, again.mate)
+        assertNotEquals(first.session, again.session)
+        assertNull(again.result)
+        assertTrue(again.again)
+        val strength = rig.jason.strength
+        rig.vm.onTrainingOver(again.session, 4)
+        assertTrue("the retry pays like any game", rig.jason.strength > strength)
+    }
+
+    @Test
+    fun tryAgainIsRefusedOnceTooHungry() {
+        // One game's appetite takes the pet over the line.
+        val rig = Rig(gameOf(pets = arrayOf(jason(hunger = Tuning.TRAIN_REFUSE_AT - Tuning.TRAIN_HUNGER + 1)))).started()
+        rig.vm.onCare(CareAction.TRAIN)
+        val session = (rig.ui.screen as Screen.Training).session
+        rig.vm.onTrainingOver(session, 2)
+        rig.vm.onTrainingAgain(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
+    }
+
+    @Test
     fun noLevelUpNoLevelUpSound() {
         val rig = Rig(gameOf()).started()
         rig.vm.onCare(CareAction.TRAIN)
