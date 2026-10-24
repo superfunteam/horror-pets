@@ -37,12 +37,6 @@ class FightEngineTest {
     // ---------------------------------------------------------------- building fighters
 
     @Test
-    fun aTurnPlaysTheCpusPlanAndLeavesNone() {
-        val s = stateOf().copy(cpuPlan = CpuPlan(Move.BLOCK, Move.HEAVY))
-        assertNull(resolveTurn(s, Move.BLOCK, Move.BLOCK, ScriptedRandom()).state.cpuPlan)
-    }
-
-    @Test
     fun jasonHasMoreHp() {
         val jason = buildFighter(PetState(PetId.JASON, hunger = 0.0, level = 1))
         val freddy = buildFighter(PetState(PetId.FREDDY, hunger = 0.0, level = 1))

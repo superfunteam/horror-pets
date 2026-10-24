@@ -24,7 +24,6 @@ import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Roll
-import team.superfun.horrorpets.fight.CpuPlan
 import team.superfun.horrorpets.fight.ScriptedRandom
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.game.CareAction
@@ -71,9 +70,6 @@ private const val T0 = 1_800_000_000_000L
 private const val HOUR = Tuning.HOUR_MS
 private const val DAY = Tuning.DAY_MS
 private const val MINUTE = Tuning.MINUTE_MS
-
-/** A feint roll over every feint chance: the CPU tells its planned move truthfully. */
-private const val NO_FEINT = 0.99
 
 /**
  * The training games a new player has to finish before their first fight (see mustTrainBeforeFighting). The fixtures
@@ -2022,18 +2018,16 @@ class GameViewModelTest {
     // ---- fight: full flows -------------------------------------------------------------------
 
     /**
-     * A script where Jason (strength 100) trades STRIKEs with a CPU that only ever plans STRIKE, and tells it true.
-     * Each turn's plan is made before it (turn 1's as the fight starts, the next as a turn resolves), and the
-     * fight's last turn plans none.
+     * A script where Jason (strength 100) trades STRIKEs with a CPU that only ever picks STRIKE. The CPU picks as
+     * each of Jason's moves comes in, before the turn's dice: on turn 1 Jason has no habit yet, so no habit roll;
+     * on turns 2 and 3 a habit roll the CPU ignores (0.99 >= 0.25), then both attack.
      */
     private fun winningScript(): ScriptedRandom {
         val roll = listOf(Roll().miss, Roll().variance, Roll().crit)
         val doubles = buildList {
-            add(NO_FEINT) // turn 1's plan: no habit yet, so no habit roll
             addAll(roll + roll)
-            repeat(2) { // turns 2 and 3: planned with a habit roll the CPU ignores (0.99 >= 0.4), then both attack
+            repeat(2) {
                 add(0.99)
-                add(NO_FEINT)
                 addAll(roll + roll)
             }
         }
@@ -2123,11 +2117,9 @@ class GameViewModelTest {
         // The CPU always HEAVYs (40 <= roll < 70) and Jason always BLOCKs, which does nothing against it.
         val heavy = listOf(Roll().miss, Roll().variance, Roll().crit)
         val doubles = buildList {
-            add(NO_FEINT)
             addAll(heavy)
             repeat(2) {
                 add(0.99)
-                add(NO_FEINT)
                 addAll(heavy)
             }
         }
@@ -2183,26 +2175,47 @@ class GameViewModelTest {
     }
 
     @Test
-    fun theCpuPlaysTheMoveItPlannedAndTheTurnRemembersItsTell() {
-        // Turn 1 is planned as the fight starts: a STRIKE (roll 0) that feints (0.0), so it shows BLOCK. Both
-        // strike; then turn 2 is planned: a habit roll the CPU ignores, a HEAVY (roll 40), told true.
+    fun theCpuPicksAsThePlayersMoveComesInAndTheTurnRemembersIt() {
+        // Nothing is drawn for the CPU as the fight starts: only the opponent's build (two ints). Its pick (a
+        // STRIKE, roll 0) comes with Jason's move, ahead of the turn's own dice (Jason has no habit yet).
         val roll = listOf(Roll().miss, Roll().variance, Roll().crit)
-        val rng = ScriptedRandom(listOf(0.0) + roll + roll + listOf(0.99, NO_FEINT), ints = listOf(0, 0, 0, 40))
+        val rng = ScriptedRandom(roll + roll, ints = listOf(0, 0, 0))
         val rig = Rig(strongJason(), rng = rng).started()
         rig.toFight()
-        assertEquals(CpuPlan(Move.STRIKE, Move.BLOCK), (rig.ui.screen as Screen.Fight).fight.cpuPlan)
+        assertNull((rig.ui.screen as Screen.Fight).cpuMove)
+        assertEquals("the CPU has not picked yet", 1, rng.remainingInts)
 
         rig.vm.onMove(Move.STRIKE)
         val turn = rig.ui.screen as Screen.Fight
+        assertEquals(Move.STRIKE, turn.playerMove)
         assertEquals(Move.STRIKE, turn.cpuMove)
-        assertEquals("the tell it showed, a feint", Move.BLOCK, turn.cpuTell)
-        assertEquals(CpuPlan(Move.HEAVY, Move.HEAVY), turn.fight.cpuPlan)
+        assertEquals(0, rng.remainingInts)
         assertEquals(0, rng.remainingDoubles)
     }
 
     @Test
+    fun twoFightsWithTheSameSeedPlayTheSameCpuMoves() {
+        fun cpuMoves(seed: Int): List<Move?> {
+            val rig = Rig(strongJason(), rng = Random(seed)).started()
+            rig.toFight()
+            val moves = mutableListOf<Move?>()
+            while (rig.ui.screen is Screen.Fight) {
+                rig.vm.onMove(Move.BLOCK)
+                moves += (rig.ui.screen as Screen.Fight).cpuMove
+                rig.finishAnim()
+                check(moves.size < 20) { "the fight never ended" }
+            }
+            return moves
+        }
+        val first = cpuMoves(seed = 21)
+        assertTrue("the CPU picks a move every turn", first.isNotEmpty() && first.none { it == null || it == Move.RUN })
+        assertEquals(first, cpuMoves(seed = 21))
+    }
+
+    @Test
     fun runningAwayEndsTheFightAsALoss() {
-        val rig = Rig(strongJason(), rng = ScriptedRandom(listOf(NO_FEINT), ints = listOf(0, 0, 0))).started()
+        // The script has the opponent's build and nothing else: a CPU pick would throw.
+        val rig = Rig(strongJason(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
         rig.toFight()
         rig.vm.consumeSounds()
         val before = rig.jason
@@ -2233,10 +2246,9 @@ class GameViewModelTest {
         // Turn 1: Jason's strike crits, Freddy's strike lands.
         val crit = Roll(crit = 0.0)
         val plain = Roll()
-        // Then turn 2 is planned: a habit roll the CPU ignores, its weighted pick and a true tell.
         val rng = ScriptedRandom(
-            listOf(NO_FEINT, crit.miss, crit.variance, crit.crit, plain.miss, plain.variance, plain.crit, 0.99, NO_FEINT),
-            ints = listOf(0, 0, 0, 0),
+            listOf(crit.miss, crit.variance, crit.crit, plain.miss, plain.variance, plain.crit),
+            ints = listOf(0, 0, 0),
         )
         val rig = Rig(strongJason(), rng = rng).started()
         rig.toFight()
@@ -2271,7 +2283,7 @@ class GameViewModelTest {
 
     @Test
     fun specialWithoutAFullMeterIsIgnored() {
-        val rig = Rig(strongJason(), rng = ScriptedRandom(listOf(NO_FEINT), ints = listOf(0, 0, 0))).started()
+        val rig = Rig(strongJason(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
         rig.toFight()
         val before = rig.ui
         rig.vm.onMove(Move.SPECIAL)
@@ -2622,12 +2634,11 @@ class GameViewModelTest {
     @Test
     fun aPotionIsOnlyDrunkBelowFullHealthAndWhileAnyAreLeft() {
         // Dice: the opponent's build, then turn 1 the CPU HEAVYs Jason's BLOCK; turns 2 and 3 Jason drinks (rolling
-        // the smallest heal) while the CPU, ignoring his BLOCK habit, STRIKEs. Every swing lands plainly, every
-        // tell is true, and each turn plans the next (habit roll, pick, tell).
+        // the smallest heal) while the CPU, ignoring his BLOCK habit, STRIKEs. Every swing lands plainly. The CPU
+        // picks as each move comes in (from turn 2 a habit roll, then the pick), ahead of the turn's own dice.
         val swing = listOf(Roll().miss, Roll().variance, Roll().crit)
-        val plan = listOf(0.99, NO_FEINT)
-        val doubles = listOf(NO_FEINT) + swing + plan + 0.0 + swing + plan + 0.0 + swing + plan
-        val rig = Rig(strongJason(), rng = ScriptedRandom(doubles, ints = listOf(0, 0, 40, 0, 0, 0))).started()
+        val doubles = swing + 0.99 + 0.0 + swing + 0.99 + 0.0 + swing
+        val rig = Rig(strongJason(), rng = ScriptedRandom(doubles, ints = listOf(0, 0, 40, 0, 0))).started()
         rig.toFight(PetId.FREDDY)
 
         rig.vm.onMove(Move.POTION) // at full health a potion would be wasted: ignored
@@ -2665,11 +2676,9 @@ class GameViewModelTest {
         // As in losingAFightRecordsALoss: the CPU always HEAVYs and Jason's BLOCKs do nothing against it.
         val heavy = listOf(Roll().miss, Roll().variance, Roll().crit)
         val doubles = buildList {
-            add(NO_FEINT)
             addAll(heavy)
             repeat(2) {
                 add(0.99)
-                add(NO_FEINT)
                 addAll(heavy)
             }
         }

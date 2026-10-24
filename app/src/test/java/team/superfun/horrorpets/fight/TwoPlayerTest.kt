@@ -19,13 +19,12 @@ class TwoPlayerTest {
     private val guest = fighter(id = PetId.FREDDY, hp = 80)
 
     @Test
-    fun aPvpFightGivesBothSidesTheirPotionsAndNoPlan() {
+    fun aPvpFightGivesBothSidesTheirPotions() {
         val s = startPvp(host, guest)
         assertEquals(host, s.player)
         assertEquals(guest, s.cpu)
         assertEquals(FightTuning.POTIONS_PER_FIGHT, s.playerPotions)
         assertEquals(FightTuning.POTIONS_PER_FIGHT, s.cpuPotions)
-        assertNull(s.cpuPlan)
     }
 
     @Test

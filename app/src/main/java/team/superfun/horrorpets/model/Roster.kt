@@ -42,7 +42,6 @@ enum class SpecialStyle(val displayName: String, val effect: SpecialEffect, val 
  * - [strikeMult] multiplies its STRIKE damage (not counters, heavies or specials).
  * - [heavyMult] multiplies its HEAVY damage (not strikes, counters or specials).
  * - [damageTakenMult] multiplies all damage it takes, after crits (the hit still does at least 1).
- * - [feintBonus] is added to its chance of showing a false tell as the CPU (see `cpuPlan`).
  */
 data class Passive(
     val name: String,
@@ -53,7 +52,6 @@ data class Passive(
     val strikeMult: Double = 1.0,
     val heavyMult: Double = 1.0,
     val damageTakenMult: Double = 1.0,
-    val feintBonus: Double = 0.0,
 )
 
 /**
@@ -92,7 +90,7 @@ val Roster: Map<PetId, PetSpec> = listOf(
     PetSpec(PetId.JASON, Passive("Unstoppable", hpMult = FightTuning.JASON_HP_MULT), SpecialStyle.MACHETE_FRENZY, specialHitMs = 500),
     PetSpec(PetId.FREDDY, Passive("Lucid", critBonus = FightTuning.FREDDY_CRIT_BONUS), SpecialStyle.DREAM_CLAWS, specialHitMs = 0),
     PetSpec(PetId.PINHEAD, Passive("Retribution", counterMult = FightTuning.PINHEAD_COUNTER_MULT), SpecialStyle.CHAINS, specialHitMs = 750),
-    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS, feintBonus = FightTuning.GHOSTFACE_FEINT_BONUS), SpecialStyle.KNIFE_FLURRY, specialHitMs = 650),
+    PetSpec(PetId.GHOSTFACE, Passive("Slippery", evadeBonus = FightTuning.GHOSTFACE_EVADE_BONUS), SpecialStyle.KNIFE_FLURRY, specialHitMs = 650),
     PetSpec(PetId.CHUCKY, Passive("Scrappy", strikeMult = FightTuning.CHUCKY_STRIKE_MULT), SpecialStyle.VOODOO_STAB, specialHitMs = 710),
     PetSpec(
         PetId.MICHAEL,

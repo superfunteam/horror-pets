@@ -22,39 +22,18 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
-import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.Glass
-import team.superfun.horrorpets.ui.theme.TextHi
 
-/** What a tell says: the move with a question mark (it may be a feint), or SPECIAL! (never one). */
-internal fun tellText(tell: Move): String = if (tell == Move.SPECIAL) "SPECIAL!" else "${tell.name}?"
-
-/** Room under the bubble for its two trailing thought dots, down to the CPU's head. */
+/** Room under the bubble for its two trailing thought dots, down to the fighter's head. */
 private val DotsRoom = 22.dp
 
 /**
- * The CPU's tell for the coming turn, in a thought bubble over its head while the player picks: NEXT MOVE over
- * "HEAVY?" (see [tellText]), its rim in the move's color. [visible] (0..1) fades it with the command window, and
- * it bobs gently so the eye finds it. [x], [y] is the top of the CPU's head; like the callouts it keeps below
- * [top] and [inset] pixels clear of the sides.
- */
-@Composable
-internal fun TellBubble(tell: Move, visible: () -> Float, x: () -> Float, y: () -> Float, top: () -> Float, inset: Float) {
-    val accent = when (tell) {
-        Move.SPECIAL -> Amber
-        Move.BLOCK -> ShieldBlue
-        else -> BloodGlow
-    }
-    ThoughtBubble("NEXT MOVE", tellText(tell), accent, if (tell == Move.SPECIAL) Amber else TextHi, visible, x, y, top, inset)
-}
-
-/**
  * A thought bubble over a fighter's head: a small Amber [caption] over [text] in [ink], rimmed in [accent], with
- * two dots trailing down to the head; see [TellBubble], which is its main use.
+ * two dots trailing down to the head. [visible] (0..1) fades it, and it bobs gently so the eye finds it. [x], [y]
+ * is the top of the head; like the callouts it keeps below [top] and [inset] pixels clear of the sides.
  */
 @Composable
 internal fun ThoughtBubble(
@@ -68,11 +47,11 @@ internal fun ThoughtBubble(
     top: () -> Float,
     inset: Float,
 ) {
-    val bob = rememberInfiniteTransition(label = "tellBob").animateFloat(
+    val bob = rememberInfiniteTransition(label = "thoughtBob").animateFloat(
         initialValue = -1f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-        label = "tellBobValue",
+        label = "thoughtBobValue",
     )
     val density = LocalDensity.current
     val dots = with(density) { DotsRoom.toPx() }

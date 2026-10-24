@@ -82,9 +82,6 @@ internal enum class FloatKind {
 
     /** A full special meter. */
     READY,
-
-    /** The CPU's tell was a lie: FEINT!, in Amber. */
-    FEINT,
 }
 
 /**
@@ -197,7 +194,6 @@ private fun mainStyle(kind: FloatKind): TextStyle = when (kind) {
     FloatKind.MISS -> displayStyle(56.sp, color = Color(0xFFB4B1B8), tracking = 0.08f, lineHeight = 56.sp)
     FloatKind.BLOCK -> displayStyle(56.sp, color = ShieldBlue, tracking = 0.08f, lineHeight = 56.sp)
     FloatKind.READY -> displayStyle(40.sp, tracking = 0.08f, lineHeight = 40.sp).copy(brush = ReadyFill)
-    FloatKind.FEINT -> displayStyle(52.sp, color = Amber, tracking = 0.08f, lineHeight = 52.sp)
 }
 
 private fun labelStyle(kind: FloatKind): TextStyle = when (kind) {

@@ -148,8 +148,7 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * side that dealt more damage this turn wins (the dealt damage, not capped by remaining hit
  * points), and PLAYER wins a tie. Only the loser gets a [FightEvent.Ko], so the winner of a double
  * KO is left standing at 0 hp. The returned state has `turn + 1`, the player's move appended to
- * `playerHistory`, the turn tallied into [FightState.stats] and [FightState.cpuStats], and no
- * [FightState.cpuPlan] (it has been played: plan the next with [planCpu]).
+ * `playerHistory`, and the turn tallied into [FightState.stats] and [FightState.cpuStats].
  *
  * @throws IllegalStateException if the fight already has a winner.
  * @throws IllegalArgumentException if the CPU plays RUN, either side plays POTION with none left, or
@@ -219,7 +218,6 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
         winner = winner,
         playerPotions = s.playerPotions - if (playerMove == Move.POTION) 1 else 0,
         cpuPotions = s.cpuPotions - if (cpuMove == Move.POTION) 1 else 0,
-        cpuPlan = null,
         stats = tally(s.stats, events, Side.PLAYER),
         cpuStats = tally(s.cpuStats, events, Side.CPU),
     )
@@ -228,7 +226,7 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
 
 /**
  * A PvP fight between two players' fighters: the host as PLAYER and the guest as CPU (the guest's app
- * [mirrors][FightState.mirrored] it), each with its potions, and no CPU plan.
+ * [mirrors][FightState.mirrored] it), each with its potions.
  */
 fun startPvp(host: Fighter, guest: Fighter): FightState =
     FightState(player = host, cpu = guest, playerPotions = FightTuning.POTIONS_PER_FIGHT, cpuPotions = FightTuning.POTIONS_PER_FIGHT)
@@ -236,7 +234,7 @@ fun startPvp(host: Fighter, guest: Fighter): FightState =
 /** [s] with [side] forfeiting: the other side wins at once, nothing else changes. */
 fun forfeit(s: FightState, side: Side): FightState {
     check(s.winner == null) { "The fight is already over: ${s.winner} won" }
-    return s.copy(winner = side.other(), playerRan = side == Side.PLAYER, cpuRan = side == Side.CPU, cpuPlan = null)
+    return s.copy(winner = side.other(), playerRan = side == Side.PLAYER, cpuRan = side == Side.CPU)
 }
 
 /** [stats], [me]'s, with one more turn's [events] counted in. */

@@ -15,9 +15,7 @@ data class AutoPick(val move: Move, val why: String)
  * of these that applies:
  * 1. SPECIAL when the meter is full;
  * 2. POTION when HP is under [AUTOPLAY_POTION_BELOW] of the max and a potion is left;
- * 3. the answer to the CPU's tell (`fight.cpuPlan`, which may be a feint): BLOCK its STRIKE, STRIKE its HEAVY,
- *    HEAVY its BLOCK. A SPECIAL has no answer, and a PvP opponent shows no tell;
- * 4. STRIKE on odd turns and HEAVY on even ones, so the footage shows both.
+ * 3. STRIKE on odd turns and HEAVY on even ones, so the footage shows both.
  *
  * Always a move the player may pick right now (see [pickRefusal]) while the fight is on.
  */
@@ -27,14 +25,6 @@ fun autoplayPick(fight: FightState): AutoPick {
     if (fight.playerPotions > 0 && me.hp < me.maxHp * AUTOPLAY_POTION_BELOW) {
         return AutoPick(Move.POTION, "HP ${me.hp}/${me.maxHp}")
     }
-    val tell = fight.cpuPlan?.tell
-    val answer = when (tell) {
-        Move.STRIKE -> Move.BLOCK
-        Move.HEAVY -> Move.STRIKE
-        Move.BLOCK -> Move.HEAVY
-        else -> null
-    }
-    if (answer != null) return AutoPick(answer, "answers the ${tell?.name} tell")
     return AutoPick(if (fight.turn % 2 == 1) Move.STRIKE else Move.HEAVY, "turn ${fight.turn}")
 }
 

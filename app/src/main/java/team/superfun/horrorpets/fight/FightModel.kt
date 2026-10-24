@@ -66,19 +66,12 @@ data class FightStats(
 )
 
 /**
- * What the CPU will play next turn ([move]), chosen before the player picks, and the [tell] it shows the
- * player: the same move, unless it feints (see [cpuPlan]).
- */
-data class CpuPlan(val move: Move, val tell: Move)
-
-/**
  * The fight so far. [turn] is the number of the turn about to be played (1 for a fresh fight),
  * [playerHistory] every move the player has chosen (the CPU reads it), [winner] is null while the
  * fight is on, and [playerRan] is true when the player forfeited ([cpuRan] when the other side did, which only a
  * PvP opponent can). [playerPotions] is how many potions the player has left ([FightTuning.POTIONS_PER_FIGHT]
- * to start) and [cpuPotions] the other side's (none for the CPU; a PvP opponent's own). [cpuPlan] is the CPU's
- * move for the coming turn and its tell, null until it is planned and once it has been played (never in PvP).
- * [stats] tallies how the player has fought, and [cpuStats] the other side.
+ * to start) and [cpuPotions] the other side's (none for the CPU; a PvP opponent's own). [stats] tallies how the
+ * player has fought, and [cpuStats] the other side.
  */
 data class FightState(
     val player: Fighter,
@@ -88,7 +81,6 @@ data class FightState(
     val winner: Side? = null,
     val playerRan: Boolean = false,
     val playerPotions: Int = FightTuning.POTIONS_PER_FIGHT,
-    val cpuPlan: CpuPlan? = null,
     val stats: FightStats = FightStats(),
     val cpuRan: Boolean = false,
     val cpuPotions: Int = 0,
@@ -102,8 +94,8 @@ data class FightState(
 
     /**
      * The same fight from the other side: the fighters, their potions, forfeits and stats swapped, the winner
-     * flipped. A PvP guest sees the host's fight this way, with itself on the left as the player. No plan and no
-     * move history come along (they are the CPU's).
+     * flipped. A PvP guest sees the host's fight this way, with itself on the left as the player. No move history
+     * comes along (it is the CPU's).
      */
     fun mirrored(): FightState = copy(
         player = cpu,
@@ -114,7 +106,6 @@ data class FightState(
         cpuRan = playerRan,
         playerPotions = cpuPotions,
         cpuPotions = playerPotions,
-        cpuPlan = null,
         stats = cpuStats,
         cpuStats = stats,
     )
