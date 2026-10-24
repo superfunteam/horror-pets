@@ -467,6 +467,35 @@ def drum_tom(hz: float) -> np.ndarray:
     return sine(f, m) * env_exp(m, 0.25, 0.001)
 
 
+def drum_clap(rng: np.random.Generator) -> np.ndarray:
+    """A clap to double the snare: a second burst of noise, brighter and shorter than the snare's."""
+    m = int(0.18 * SR)
+    return bandpass(noise(rng, m), 2500, 11000) * env_exp(m, 0.05, 0.001)
+
+
+def noise_riser(rng: np.random.Generator, dur: float) -> np.ndarray:
+    """Noise that swells and brightens over `dur`, stopping dead on the beat after it."""
+    m = int(dur * SR)
+    p = np.linspace(0, 1, m)
+    x = noise(rng, m)
+    swept = (1 - p) * bandpass(x, 300, 1800) + p * bandpass(x, 2500, 12000)
+    return edge_fade(swept * p ** 2, 5)
+
+
+# The fight music's bass line (one note a beat) and its stabs (one chord a bar), shared by its intense take.
+FIGHT_BASS = ["E2", "E2", "G2", "E2", "D2", "E2", "B1", "D2"]
+FIGHT_STABS = [["E3", "B3", "E4", "G4"], ["C3", "G3", "C4", "E4"], ["D3", "A3", "D4", "F#4"], ["B2", "F#3", "B3", "D#4"]]
+
+
+def fight_stab(chord: list[str]) -> np.ndarray:
+    """One of the fight music's stabs: a detuned saw chord with a filter blip."""
+    m = int(0.4 * SR)
+    st = sum(saw(note_hz(c) * (1 + d), m) for c in chord for d in (-0.003, 0.003))
+    cutoff_env = 400 + 3000 * np.exp(-np.arange(m) / SR / 0.08)
+    st = signal.lfilter(*signal.butter(2, 2000, fs=SR), st)  # gentle tame
+    return st * env_exp(m, 0.18, 0.004) * (cutoff_env / cutoff_env.max())
+
+
 def music_fight() -> np.ndarray:
     rng = rng_for("fight")
     bpm = 120
@@ -476,7 +505,6 @@ def music_fight() -> np.ndarray:
     F = 1.0
     n = int((L + F) * SR)
     mix = np.zeros(n)
-    bass_line = ["E2", "E2", "G2", "E2", "D2", "E2", "B1", "D2"]
     for b in range(int((L + F) / beat)):
         t = b * beat
         if b % 4 in (0, 2):
@@ -489,17 +517,50 @@ def music_fight() -> np.ndarray:
             for k, hz in enumerate((140, 110, 85)):
                 place(mix, drum_tom(hz), t + k * beat / 3, 0.5)
         m = int(beat * 0.9 * SR)
-        bass = lowpass(saw(note_hz(bass_line[b % 8]), m) + 0.5 * sine(note_hz(bass_line[b % 8]), m), 600)
+        bass = lowpass(saw(note_hz(FIGHT_BASS[b % 8]), m) + 0.5 * sine(note_hz(FIGHT_BASS[b % 8]), m), 600)
         place(mix, bass * env_adsr(m, 0.005, 0.1, 0.6, 0.05), t, 0.28)
-    stab_chords = [["E3", "B3", "E4", "G4"], ["C3", "G3", "C4", "E4"], ["D3", "A3", "D4", "F#4"], ["B2", "F#3", "B3", "D#4"]]
     for bar in range(bars + 1):
-        chord = stab_chords[bar % 4]
-        m = int(0.4 * SR)
-        st = sum(saw(note_hz(c) * (1 + d), m) for c in chord for d in (-0.003, 0.003))
-        cutoff_env = 400 + 3000 * np.exp(-np.arange(m) / SR / 0.08)
-        st = signal.lfilter(*signal.butter(2, 2000, fs=SR), st)  # gentle tame
-        st = st * env_exp(m, 0.18, 0.004) * (cutoff_env / cutoff_env.max())
-        place(mix, st, bar * 4 * beat + 2.5 * beat, 0.08)
+        place(mix, fight_stab(FIGHT_STABS[bar % 4]), bar * 4 * beat + 2.5 * beat, 0.08)
+    mix = reverb(rng, mix, 1.2, 0.15)
+    return widen(loopify(mix, L, F), 7)
+
+
+def music_fight_intense() -> np.ndarray:
+    """The fight music hardened, for when a fighter is nearly done. Same tempo, length, bass line and stabs as
+    `music_fight`, so the app can crossfade into it from the same place without the beat skipping; on top, a kick on
+    every beat, a clap on the snare, a saw lead on the off-beats, louder stabs, a riser into every 16 bars and the
+    toms every 8."""
+    rng = rng_for("fight_intense")
+    bpm = 120
+    beat = 60 / bpm
+    bars = 32  # 32 bars x 4 beats at 120 BPM = 64 s, as music_fight
+    L = bars * 4 * beat
+    F = 1.0
+    n = int((L + F) * SR)
+    mix = np.zeros(n)
+    for b in range(int((L + F) / beat)):
+        t = b * beat
+        place(mix, drum_kick(), t, 0.9)
+        if b % 4 in (1, 3):
+            place(mix, drum_snare(rng), t, 0.45)
+            place(mix, drum_clap(rng), t, 0.35)
+        for h in (0, 0.5):
+            place(mix, drum_hat(rng), t + h * beat, 0.18)
+        if b % 32 == 31:  # the last beat of every 8 bars
+            for k, hz in enumerate((140, 110, 85)):
+                place(mix, drum_tom(hz), t + k * beat / 3, 0.5)
+        hz = note_hz(FIGHT_BASS[b % 8])
+        m = int(beat * 0.9 * SR)
+        bass = lowpass(saw(hz, m) + 0.5 * sine(hz, m), 600)
+        place(mix, bass * env_adsr(m, 0.005, 0.1, 0.6, 0.05), t, 0.28)
+        # the lead: the bass note an octave up, on the off-beat
+        m = int(beat * 0.45 * SR)
+        lead = lowpass(saw(2 * hz, m) + saw(2 * hz * 1.005, m), 2400)
+        place(mix, lead * env_adsr(m, 0.003, 0.06, 0.5, 0.04), t + beat / 2, 0.12)
+    for bar in range(bars + 1):
+        place(mix, fight_stab(FIGHT_STABS[bar % 4]), bar * 4 * beat + 2.5 * beat, 0.14)
+        if bar % 16 == 15:  # a riser over the last bar of every 16, landing on the next downbeat
+            place(mix, noise_riser(rng, 4 * beat), bar * 4 * beat, 0.3)
     mix = reverb(rng, mix, 1.2, 0.15)
     return widen(loopify(mix, L, F), 7)
 
@@ -960,7 +1021,7 @@ def write_wav(x: np.ndarray, dest: Path) -> None:
 
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
          "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "leatherface": music_leatherface, "fight": music_fight, "switcher": music_switcher,
-         "jaws": music_jaws, "special_riff": music_special_riff}  # new tracks go at the end
+         "jaws": music_jaws, "special_riff": music_special_riff, "fight_intense": music_fight_intense}  # new tracks go at the end
 
 
 def main() -> int:

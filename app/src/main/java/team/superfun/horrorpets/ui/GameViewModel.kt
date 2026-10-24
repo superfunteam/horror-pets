@@ -65,6 +65,7 @@ import team.superfun.horrorpets.pvp.PvpMatch
 import team.superfun.horrorpets.pvp.PvpRelay
 import team.superfun.horrorpets.pvp.Role
 import team.superfun.horrorpets.pvp.resolvePvpTurn
+import team.superfun.horrorpets.ui.fight.nearlyDone
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -680,8 +681,10 @@ class GameViewModel(
         // Running ends the fight before the CPU acts, and the engine ignores the move it is handed.
         val cpuMove = if (m == Move.RUN) null else cpuPick(fight, rng)
         val turn = resolveTurn(fight, m, cpuMove ?: Move.BLOCK, rng)
+        // Once a fighter is nearly done the fight stays intense, even if a potion brings him back.
+        val intense = screen.intense || nearlyDone(turn.state)
         _state.value = s.copy(
-            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuMove),
+            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuMove, intense = intense),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 
@@ -1092,8 +1095,17 @@ class GameViewModel(
         canonical = turn.state
         val mine = if (game.role == Role.HOST) host else guest
         val theirs = if (game.role == Role.HOST) guest else host
+        // As in onMove: once either fighter is nearly done, the fight stays intense.
+        val intense = s.screen.intense || nearlyDone(turn.state)
         _state.value = s.copy(
-            screen = Screen.Fight(game.view(turn.state), game.viewEvents(turn.events), playerMove = mine, cpuMove = theirs, pvp = PvpView()),
+            screen = Screen.Fight(
+                game.view(turn.state),
+                game.viewEvents(turn.events),
+                playerMove = mine,
+                cpuMove = theirs,
+                pvp = PvpView(),
+                intense = intense,
+            ),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
     }
 
@@ -1106,12 +1118,20 @@ class GameViewModel(
         endPvpFight(s, forfeit(fight, game.side.other()), playerMove = null, cpuMove = Move.RUN)
     }
 
-    /** Plays the forfeit that ended [fight] (canonical), then on to the results. */
+    /** Plays the forfeit that ended [fight] (canonical), then on to the results. An intense fight stays intense. */
     private fun endPvpFight(s: UiState, fight: FightState, playerMove: Move?, cpuMove: Move?) {
         val game = match ?: return
         canonical = fight
+        val intense = (s.screen as? Screen.Fight)?.intense == true
         _state.value = s.copy(
-            screen = Screen.Fight(game.view(fight), emptyList(), playerMove = playerMove, cpuMove = cpuMove, pvp = PvpView()),
+            screen = Screen.Fight(
+                game.view(fight),
+                emptyList(),
+                playerMove = playerMove,
+                cpuMove = cpuMove,
+                pvp = PvpView(),
+                intense = intense,
+            ),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
     }
 

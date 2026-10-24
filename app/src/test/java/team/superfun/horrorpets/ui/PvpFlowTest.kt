@@ -29,6 +29,7 @@ import team.superfun.horrorpets.pvp.PvpRelay
 import team.superfun.horrorpets.pvp.Role
 import team.superfun.horrorpets.pvp.RoomView
 import team.superfun.horrorpets.pvp.TurnView
+import team.superfun.horrorpets.ui.fight.nearlyDone
 
 private const val NOW = 1_800_000_000_000L
 
@@ -232,6 +233,7 @@ class PvpFlowTest {
         assertEquals(host.fight.fight.mirrored(), guest.fight.fight)
 
         var turns = 0
+        var hardened = false
         while (host.ui.screen is Screen.Fight) {
             host.vm.onMove(Move.STRIKE)
             assertTrue("the host waits for the guest", host.fight.pvp!!.waiting)
@@ -248,10 +250,14 @@ class PvpFlowTest {
             assertEquals(Move.STRIKE, g.cpuMove)
             assertEquals("both apps played the same turn", h.fight.mirrored(), g.fight)
             assertEquals(mirroredEvents(h.lastEvents), g.lastEvents)
+            assertEquals("the music hardens on both apps at once", h.intense, g.intense)
+            assertEquals("once either killer is nearly done, and stays so", hardened || nearlyDone(h.fight), h.intense)
+            hardened = h.intense
             host.finishAnim()
             guest.finishAnim()
             check(++turns < 30) { "the fight never ended" }
         }
+        assertTrue("the knockout, at the latest, hardens the music", hardened)
         val hostResults = host.ui.screen as Screen.Results
         val guestResults = guest.ui.screen as Screen.Results
         assertTrue("strong Jason's strikes cut off every HEAVY", hostResults.won)

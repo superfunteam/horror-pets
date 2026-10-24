@@ -41,6 +41,7 @@ import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.audio.GameAudio
+import team.superfun.horrorpets.audio.keepsPlace
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
@@ -225,10 +226,16 @@ class MainActivity : ComponentActivity() {
         }
 
         // The music follows the screen. Collecting only while started means a stopped game stays quiet;
-        // GameAudio ignores a track it is already playing, so coming back never restarts it.
+        // GameAudio ignores a track it is already playing, so coming back never restarts it. The fight music
+        // hardening picks the intense track up where the plain one is (see keepsPlace).
         lifecycleScope.launch {
+            // The last track handed to GameAudio, kept across a stop, as GameAudio keeps it.
+            var previous: String? = null
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.state.map { musicTrackFor(it) }.distinctUntilChanged().collect { audio.music(it) }
+                vm.state.map { musicTrackFor(it) }.distinctUntilChanged().collect { track ->
+                    audio.music(track, keepPlace = keepsPlace(previous, track))
+                    previous = track
+                }
             }
         }
 
@@ -459,17 +466,6 @@ class MainActivity : ComponentActivity() {
         )
 
         /**
-         * The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. The
-         * challenger's entrance cuts the music for its bass hit and announcer; the fight music comes in on his VS card.
-         */
-        fun musicTrackFor(state: UiState): String? = when (state.screen) {
-            Screen.Loading, is Screen.FakeDeath, is Screen.Challenger -> null
-            Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
-            Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training, is Screen.Pantry -> state.game.selected?.name?.lowercase()
-            is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"
-        }
-
-        /**
          * One clock and one asset cache per process: the view model outlives an Activity (it is
          * retained across recreation), so both must be the same objects every Activity instance sees.
          */
@@ -516,4 +512,17 @@ class MainActivity : ComponentActivity() {
                 sharedLoader ?: AssetLoader(context.applicationContext).also { sharedLoader = it }
             }
     }
+}
+
+/**
+ * The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. The
+ * challenger's entrance cuts the music for its bass hit and announcer; the fight music comes in on his VS card, and
+ * hardens into `fight_intense` once the fight turns intense (`Screen.Fight.intense`).
+ */
+internal fun musicTrackFor(state: UiState): String? = when (val screen = state.screen) {
+    Screen.Loading, is Screen.FakeDeath, is Screen.Challenger -> null
+    Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
+    Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training, is Screen.Pantry -> state.game.selected?.name?.lowercase()
+    is Screen.Fight -> if (screen.intense) "fight_intense" else "fight"
+    is Screen.Versus, is Screen.Unlocked, is Screen.Results -> "fight"
 }

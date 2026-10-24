@@ -17,6 +17,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /**
  * The game's real audio: looping music (ExoPlayer, with a crossfade between tracks), one-shot effects and
@@ -28,7 +29,9 @@ import java.util.concurrent.Executors
  * - Voice lines play back to back, [VOICE_GAP_MS] apart, and duck the music while they run (a [VoiceQueue]).
  *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS].
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
- *   over [CROSSFADE_MS] using a second player; a null track fades the music out.
+ *   over [CROSSFADE_MS] using a second player; a null track fades the music out. A track that keeps its place (the
+ *   fight music hardening, see [keepsPlace]) comes in where the old one is, beat on beat, and crossfades over
+ *   [INTENSE_CROSSFADE_MS].
  * - A special's riff ([riff]) loops on a third player over the music, which ducks under it (see [duckLevel]). It
  *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS]. It ducks too, to
  *   [DUCK_LEVEL], while the announcer speaks over it.
@@ -190,21 +193,36 @@ class GameAudio(context: Context) : SoundSink {
 
     /**
      * Plays [track] (`audio/music/<track>.ogg`) on a loop, crossfading from whatever is playing. The track
-     * already playing is left alone; null fades the music out.
+     * already playing is left alone; null fades the music out. With [keepPlace] (see [keepsPlace]) the new track
+     * comes in where the one playing is, beat on beat, not from its start (see `MusicSlot.joinInStep`).
      */
-    fun music(track: String?) = onMain {
-        Log.d(TAG, "music ${track ?: "none"}")
+    fun music(track: String?, keepPlace: Boolean = false) = onMain {
+        Log.d(TAG, "music ${track ?: "none"}${if (keepPlace) ", keeping its place" else ""}")
         if (released || track == currentTrack) return@onMain
         currentTrack = track
+        // A track still waiting for its beat to come in never does now.
+        slots().forEach { it.cancelJoin() }
         val outgoing = activeSlot
         if (track == null) {
-            outgoing?.target = 0f
+            outgoing?.apply {
+                fadeMs = CROSSFADE_MS
+                target = 0f
+            }
             activeSlot = null
             startTicking()
             return@onMain
         }
         val incoming = quieterSlot()
-        if (outgoing != null && outgoing !== incoming) outgoing.target = 0f
+        if (keepPlace && outgoing?.track != null && outgoing !== incoming) {
+            // The outgoing slot stays the active one, at full, until the incoming one comes in.
+            incoming.joinInStep(track, outgoing)
+            return@onMain
+        }
+        if (outgoing != null && outgoing !== incoming) {
+            outgoing.fadeMs = CROSSFADE_MS
+            outgoing.target = 0f
+        }
+        incoming.fadeMs = CROSSFADE_MS
         incoming.start(track)
         activeSlot = incoming
         startTicking()
@@ -454,7 +472,7 @@ class GameAudio(context: Context) : SoundSink {
         var settled = duck == duckTarget && voiceDuck == voiceDuckTarget
         for (slot in slots()) {
             slot.level = approach(slot.level, slot.target, dt / slot.fadeMs)
-            if (slot.target == 0f && slot.level == 0f) slot.stop()
+            if (slot.target == 0f && slot.level == 0f && slot.joining == null) slot.stop()
             slot.applyVolume()
             if (slot.level != slot.target) settled = false
         }
@@ -502,8 +520,20 @@ class GameAudio(context: Context) : SoundSink {
         var level = 0f
         var target = 0f
 
-        /** How long a fade all the way between silent and full takes: [CROSSFADE_MS] for the music. */
+        /**
+         * How long a fade all the way between silent and full takes: [CROSSFADE_MS] for the music, or
+         * [INTENSE_CROSSFADE_MS] for a switch that keeps its place.
+         */
         var fadeMs = CROSSFADE_MS
+
+        /** The slot this one is lined up to come in with, beat on beat (see [joinInStep]), until it does. */
+        var joining: MusicSlot? = null
+            private set
+
+        /** How many times [checkStep] has had to nudge this one toward [joining]. */
+        private var nudges = 0
+        private val stepCheck = Runnable { checkStep() }
+        private val nudgeEnd = Runnable { endNudge() }
 
         fun start(newTrack: String) {
             track = newTrack
@@ -514,7 +544,88 @@ class GameAudio(context: Context) : SoundSink {
             applyVolume()
         }
 
+        /**
+         * Brings [newTrack] in where [other] is in its own track, beat on beat. It starts silent from [other]'s place,
+         * which leaves it behind by however long it takes to prepare and sound (some 170 ms on the emulator, a third of
+         * a beat), so it is nudged faster or slower until it is within [IN_STEP_MS] of [other] (see [checkStep]); only
+         * then does it fade up as [other] fades out, over [INTENSE_CROSSFADE_MS].
+         */
+        fun joinInStep(newTrack: String, other: MusicSlot) {
+            track = newTrack
+            level = 0f
+            target = 0f
+            joining = other
+            nudges = 0
+            val at = other.player.currentPosition
+            player.setMediaItem(MediaItem.fromUri("asset:///audio/music/$newTrack.ogg"))
+            player.seekTo(at)
+            player.prepare()
+            player.playWhenReady = !paused
+            applyVolume()
+            Log.d(TAG, "music slot $label playing $newTrack from ${at}ms, silent till in step with slot ${other.label}")
+            main.postDelayed(stepCheck, STEP_SETTLE_MS)
+        }
+
+        /** Calls off a [joinInStep] that has not come in yet. */
+        fun cancelJoin() {
+            if (joining == null) return
+            joining = null
+            main.removeCallbacks(stepCheck)
+            main.removeCallbacks(nudgeEnd)
+            player.setPlaybackSpeed(1f)
+        }
+
+        /**
+         * How far this slot is behind [joining] in their tracks, once both have played steadily for [STEP_SETTLE_MS]:
+         * in step (or after [MAX_NUDGES] nudges), it comes in; else it plays faster (or slower) for about [NUDGE_MS],
+         * by as much as makes up the gap. A speed change reaches the speaker late, but its end does too, so the two
+         * cancel out; what is left (the main thread running the nudge's end a little late) shrinks with the gap.
+         * While either is not playing (the game is in the background, or this one is still preparing) it waits.
+         */
+        private fun checkStep() {
+            val other = joining ?: return
+            if (!player.isPlaying || !other.player.isPlaying) {
+                main.postDelayed(stepCheck, STEP_SETTLE_MS)
+                return
+            }
+            val lag = lagBehind(other)
+            if (abs(lag) <= IN_STEP_MS || nudges++ >= MAX_NUDGES) {
+                comeIn(other, lag)
+                return
+            }
+            val nudge = (abs(lag).toFloat() / NUDGE_MS).coerceIn(MIN_NUDGE, MAX_NUDGE)
+            player.setPlaybackSpeed(if (lag > 0) 1f + nudge else 1f - nudge)
+            main.postDelayed(nudgeEnd, (abs(lag) / nudge).toLong())
+        }
+
+        private fun endNudge() {
+            player.setPlaybackSpeed(1f)
+            main.postDelayed(stepCheck, STEP_SETTLE_MS)
+        }
+
+        /** How many ms this slot's track is behind [other]'s (negative: ahead), the shorter way around the loop. */
+        private fun lagBehind(other: MusicSlot): Long {
+            val gap = other.player.currentPosition - player.currentPosition
+            val length = other.player.duration
+            if (length <= 0) return gap
+            val wrapped = gap.mod(length)
+            return if (wrapped > length / 2) wrapped - length else wrapped
+        }
+
+        private fun comeIn(other: MusicSlot, lag: Long) {
+            joining = null
+            val fade = INTENSE_CROSSFADE_MS.toInt()
+            Log.d(TAG, "music slot $label in step with slot ${other.label} (${lag}ms): crossfading over ${fade}ms")
+            fadeMs = INTENSE_CROSSFADE_MS
+            other.fadeMs = INTENSE_CROSSFADE_MS
+            target = 1f
+            other.target = 0f
+            activeSlot = this
+            startTicking()
+        }
+
         fun stop() {
+            cancelJoin()
             if (track == null) return
             track = null
             player.stop()
@@ -552,6 +663,13 @@ class GameAudio(context: Context) : SoundSink {
         const val CUT_FADE_MS = 80L
         const val CUT_FADE_STEPS = 4
         const val CROSSFADE_MS = 600f
+        const val INTENSE_CROSSFADE_MS = 1500f
+        const val STEP_SETTLE_MS = 600L // longer than a speed change takes to reach the speaker (some 350 ms)
+        const val IN_STEP_MS = 20L
+        const val NUDGE_MS = 400f
+        const val MIN_NUDGE = 0.05f
+        const val MAX_NUDGE = 0.5f
+        const val MAX_NUDGES = 4
         const val DUCK_DOWN_MS = 120f
         const val DUCK_UP_MS = 400f
         const val RIFF_TRACK = "special_riff"

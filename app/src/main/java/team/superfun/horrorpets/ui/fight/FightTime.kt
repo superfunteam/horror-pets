@@ -1,6 +1,7 @@
 package team.superfun.horrorpets.ui.fight
 
 import team.superfun.horrorpets.fight.FightEvent
+import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
@@ -34,3 +35,13 @@ internal data class ImpactSchedule(val soundAtMs: Long, val stopMs: Long, val bl
 /** The schedule of a blow that lands [landMs] after the impact and stops the clock for [stopMs] (see [hitStopFor]). */
 internal fun impactSchedule(landMs: Long, stopMs: Long): ImpactSchedule =
     ImpactSchedule(soundAtMs = landMs, stopMs = stopMs, blowAtMs = landMs + stopMs)
+
+/**
+ * Whether either fighter in [s] is nearly done: down to strictly under [NEARLY_DONE_SHARE] of its max HP. The first
+ * turn that leaves one there turns the fight intense (`Screen.Fight.intense`), and the music hardens.
+ */
+internal fun nearlyDone(s: FightState): Boolean =
+    s.player.hp < s.player.maxHp * NEARLY_DONE_SHARE || s.cpu.hp < s.cpu.maxHp * NEARLY_DONE_SHARE
+
+/** The share of its max HP under which a fighter is nearly done (see [nearlyDone]). */
+private const val NEARLY_DONE_SHARE = 0.3

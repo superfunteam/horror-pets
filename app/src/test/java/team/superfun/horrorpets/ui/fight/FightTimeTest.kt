@@ -8,6 +8,8 @@ import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
+import team.superfun.horrorpets.fight.fighter
+import team.superfun.horrorpets.fight.stateOf
 
 class FightTimeTest {
     private fun hit(move: Move, crit: Boolean = false, counter: Boolean = false, damage: Int = 10) =
@@ -44,5 +46,14 @@ class FightTimeTest {
         assertEquals(ImpactSchedule(0, 110, 110), impactSchedule(landMs = 0, stopMs = 110))
         assertEquals(ImpactSchedule(780, 110, 890), impactSchedule(landMs = 780, stopMs = 110))
         assertEquals(ImpactSchedule(0, 0, 0), impactSchedule(landMs = 0, stopMs = 0))
+    }
+
+    @Test fun nearlyDoneUnderThirtyPercentOnEitherSide() {
+        assertTrue(nearlyDone(stateOf(player = fighter(hp = 29, maxHp = 100))))
+        assertFalse("30% is not under it", nearlyDone(stateOf(player = fighter(hp = 30, maxHp = 100))))
+        assertTrue("the CPU's side counts too", nearlyDone(stateOf(cpu = fighter(hp = 29, maxHp = 100))))
+        assertFalse(nearlyDone(stateOf(cpu = fighter(hp = 30, maxHp = 100))))
+        assertTrue(nearlyDone(stateOf(player = fighter(hp = 0, maxHp = 100))))
+        assertFalse(nearlyDone(stateOf()))
     }
 }

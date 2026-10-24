@@ -63,6 +63,8 @@ import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.challengerDue
 import team.superfun.horrorpets.model.isVisible
 import team.superfun.horrorpets.model.pantryItems
+import team.superfun.horrorpets.musicTrackFor
+import team.superfun.horrorpets.ui.fight.nearlyDone
 import team.superfun.horrorpets.ui.switcher.lineup
 
 // A realistic epoch (2027-01-15), safely past Tuning.MIN_VALID_EPOCH_MS.
@@ -2659,6 +2661,33 @@ class GameViewModelTest {
         val before = rig.ui
         rig.vm.onMove(Move.POTION) // none left: ignored
         assertEquals(before, rig.ui)
+    }
+
+    @Test
+    fun aFighterNearlyDoneTurnsTheFightIntenseAndAPotionDoesNotUndoIt() {
+        // Dice: the opponent's build, then turn 1 the CPU's HEAVY crits Jason's BLOCK (77 HP down to 12, under 30%);
+        // turn 2 Jason drinks the biggest heal while the CPU, ignoring his BLOCK habit, STRIKEs (back up to 53).
+        val crit = Roll(crit = 0.0)
+        val swing = listOf(Roll().miss, Roll().variance, Roll().crit)
+        val doubles = listOf(crit.miss, crit.variance, crit.crit) + 0.99 + 0.99 + swing
+        val rig = Rig(strongJason(), rng = ScriptedRandom(doubles, ints = listOf(0, 0, 40, 0))).started()
+        rig.toFight(PetId.FREDDY)
+        assertFalse((rig.ui.screen as Screen.Fight).intense)
+        assertEquals("fight", musicTrackFor(rig.ui))
+
+        rig.vm.onMove(Move.BLOCK)
+        val hurt = rig.ui.screen as Screen.Fight
+        assertEquals(12, hurt.fight.player.hp)
+        assertTrue(hurt.intense)
+        assertEquals("fight_intense", musicTrackFor(rig.ui))
+        rig.finishAnim()
+
+        rig.vm.onMove(Move.POTION)
+        val healed = rig.ui.screen as Screen.Fight
+        assertEquals(53, healed.fight.player.hp)
+        assertFalse("nobody is nearly done any more", nearlyDone(healed.fight))
+        assertTrue("but the music stays hard to the end of the fight", healed.intense)
+        assertEquals("fight_intense", musicTrackFor(rig.ui))
     }
 
     @Test

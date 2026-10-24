@@ -198,6 +198,9 @@ sealed interface Screen {
      *
      * [playerMove] and [cpuMove] are the two moves just played, for the "both moves pop up" callouts. Both are
      * null before turn 1; [cpuMove] is also null after a RUN, because the CPU never played.
+     *
+     * [intense] is set once either fighter is nearly done (see `nearlyDone`) and stays set for the rest of the
+     * fight, a potion or not: the music hardens with it.
      */
     data class Fight(
         val fight: FightState,
@@ -205,6 +208,7 @@ sealed interface Screen {
         val playerMove: Move? = null,
         val cpuMove: Move? = null,
         val pvp: PvpView? = null,
+        val intense: Boolean = false,
     ) : Screen
 
     /** A fight's results: what the pet earned ([reward]), and the [fight] as it ended, for its stats (null when not known). */
