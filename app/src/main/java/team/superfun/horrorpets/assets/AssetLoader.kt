@@ -21,11 +21,23 @@ const val CUTTING_BOARD_ART = "sprites/pantry/board.webp"
 /** The pantry's kitchen: a scene of its own (in a scene catalog entry's fields), shared by every killer. */
 const val KITCHEN_SCENE = "scenes/pantry/kitchen.json"
 
+/** Where the VS card's art and the challenger entrance's banner are under the assets. */
+private const val VS_ART = "sprites/vs"
+
+/** [pet]'s name in its film's lettering (`sprites/vs/<pet>-name.webp`): 900 px wide, on a transparent background. */
+fun vsNameFile(pet: PetId): String = "$VS_ART/${pet.name.lowercase()}-name.webp"
+
+/** [pet]'s VS logo, in its film's style (`sprites/vs/<pet>-vs.webp`): 640 px on its longer side, on transparent. */
+fun vsLogoFile(pet: PetId): String = "$VS_ART/${pet.name.lowercase()}-vs.webp"
+
+/** "HERE COMES A NEW CHALLENGER!" (`sprites/vs/challenger.webp`): 1400 x 495, on a transparent background. */
+const val CHALLENGER_BANNER_FILE = "$VS_ART/challenger.webp"
+
 /**
  * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the player's
  * glove (`sprites/hand/...`), the pantry's items
- * (`sprites/pantry/...`) and scene backdrops (`scenes/...`, the pantry's kitchen among them). Bitmaps are decoded as
- * ARGB_8888 without density scaling.
+ * (`sprites/pantry/...`), the VS card's lettering and logos (`sprites/vs/...`) and scene backdrops (`scenes/...`, the
+ * pantry's kitchen among them). Bitmaps are decoded as ARGB_8888 without density scaling.
  *
  * The scene catalog must have [Tuning.SCENE_COUNT] scenes per pet (see [scenes]).
  *
@@ -36,7 +48,12 @@ const val KITCHEN_SCENE = "scenes/pantry/kitchen.json"
  *  - sprite strips live in an LRU of at most [MAX_STRIPS] entries keyed by (pet, anim) (under [stripLock]);
  *  - scene bitmaps live in an LRU of at most [MAX_SCENES], so the one being left can fade out while the
  *    next fades in, and anything older is dropped (a scene is about 10 MB decoded) (under [sceneLock]);
- *  - props are kept once decoded: about a dozen small pictures, under 1 MB each (under [propLock]);
+ *  - props are kept once decoded (under [propLock]): the hand's poses, the heads, the cutting board, the potion, the
+ *    training reel's art, and the title's cover and logo. Most are under 1.5 MB decoded; the title's cover
+ *    (1920 x 1080, about 8 MB) and logo (about 3 MB) are the big ones;
+ *  - the VS art (each killer's name lettering and VS logo, and the challenger banner, 1 to 2.8 MB each decoded) lives
+ *    in an LRU of at most [MAX_VS_ART] (under [vsLock]): a VS card shows three at once, the entrance two, and all
+ *    seventeen kept for good would pin about 24 MB. [prop] hands any `sprites/vs/` path to it too;
  *  - pantry items live in an LRU of at most [MAX_PANTRY_ITEMS] (under [pantryLock]): there are over a hundred, and
  *    a shelf scrolled end to end would otherwise keep every one it passed.
  * Lock order: [stripLock] may take [metaLock] (a strip needs its manifest), never the other way round.
@@ -54,6 +71,7 @@ class AssetLoader(context: Context) {
     private val sceneLock = Any()
     private val propLock = Any()
     private val pantryLock = Any()
+    private val vsLock = Any()
     private val manifests = EnumMap<PetId, SpriteManifest>(PetId::class.java)
     private var catalog: Map<PetId, List<SceneSpec>>? = null
     private var kitchenSpec: SceneSpec? = null
@@ -61,6 +79,7 @@ class AssetLoader(context: Context) {
     private val sceneBitmaps = lru<String>(MAX_SCENES)
     private val props = HashMap<String, ImageBitmap>()
     private val pantryItems = lru<PantryItem>(MAX_PANTRY_ITEMS) { readyItems.remove(it) }
+    private val vsArt = lru<String>(MAX_VS_ART)
 
     /** The decoded pantry items, readable without a lock (see [readyPantryItem]); kept as [ready] is for strips. */
     private val readyItems = ConcurrentHashMap<PantryItem, ImageBitmap>()
@@ -130,9 +149,26 @@ class AssetLoader(context: Context) {
     /** [pet]'s head (`sprites/<pet>/head.webp`, cut by tools/make_heads.py), for the stable badge and menus. */
     fun head(pet: PetId): ImageBitmap = prop("sprites/${pet.dir}/head.webp")
 
-    /** A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. */
-    fun prop(path: String): ImageBitmap = synchronized(propLock) {
-        props.getOrPut(path) { decode(path) }
+    /** [pet]'s name lettering for the VS card and the challenger entrance ([vsNameFile]); cached in the VS LRU. */
+    fun vsName(pet: PetId): ImageBitmap = vs(vsNameFile(pet))
+
+    /** [pet]'s VS logo ([vsLogoFile]); cached in the VS LRU. */
+    fun vsLogo(pet: PetId): ImageBitmap = vs(vsLogoFile(pet))
+
+    /** The challenger entrance's banner ([CHALLENGER_BANNER_FILE]); cached in the VS LRU. */
+    fun challengerBanner(): ImageBitmap = vs(CHALLENGER_BANNER_FILE)
+
+    /**
+     * A small prop picture at [path] under the assets (`sprites/hand/point.webp`), decoded once and kept. VS art
+     * (`sprites/vs/...`) is too big to keep for good: it goes to the VS LRU instead, as [vsName] does.
+     */
+    fun prop(path: String): ImageBitmap {
+        if (path.startsWith("$VS_ART/")) return vs(path)
+        return synchronized(propLock) { props.getOrPut(path) { decode(path) } }
+    }
+
+    private fun vs(path: String): ImageBitmap = synchronized(vsLock) {
+        vsArt.getOrPut(path) { decode(path) }
     }
 
     private fun readText(path: String): String = assets.open(path).bufferedReader().use { it.readText() }
@@ -171,6 +207,12 @@ class AssetLoader(context: Context) {
          * (under a dozen slots, on a 20:9 phone), the two it decodes ahead either side, the board's two and some to spare.
          */
         const val MAX_PANTRY_ITEMS = 24
+
+        /**
+         * The VS card draws three pictures (both names and the opponent's logo); the challenger entrance before it two
+         * (the banner and his name, which the card then reuses). Four covers both, about 7 MB decoded at most.
+         */
+        const val MAX_VS_ART = 4
 
         /** Access-ordered map that drops its least recently used entry beyond [max], telling [onEvict]. */
         fun <K> lru(max: Int, onEvict: (K) -> Unit = {}): LinkedHashMap<K, ImageBitmap> =

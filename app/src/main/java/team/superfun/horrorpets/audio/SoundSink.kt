@@ -7,4 +7,11 @@ interface SoundSink {
 
     /** Play the announcer lines `audio/voice/<name>.wav` back to back. */
     fun voice(names: List<String>)
+
+    /**
+     * Make [lines] the announcer's next words, now: whatever an earlier screen left him saying is cut short and its
+     * queued lines are dropped, while [lines] themselves (queued already, or about to be) are kept and start at once.
+     * Lines already under way are left alone. See [VoiceQueue.skipTo]. A sink with no announcer ignores it.
+     */
+    fun skipVoiceTo(lines: List<String>) = Unit
 }

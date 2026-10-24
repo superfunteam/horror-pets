@@ -25,7 +25,8 @@ import java.util.concurrent.Executors
  * - Effects (`audio/sfx/<name>.wav`) and voice lines (`audio/voice/<name>.wav`) are 16-bit PCM WAV, because
  *   SoundPool cannot decode Opus-in-Ogg below Android 10. They are all preloaded on a background thread at
  *   construction; a request that arrives before its clip has loaded waits for it.
- * - Voice lines play back to back, [VOICE_GAP_MS] apart, and duck the music while they run.
+ * - Voice lines play back to back, [VOICE_GAP_MS] apart, and duck the music while they run (a [VoiceQueue]).
+ *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS].
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
  *   over [CROSSFADE_MS] using a second player; a null track fades the music out.
  *
@@ -67,13 +68,15 @@ class GameAudio(context: Context) : SoundSink {
     /** Stream ids handed out recently, so [pause] can silence whatever is still sounding. */
     private val recentStreams = ArrayDeque<Int>()
 
-    private val voiceQueue = ArrayDeque<String>()
+    /** The announcer's lines: the one sounding (through the gap after it) and those queued behind it. */
+    private val voices = VoiceQueue()
 
-    /** True while a voice clip sounds and during the gap that follows it. */
-    private var voiceBusy = false
+    /** The stream of the line [voices] says is sounding, so [skipVoiceTo] can cut it; 0 when there is none. */
+    private var voiceStream = 0
     private val voiceDone = Runnable {
-        voiceBusy = false
-        if (voiceQueue.isEmpty()) duckMusic(false) else pumpVoice()
+        voices.finished()
+        voiceStream = 0
+        if (voices.idle) duckMusic(false) else pumpVoice()
     }
 
     // ---- music (ExoPlayer) ----
@@ -123,7 +126,23 @@ class GameAudio(context: Context) : SoundSink {
             Log.d(TAG, "voice dropped: paused")
             return@onMain
         }
-        voiceQueue.addAll(names)
+        voices.add(names)
+        pumpVoice()
+    }
+
+    override fun skipVoiceTo(lines: List<String>) = onMain {
+        if (lines.isEmpty() || released || paused) return@onMain
+        val cutting = voices.sounding
+        val dropped = voices.queued.size
+        val cut = voices.skipTo(lines)
+        if (cut) {
+            main.removeCallbacks(voiceDone)
+            fadeOut(voiceStream)
+            voiceStream = 0
+        }
+        val gone = dropped - voices.queued.size
+        Log.d(TAG, "voice skip to ${lines.joinToString(" > ")}: cut ${if (cut) cutting else "nothing"}, dropped $gone")
+        if (voices.idle) duckMusic(false)
         pumpVoice()
     }
 
@@ -156,9 +175,9 @@ class GameAudio(context: Context) : SoundSink {
         if (released || paused) return@onMain
         paused = true
         Log.d(TAG, "pause")
-        voiceQueue.clear()
+        voices.clear()
+        voiceStream = 0
         main.removeCallbacks(voiceDone)
-        voiceBusy = false
         pendingSfx.clear()
         recentStreams.forEach(pool::stop)
         recentStreams.clear()
@@ -184,7 +203,7 @@ class GameAudio(context: Context) : SoundSink {
         Log.d(TAG, "release")
         main.removeCallbacksAndMessages(null)
         loader.shutdownNow()
-        voiceQueue.clear()
+        voices.clear()
         pendingSfx.clear()
         slots().forEach { it.player.release() }
         pool.release()
@@ -287,25 +306,45 @@ class GameAudio(context: Context) : SoundSink {
 
     /** Plays queued voice lines one after another. Re-entered when a clip ends, a load finishes or a call adds lines. */
     private fun pumpVoice() {
-        while (!voiceBusy && !paused) {
-            val name = voiceQueue.firstOrNull() ?: return
+        while (voices.sounding == null && !paused) {
+            val name = voices.next ?: return
             val key = "voice/$name"
             when (stateOf(key)) {
                 ClipState.WAIT -> return
                 ClipState.MISSING -> {
-                    voiceQueue.removeFirst()
+                    voices.dropNext()
                     Log.w(TAG, "unknown voice '$name': no loadable audio/$key$WAV")
                 }
                 ClipState.READY -> {
-                    voiceQueue.removeFirst()
                     val clip = clips.getValue(key)
-                    if (play(clip, VOICE_PRIORITY) == 0) continue
+                    val stream = play(clip, VOICE_PRIORITY)
+                    if (stream == 0) {
+                        voices.dropNext()
+                        continue
+                    }
+                    voices.start()
+                    voiceStream = stream
                     Log.d(TAG, "voice playing $name (${clip.durationMs}ms)")
-                    voiceBusy = true
                     duckMusic(true)
                     main.postDelayed(voiceDone, clip.durationMs + VOICE_GAP_MS)
                 }
             }
+        }
+    }
+
+    /** Silences [stream] (a voice line being cut) over [CUT_FADE_MS] in a few steps, so it never clicks off. */
+    private fun fadeOut(stream: Int) {
+        if (stream == 0) return
+        for (step in 1..CUT_FADE_STEPS) {
+            main.postDelayed({
+                if (released) return@postDelayed
+                if (step == CUT_FADE_STEPS) {
+                    pool.stop(stream)
+                } else {
+                    val v = 1f - step / CUT_FADE_STEPS.toFloat()
+                    pool.setVolume(stream, v, v)
+                }
+            }, CUT_FADE_MS * step / CUT_FADE_STEPS)
         }
     }
 
@@ -446,7 +485,8 @@ class GameAudio(context: Context) : SoundSink {
 
         const val MUSIC_VOLUME = 0.5f
         const val DUCK_LEVEL = 0.3f
-        const val VOICE_GAP_MS = 150L
+        const val CUT_FADE_MS = 80L
+        const val CUT_FADE_STEPS = 4
         const val CROSSFADE_MS = 600f
         const val DUCK_DOWN_MS = 120f
         const val DUCK_UP_MS = 400f
