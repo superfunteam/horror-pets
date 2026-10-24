@@ -20,11 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -61,17 +58,8 @@ import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.theme.TextLo
 
-/**
- * A phone's NFC, to join a PvP room by tapping the phones together: [listen] reads a room code off a phone
- * that is hosting one (see `PvpTapService`) until [stop]. Null where there is no NFC (every TV).
- */
-interface TapToJoin {
-    fun listen(onCode: (String) -> Unit)
-
-    fun stop()
-}
-
-val LocalTapToJoin = staticCompositionLocalOf<TapToJoin?> { null }
+/** Whether this device can tap phones together for PvP (NFC; see ui/TapFight.kt): never on a TV. */
+val LocalCanTap = staticCompositionLocalOf { false }
 
 private val Gold = Color(0xFFF5C543)
 private val TitleGlow = Shadow(color = Blood.copy(alpha = 0.7f), offset = Offset.Zero, blurRadius = 30f)
@@ -88,9 +76,9 @@ internal fun problemText(problem: PvpProblem): String = when (problem) {
 /**
  * The PvP lobby, from the opponent switcher's PvP Battle: HOST A ROOM shows a 4-digit code to give a friend and
  * waits for them; JOIN A ROOM takes a friend's code on a keypad (D-pad and OK, a remote's number keys, or taps),
- * joining as the fourth digit goes in. On a phone with NFC, tapping it against a phone that is hosting joins that
- * room from the menu or the keypad. Back steps out: from hosting or joining to the menu, from the menu to the
- * opponent switcher.
+ * joining as the fourth digit goes in. On phones with NFC, tapping two together does it all (see ui/TapFight.kt):
+ * the phone that opens a room for a tap shows it here as hosting, and the other waits here for its code. Back steps
+ * out: from hosting, joining or waiting to the menu, from the menu to the opponent switcher.
  */
 @Composable
 fun PvpLobbyScreen(
@@ -99,20 +87,11 @@ fun PvpLobbyScreen(
     onJoin: () -> Unit,
     onDigit: (Int) -> Unit,
     onErase: () -> Unit,
-    onTapCode: (String) -> Unit,
     onBack: () -> Unit,
     focusEntry: Any? = Unit,
 ) {
     GameBackHandler(enabled = focusEntry != null, onBack = onBack)
-    val tap = LocalTapToJoin.current
-    val latestTapCode by rememberUpdatedState(onTapCode)
-    // A tap joins from the menu or the keypad: listen there (and never while hosting, when this phone is the one
-    // being read).
-    val listening = focusEntry != null && (phase is LobbyPhase.Menu || (phase is LobbyPhase.Joining && !phase.busy))
-    DisposableEffect(tap, listening) {
-        if (tap != null && listening) tap.listen { latestTapCode(it) }
-        onDispose { tap?.stop() }
-    }
+    val canTap = LocalCanTap.current
 
     BoxWithConstraints(
         Modifier
@@ -138,9 +117,10 @@ fun PvpLobbyScreen(
             Spacer(Modifier.height(18.dp))
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 when (phase) {
-                    is LobbyPhase.Menu -> MenuWindow(phase, tap != null, onHost, onJoin, focusEntry)
-                    is LobbyPhase.Hosting -> HostWindow(phase, tap != null, onBack, focusEntry)
-                    is LobbyPhase.Joining -> JoinWindow(phase, tap != null, onDigit, onErase, focusEntry)
+                    is LobbyPhase.Menu -> MenuWindow(phase, canTap, onHost, onJoin, focusEntry)
+                    is LobbyPhase.Hosting -> HostWindow(phase, canTap, onBack, focusEntry)
+                    is LobbyPhase.Joining -> JoinWindow(phase, canTap, onDigit, onErase, focusEntry)
+                    LobbyPhase.Tapped -> TappedWindow(onBack, focusEntry)
                 }
             }
         }
@@ -200,7 +180,7 @@ private fun MenuWindow(phase: LobbyPhase.Menu, canTap: Boolean, onHost: () -> Un
             Note(problemText(it), BloodGlow)
         }
         Spacer(Modifier.height(14.dp))
-        Note(if (canTap) "On phones, just tap them back to back to join" else "Both players need the game and the internet", TextLo)
+        Note(if (canTap) "Or just tap your phones back to back" else "Both players need the game and the internet", TextLo)
     }
 }
 
@@ -239,6 +219,22 @@ private fun HostWindow(phase: LobbyPhase.Hosting, canTap: Boolean, onCancel: () 
             if (canTap) "Your friend picks PvP Battle, then Join a room and types this code, or taps phones with you" else "Your friend picks PvP Battle, then Join a room and types this code",
             TextLo,
         )
+        Spacer(Modifier.height(14.dp))
+        CommandItem(onClick = onCancel, modifier = Modifier.focusRequester(cancel).width(180.dp).height(40.dp)) { lit ->
+            BasicText("CANCEL", style = displayStyle(24.sp, color = if (lit) TextHi else TextHi.copy(alpha = 0.7f), tracking = 0.06f), maxLines = 1)
+        }
+    }
+}
+
+/** A friend's phone, tapped against this one, is opening a room: hold the phones together while its code comes over. */
+@Composable
+private fun TappedWindow(onCancel: () -> Unit, focusEntry: Any?) {
+    val cancel = remember { FocusRequester() }
+    FocusOnShow(cancel, focusEntry)
+    LobbyWindow("PHONES TAPPED", Modifier.width(500.dp)) {
+        WaitingLine("GETTING YOUR FRIEND'S ROOM")
+        Spacer(Modifier.height(10.dp))
+        Note("Keep the phones back to back", TextLo)
         Spacer(Modifier.height(14.dp))
         CommandItem(onClick = onCancel, modifier = Modifier.focusRequester(cancel).width(180.dp).height(40.dp)) { lit ->
             BasicText("CANCEL", style = displayStyle(24.sp, color = if (lit) TextHi else TextHi.copy(alpha = 0.7f), tracking = 0.06f), maxLines = 1)

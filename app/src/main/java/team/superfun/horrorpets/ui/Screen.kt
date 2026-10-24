@@ -29,6 +29,9 @@ sealed interface LobbyPhase {
 
     /** Typing a friend's code: the [digits] so far, [busy] while joining, and why the last try failed. */
     data class Joining(val digits: String = "", val busy: Boolean = false, val problem: PvpProblem? = null) : LobbyPhase
+
+    /** A friend's phone, tapped against this one, is opening a room and handing its code over the tap. */
+    data object Tapped : LobbyPhase
 }
 
 /** Why PvP did not work out, as the lobby explains it. */

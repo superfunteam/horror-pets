@@ -265,7 +265,6 @@ fun HorrorPetsApp(
                     onJoin = vm::onLobbyJoin,
                     onDigit = vm::onLobbyDigit,
                     onErase = vm::onLobbyErase,
-                    onTapCode = vm::onTapCode,
                     onBack = vm::onLobbyBack,
                     focusEntry = focusEntry,
                 )

@@ -714,12 +714,17 @@ class GameViewModel(
 
     /** Opens a room: once the relay answers, its code is shown (and offered to a phone tapped against this one). */
     fun onLobbyHost() {
-        val relay = pvpRelay ?: return
         val s = _state.value
         val lobby = s.screen as? Screen.PvpLobby ?: return
         if (lobby.phase !is LobbyPhase.Menu) return
+        host(s)
+    }
+
+    /** Opens a room from [s], in the lobby: its code goes on screen and to [onHostCode], then a challenger is awaited. */
+    private fun host(s: UiState) {
+        val relay = pvpRelay ?: return
         val me = myFighter(s) ?: return
-        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Hosting()))
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Hosting()), refuse = null)
         pvpJob?.cancel()
         pvpJob = scope.launch {
             val hosted = try {
@@ -771,15 +776,60 @@ class GameViewModel(
         _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(phase.digits.dropLast(1))))
     }
 
-    /** A code read from another phone by a tap (NFC): joins its room, from the lobby's menu or code entry. */
+    /**
+     * A code read off a hosting phone by a tap (NFC): joins its room, from the lobby's menu or code entry, or from
+     * anywhere else a tap starts a fight (see [tapJoinOpen]).
+     */
     fun onTapCode(code: String) {
-        val phase = (_state.value.screen as? Screen.PvpLobby)?.phase ?: return
         if (code.length != CODE_LENGTH || !code.all(Char::isDigit)) return
-        when (phase) {
-            is LobbyPhase.Menu -> join(code)
-            is LobbyPhase.Joining -> if (!phase.busy) join(code)
-            is LobbyPhase.Hosting -> Unit
+        if (pvpRelay == null || !tapJoinOpen(_state.value)) return
+        join(code)
+    }
+
+    /**
+     * A tap found a friend's phone that is ready for a fight and hosts no room (see [tapReadyOf]): this phone opens
+     * one, whose code then goes over the tap. Whether it did.
+     */
+    fun onTapFoundReady(): Boolean {
+        val s = _state.value
+        if (pvpRelay == null || myFighter(s) == null || !tapJoinOpen(s)) return false
+        pvpJob?.cancel()
+        host(s)
+        return true
+    }
+
+    /** Whether this phone is opening, or waiting in, a room (for a tap to hand over). */
+    fun tapHosting(): Boolean = (_state.value.screen as? Screen.PvpLobby)?.phase is LobbyPhase.Hosting
+
+    /**
+     * A friend's phone read this one by a tap and is opening a room for both: on to the lobby, to wait for its code
+     * over the tap. If none comes in [TAP_WAIT_MS], the code entry is up, so tapping again reads the friend's room.
+     */
+    fun onTappedAsCard() {
+        val s = _state.value
+        if (pvpRelay == null || myFighter(s) == null || !tapFightOpen(s)) return
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Tapped), refuse = null)
+        pvpJob?.cancel()
+        pvpJob = scope.launch {
+            delay(TAP_WAIT_MS)
+            setLobby(LobbyPhase.Joining(), onlyIf = { it == LobbyPhase.Tapped })
         }
+    }
+
+    /** The friend's room [code], handed over the tap: joins it. Whether this phone took it. */
+    fun onTapHandedCode(code: String): Boolean {
+        if ((_state.value.screen as? Screen.PvpLobby)?.phase != LobbyPhase.Tapped) return false
+        if (code.length != CODE_LENGTH || !code.all(Char::isDigit)) return false
+        join(code)
+        return true
+    }
+
+    /** The phones parted before the code came over: on to the code entry, where tapping again reads the friend's room. */
+    fun onTapLost() {
+        if ((_state.value.screen as? Screen.PvpLobby)?.phase != LobbyPhase.Tapped) return
+        pvpJob?.cancel()
+        pvpJob = null
+        setLobby(LobbyPhase.Joining(), onlyIf = { it == LobbyPhase.Tapped })
     }
 
     /** Back in the lobby: from the menu to the opponent switcher, from hosting or joining back to the menu. */
@@ -794,16 +844,16 @@ class GameViewModel(
                 closeHostedRoom()
                 _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
             }
-            is LobbyPhase.Joining -> _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
+            is LobbyPhase.Joining, LobbyPhase.Tapped -> _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Menu()))
         }
     }
 
+    /** Joins room [code], in the lobby (on to it from wherever a tap started this). */
     private fun join(code: String) {
         val relay = pvpRelay ?: return
         val s = _state.value
-        if (s.screen !is Screen.PvpLobby) return
         val me = myFighter(s) ?: return
-        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(code, busy = true)))
+        _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(code, busy = true)), refuse = null)
         pvpJob?.cancel()
         pvpJob = scope.launch {
             val joined = try {
@@ -1211,6 +1261,9 @@ internal const val CODE_LENGTH = 4
 
 /** How often a host asks whether a challenger has joined, and a fighter whether the other has locked in. */
 private const val LOBBY_POLL_MS = 1_500L
+
+/** How long a phone read by a tap waits for the reader's room code before it offers the code entry instead. */
+const val TAP_WAIT_MS = 10_000L
 private const val TURN_POLL_MS = 800L
 
 /** A fight is called off after this many failed asks in a row (about half a minute without the relay). */

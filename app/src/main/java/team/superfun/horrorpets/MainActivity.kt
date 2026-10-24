@@ -40,7 +40,9 @@ import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.pvp.HttpPvpRelay
-import team.superfun.horrorpets.pvp.nfc.HostedCode
+import team.superfun.horrorpets.pvp.nfc.TapCard
+import team.superfun.horrorpets.pvp.nfc.TapEvents
+import team.superfun.horrorpets.pvp.nfc.TapMode
 import team.superfun.horrorpets.pvp.nfc.NfcTapReader
 import team.superfun.horrorpets.puppet.Puppet
 import team.superfun.horrorpets.ui.LobbyPhase
@@ -53,7 +55,9 @@ import team.superfun.horrorpets.ui.common.LocalTouchDevice
 import team.superfun.horrorpets.ui.common.ProvideScreenDensity
 import team.superfun.horrorpets.ui.common.isTouchDevice
 import team.superfun.horrorpets.ui.common.isTouchInput
-import team.superfun.horrorpets.ui.pvp.LocalTapToJoin
+import team.superfun.horrorpets.ui.pvp.LocalCanTap
+import team.superfun.horrorpets.ui.tapModeOf
+import team.superfun.horrorpets.ui.tapReadyOf
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 import team.superfun.horrorpets.update.AndroidUpdateHost
 import team.superfun.horrorpets.update.UPDATES_TAG
@@ -78,8 +82,8 @@ class MainActivity : ComponentActivity() {
                     onError = { Log.e(TAG, "Save or load failed; carrying on from memory", it) },
                     clockFloorMs = clockFloorMs(appContext),
                     pvpRelay = HttpPvpRelay(PVP_RELAY, appVersionCode(appContext)),
-                    // A phone tapped against this one reads the room code this one is hosting (see PvpTapService).
-                    onHostCode = { HostedCode.current = it },
+                    // A phone tapped against this one reads the room code this one is hosting (see TapCard).
+                    onHostCode = { TapCard.shared.hosted = it },
                 )
             }
         }
@@ -110,10 +114,38 @@ class MainActivity : ComponentActivity() {
     /** This phone's NFC for PvP taps; null without NFC (every TV). */
     private var tap: NfcTapReader? = null
 
+    /** What a tap read off another phone means to the game. */
+    private val tapEvents = object : TapEvents {
+        override fun onCodeRead(code: String) = vm.onTapCode(code)
+
+        override fun onReadyFound(): Boolean = vm.onTapFoundReady()
+
+        override fun stillHosting(): Boolean = vm.tapHosting()
+    }
+
+    /** This phone read by another's tap: it holds still as a card while the other opens a room, then joins it. */
+    private val cardListener = object : TapCard.Listener {
+        override fun onFound() {
+            tap?.holdAsCard()
+            vm.onTappedAsCard()
+        }
+
+        override fun onHandedCode(code: String): Boolean {
+            tap?.release()
+            return vm.onTapHandedCode(code)
+        }
+
+        override fun onLost() {
+            tap?.release()
+            vm.onTapLost()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         touchDevice = detectTouchDevice(this)
-        tap = NfcTapReader.create(this)
+        tap = NfcTapReader.create(this, tapEvents)
+        TapCard.shared.listener = cardListener
         // On a phone the scene runs under the camera cutout too (Android 15 does this anyway); the UI keeps
         // clear of it through `safeInset`. A TV has no cutout.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -155,6 +187,25 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Tapping phones together: where the game is says whether this phone reads, takes turns reading and being
+        // read, or neither, and whether it tells a reader it is ready for a fight (see ui/TapFight.kt). Only while
+        // the game is in front.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                try {
+                    vm.state.map { tapModeOf(it) to tapReadyOf(it) }
+                        .distinctUntilChanged()
+                        .collect { (mode, ready) ->
+                            TapCard.shared.ready = ready
+                            tap?.setMode(mode)
+                        }
+                } finally {
+                    TapCard.shared.ready = false
+                    tap?.setMode(TapMode.OFF)
+                }
+            }
+        }
+
         // While this phone shows a room code, a phone tapped against it reaches this app's card service.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -175,7 +226,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalTapToJoin provides tap) {
+            CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalCanTap provides (tap != null)) {
                 ProvideScreenDensity {
                     HorrorPetsTheme {
                         val showFightHud by Puppet.current.fightHud.collectAsState()
@@ -217,6 +268,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (TapCard.shared.listener === cardListener) TapCard.shared.listener = null
         // Also reached after a config change, where the new Activity builds its own GameAudio.
         if (::audio.isInitialized) audio.release()
         super.onDestroy()
