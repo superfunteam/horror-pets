@@ -148,57 +148,65 @@ class ShelfFocusTest {
     // The shelf's labels.
 
     @Test
-    fun aLabelBreaksOnlyBetweenWordsAndAfterHyphens() {
-        assertEquals(listOf("EGG"), labelWords("EGG"))
-        assertEquals(listOf("CAMP", "CRYSTAL", "FISH", "FRY"), labelWords("CAMP CRYSTAL FISH FRY"))
-        assertEquals(listOf("NOT-", "STRAWBERRY", "MILK"), labelWords("NOT-STRAWBERRY MILK"))
-        assertEquals(listOf("SUN-", "DRIED", "TOMATOES"), labelWords("SUN-DRIED TOMATOES"))
-        assertEquals(listOf("COCOA", "&", "MARSHMALLOWS"), labelWords("COCOA &  MARSHMALLOWS"))
-        // Every name's words, put back together, are the name.
-        for (item in PantryItem.entries) {
-            val label = item.title.uppercase()
-            assertEquals(label.replace(" ", ""), labelWords(label).joinToString(""))
-        }
+    fun aLabelMayBreakBetweenWordsAndAfterHyphens() {
+        assertEquals("EGG", labelText("Egg"))
+        assertEquals(emptySet<Int>(), labelBreaks(labelText("Egg")))
+        val strawberry = labelText("Not-Strawberry Milk")
+        assertEquals("NOT-​STRAWBERRY MILK", strawberry)
+        // After "NOT-" and its zero-width space (5), and after "STRAWBERRY " (16).
+        assertEquals(setOf(5, 16), labelBreaks(strawberry))
+        assertEquals(setOf(5, 13, 18), labelBreaks(labelText("Camp Crystal Fish Fry")))
+        // A label reads as its name in capitals: the breaks show nothing.
+        for (item in PantryItem.entries) assertEquals(item.title.uppercase(), labelText(item.title).replace("​", ""))
     }
 
-    /** A pretend typeface: every letter (and space) half its size wide, in a label [width] wide. */
-    private fun fit(label: String, width: Float): Float {
-        fun widthOf(text: String, sp: Float) = text.length * sp * 0.5f
-        // Greedy wrapping into [width], counting lines (a word too wide for a line takes one of its own).
-        fun linesOf(sp: Float): Int {
-            var lines = 1
-            var line = 0f
-            for (word in labelWords(label)) {
-                val w = widthOf(word, sp)
-                val gap = if (line == 0f || word.endsWith("-")) 0f else widthOf(" ", sp)
-                if (line > 0f && line + gap + w > width) {
-                    lines++
-                    line = w
-                } else {
-                    line += gap + w
+    /**
+     * A pretend typeface and line breaker for [title] in a label [width] wide: every letter (and space) half its size
+     * wide, lines filled greedily at the label's breaks, and a run too wide for a line cut wherever it overflows (as a
+     * real line breaker does), so that is what [labelFontSize] must steer clear of.
+     */
+    private fun fit(title: String, width: Float): Float {
+        val label = labelText(title)
+        fun lineEnds(sp: Float): List<Int> {
+            val per = sp * 0.5f
+            val ends = mutableListOf<Int>()
+            var start = 0
+            while (start < label.length) {
+                val room = (width / per).toInt().coerceAtLeast(1) // letters a line holds
+                val fits = labelBreaks(label).filter { it > start && it - start <= room + 1 } // a trailing space is free
+                val end = when {
+                    label.length - start <= room -> label.length
+                    fits.isNotEmpty() -> fits.max()
+                    else -> start + room // cut mid-word
                 }
+                ends += end
+                start = end
             }
-            return lines
+            return ends
         }
-        return labelFontSize(label, width, maxSp = 13f, minSp = 10f, stepSp = 0.5f, widthOf = ::widthOf, linesOf = ::linesOf)
+        return labelFontSize(label, maxSp = 13f, minSp = 10f, stepSp = 0.5f, lineEnds = ::lineEnds)
     }
 
     @Test
     fun aLabelShrinksOnlyAsFarAsItMust() {
-        // A short name, and one that wraps onto two lines whole: the biggest size.
-        assertEquals(13f, fit("EGG", 70f), 0f)
-        assertEquals(13f, fit("PILE OF SLOP", 70f), 0f)
-        // A word too wide for the label shrinks it until the word fits (12 letters x 6 = 72 > 70; x 5.75 = 69).
-        assertEquals(11.5f, fit("COCOA & MARSHMALLOWS", 70f), 0f)
-        // Three lines at the biggest size shrink it to two.
-        assertEquals(13f, fit("A B C", 6.5f * 3f), 0f) // "A B" fits a line: two lines
-        val crowded = fit("AAAA BBBB CCCC", 26f * 2f) // 4 letters = 26 at 13: one word a line, three lines
-        assertTrue("$crowded", crowded < 13f)
+        // A short name, and one that wraps onto two lines between its words: the biggest size (6.5 a letter).
+        assertEquals(13f, fit("Egg", 70f), 0f)
+        assertEquals(13f, fit("Pile of Slop", 70f), 0f)
+        // A word too wide for a line at 13 (12 letters, 78 > 70) would be cut mid-word: it shrinks until the word fits
+        // a line whole (11.5: 69).
+        assertEquals(11.5f, fit("Cocoa & Marshmallows", 70f), 0f)
+        // After a hyphen is a fine place to break ("NOT-" / "STRAWBERRY", 12 letters a line at 78): the biggest size.
+        // A word as long with no hyphen would be cut mid-word there, so it shrinks to fit a line whole (14 letters at 11).
+        assertEquals(13f, fit("Not-Strawberry", 78f), 0f)
+        assertEquals(11f, fit("Notxstrawberry", 78f), 0f)
+        // Three lines at the biggest size shrink it to two: 8 letters a line at 13 is "AAAA" / "BBBB" / "CCCC", 9 at
+        // 12 is "AAAA BBBB" / "CCCC".
+        assertEquals(12f, fit("Aaaa Bbbb Cccc", 55f), 0f)
         // Nothing fits at all: the smallest, and the label ends in an ellipsis.
-        assertEquals(10f, fit("SUPERCALIFRAGILISTIC", 40f), 0f)
-        // Never bigger than it was asked, never smaller.
+        assertEquals(10f, fit("Supercalifragilistic", 40f), 0f)
+        // Never bigger than asked, never smaller, and wherever it fits, never a word split.
         for (item in PantryItem.entries) for (width in listOf(40f, 70f, 90f)) {
-            val sp = fit(item.title.uppercase(), width)
+            val sp = fit(item.title, width)
             assertTrue("${item.title} $width: $sp", sp in 10f..13f)
         }
     }

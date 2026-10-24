@@ -84,33 +84,31 @@ fun shelfLead(size: Int, slots: Int): Float = if (size < slots) (slots - size) /
 /** A shelf item's name label wraps onto at most this many lines. */
 internal const val LABEL_LINES = 2
 
-/**
- * The runs of [label] that a line never breaks inside: its words, a hyphenated word split after each hyphen (where a
- * line may break: "NOT-" and "STRAWBERRY").
- */
-internal fun labelWords(label: String): List<String> =
-    label.split(' ').filter { it.isNotEmpty() }.flatMap { word -> Regex("[^-]*-|[^-]+").findAll(word).map { it.value }.toList() }
+/** A zero-width space: where a label's line may break with nothing to show for it. */
+private const val BREAK = '​'
 
 /**
- * The font size (sp) for [label] under a shelf item, in a label [width] wide: the biggest from [maxSp] down to
- * [minSp], in steps of [stepSp], at which no word is wider than the label (so none is ever split mid-word) and the
- * whole name takes at most [LABEL_LINES] lines. [widthOf] is how wide a run of text is on one line at a size, and
- * [linesOf] how many lines the whole label wraps to at a size, in the label's width. When nothing fits it is [minSp],
- * and the label is cut short with an ellipsis.
+ * [title] as a shelf label sets it: in capitals, and free to break a line after each hyphen ("NOT-" / "STRAWBERRY
+ * MILK"), which a line breaker may not do by itself. A zero-width space there says so.
  */
-internal fun labelFontSize(
-    label: String,
-    width: Float,
-    maxSp: Float,
-    minSp: Float,
-    stepSp: Float,
-    widthOf: (text: String, sp: Float) -> Float,
-    linesOf: (sp: Float) -> Int,
-): Float {
-    val words = labelWords(label)
+internal fun labelText(title: String): String = title.uppercase().replace("-", "-$BREAK")
+
+/** Where a line of [label] (see [labelText]) may end: just after a space or a hyphen's break, as offsets into it. */
+internal fun labelBreaks(label: String): Set<Int> = label.indices.filter { label[it] == ' ' || label[it] == BREAK }.map { it + 1 }.toSet()
+
+/**
+ * The font size (sp) for [label] (see [labelText]) under a shelf item: the biggest from [maxSp] down to [minSp], in
+ * steps of [stepSp], at which it takes at most [LABEL_LINES] lines, each ending where a line may (see [labelBreaks]),
+ * so no word is ever split mid-word. [lineEnds] is where each line ends (the offset just past it, trailing space
+ * included) when the label is laid out at a size in its label's width. When nothing fits it is [minSp], and the
+ * label is cut short with an ellipsis.
+ */
+internal fun labelFontSize(label: String, maxSp: Float, minSp: Float, stepSp: Float, lineEnds: (sp: Float) -> List<Int>): Float {
+    val breaks = labelBreaks(label)
     var sp = maxSp
     while (sp > minSp) {
-        if (words.all { widthOf(it, sp) <= width } && linesOf(sp) <= LABEL_LINES) return sp
+        val ends = lineEnds(sp)
+        if (ends.size <= LABEL_LINES && ends.dropLast(1).all { it in breaks }) return sp
         sp -= stepSp
     }
     return minSp

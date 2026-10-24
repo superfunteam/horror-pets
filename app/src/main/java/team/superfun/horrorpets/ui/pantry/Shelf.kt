@@ -413,16 +413,11 @@ private fun rememberLabelSizes(width: Int): (title: String) -> TextUnit {
         val sizes = HashMap<String, TextUnit>()
         val pick: (String) -> TextUnit = { title ->
             sizes.getOrPut(title) {
-                val label = title.uppercase()
-                labelFontSize(
-                    label,
-                    width.toFloat(),
-                    LABEL_MAX_SP,
-                    LABEL_MIN_SP,
-                    LABEL_STEP_SP,
-                    widthOf = { text, sp -> measurer.measure(text, labelStyle(sp.sp), softWrap = false, maxLines = 1).size.width.toFloat() },
-                    linesOf = { sp -> measurer.measure(label, labelStyle(sp.sp), constraints = Constraints(maxWidth = width)).lineCount },
-                ).sp
+                val label = labelText(title)
+                labelFontSize(label, LABEL_MAX_SP, LABEL_MIN_SP, LABEL_STEP_SP) { sp ->
+                    val laid = measurer.measure(label, labelStyle(sp.sp), constraints = Constraints(maxWidth = width))
+                    List(laid.lineCount) { laid.getLineEnd(it) }
+                }.sp
             }
         }
         pick
@@ -446,7 +441,7 @@ private fun ShelfLabel(
     topPx: Float,
 ) {
     BasicText(
-        title.uppercase(),
+        labelText(title),
         style = labelStyle(size),
         maxLines = LABEL_LINES,
         overflow = TextOverflow.Ellipsis,
