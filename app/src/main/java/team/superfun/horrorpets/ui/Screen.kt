@@ -24,14 +24,28 @@ sealed interface LobbyPhase {
     /** Host or join; [problem] says why the last try did not work out. */
     data class Menu(val problem: PvpProblem? = null) : LobbyPhase
 
-    /** Opening a room ([code] null until the relay answers), then waiting in it for a challenger. */
-    data class Hosting(val code: String? = null) : LobbyPhase
+    /**
+     * Opening a room ([code] null until the relay answers), then waiting in it for a challenger. A room a tap opened
+     * ([fromTap]) shows no code, only that the phones are connecting, or that they parted too soon ([tapAgain]).
+     */
+    data class Hosting(val code: String? = null, val fromTap: Boolean = false, val tapAgain: Boolean = false) : LobbyPhase
 
-    /** Typing a friend's code: the [digits] so far, [busy] while joining, and why the last try failed. */
-    data class Joining(val digits: String = "", val busy: Boolean = false, val problem: PvpProblem? = null) : LobbyPhase
+    /**
+     * Typing a friend's code: the [digits] so far, [busy] while joining, and why the last try failed. A join a tap
+     * started ([fromTap]) shows no code, only that the phones are connecting.
+     */
+    data class Joining(
+        val digits: String = "",
+        val busy: Boolean = false,
+        val problem: PvpProblem? = null,
+        val fromTap: Boolean = false,
+    ) : LobbyPhase
 
-    /** A friend's phone, tapped against this one, is opening a room and handing its code over the tap. */
-    data object Tapped : LobbyPhase
+    /**
+     * Claimed by a friend's phone in a tap, which is opening a room for both: connecting. [again] once the phones
+     * parted too soon (or the try failed, [problem]): tap again, which this phone now reads for.
+     */
+    data class Tapped(val again: Boolean = false, val problem: PvpProblem? = null) : LobbyPhase
 }
 
 /** Why PvP did not work out, as the lobby explains it. */

@@ -61,10 +61,27 @@ class TapFightTest {
         val hosting = at(Screen.PvpLobby(LobbyPhase.Hosting("4821")))
         assertEquals(TapMode.OFF, tapModeOf(hosting))
         assertFalse("its code answers a tap instead", tapReadyOf(hosting))
-        val tapped = at(Screen.PvpLobby(LobbyPhase.Tapped))
+        assertFalse(tapOpeningOf(hosting))
+        val tapped = at(Screen.PvpLobby(LobbyPhase.Tapped()))
         assertEquals(TapMode.OFF, tapModeOf(tapped))
-        assertTrue("still ready for the code it was promised", tapReadyOf(tapped))
-        assertFalse(tapJoinOpen(tapped))
+        assertTrue("still ready for the room it was promised", tapReadyOf(tapped))
+        assertTrue("and takes it, read off the friend's phone", tapJoinOpen(tapped))
+    }
+
+    @Test
+    fun aRoomWithNoCodeYetIsOpening() {
+        assertTrue(tapOpeningOf(at(Screen.PvpLobby(LobbyPhase.Hosting()))))
+        assertTrue(tapOpeningOf(at(Screen.PvpLobby(LobbyPhase.Hosting(fromTap = true)))))
+        assertFalse(tapOpeningOf(at(Screen.PvpLobby(LobbyPhase.Menu()))))
+        assertFalse(tapOpeningOf(at(Screen.Home)))
+    }
+
+    @Test
+    fun aTapAskingForAnotherReads() {
+        val again = at(Screen.PvpLobby(LobbyPhase.Tapped(again = true)))
+        assertEquals(TapMode.LISTEN, tapModeOf(again))
+        assertTrue(tapJoinOpen(again))
+        assertFalse("it reads, so it is no card", tapReadyOf(again))
     }
 
     @Test

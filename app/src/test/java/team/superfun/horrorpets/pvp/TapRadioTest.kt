@@ -3,7 +3,6 @@ package team.superfun.horrorpets.pvp
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,7 +25,7 @@ class TapRadioTest {
         var next = from
         for (t in from until untilMs) {
             if (t >= next) next = t + (advance(t) ?: Long.MAX_VALUE / 2)
-            out[(t - from).toInt()] = readerOn(t)
+            out[(t - from).toInt()] = readerOn(t, current = out.getOrElse((t - from - 1).toInt()) { false })
         }
         return out
     }
@@ -42,9 +41,9 @@ class TapRadioTest {
     fun nothingReadsWhileTheGameIsBehind() {
         val r = radio(TapMode.LISTEN)
         r.resumed = false
-        assertFalse(r.readerOn(0))
+        assertFalse(r.readerOn(0, current = false))
         r.holding = true
-        assertFalse(r.readerOn(0))
+        assertFalse(r.readerOn(0, current = true))
     }
 
     @Test
@@ -67,7 +66,7 @@ class TapRadioTest {
 
     @Test
     fun twoPhonesTakingTurnsSoonCatchEachOther() {
-        // Read on one while the other is a card, for long enough to find it and say hello (a quarter second).
+        // Read on one while the other is a card, for long enough to restart discovery, find it and say hello.
         val catchAfter = mutableListOf<Int>()
         for (seed in 0 until 200) {
             val a = radio(TapMode.TAKE_TURNS, seed = seed).run(20_000)
@@ -76,7 +75,7 @@ class TapRadioTest {
             var caught = -1
             for (t in a.indices) {
                 streak = if (a[t] != b[t]) streak + 1 else 0
-                if (streak >= 250) {
+                if (streak >= 450) {
                     caught = t
                     break
                 }
@@ -85,31 +84,32 @@ class TapRadioTest {
             catchAfter += caught
         }
         catchAfter.sort()
-        assertTrue("most taps catch within 2 s: ${catchAfter[catchAfter.size * 9 / 10]} ms", catchAfter[catchAfter.size * 9 / 10] < 2_000)
+        assertTrue("half the taps catch within 1.5 s: ${catchAfter[catchAfter.size / 2]} ms", catchAfter[catchAfter.size / 2] < 1_500)
+        assertTrue("most taps catch within 3 s: ${catchAfter[catchAfter.size * 9 / 10]} ms", catchAfter[catchAfter.size * 9 / 10] < 3_000)
     }
 
     @Test
-    fun aTapUnderWayKeepsReading() {
+    fun aTapUnderWayChangesNothing() {
         val r = radio(TapMode.TAKE_TURNS, seed = 3)
         r.holding = true
-        assertTrue(r.run(5_000).all { it })
+        assertTrue("a reader keeps reading", r.readerOn(0, current = true))
+        assertFalse("a card found outside reader mode stays a card", r.readerOn(0, current = false))
         r.setMode(TapMode.OFF, 5_000)
-        assertTrue("even once the game moves on", r.readerOn(5_000))
+        assertTrue("even once the game moves on", r.readerOn(5_000, current = true))
         r.holding = false
-        assertFalse(r.readerOn(5_000))
+        assertFalse(r.readerOn(5_000, current = true))
     }
 
     @Test
-    fun aPhoneFoundStaysACardUntilReleasedOrForAWhile() {
+    fun aPhoneClaimedStaysACardUntilReleasedOrForAWhile() {
         val r = radio(TapMode.LISTEN)
         r.holdAsCard(1_000)
-        assertFalse(r.readerOn(1_000))
-        assertNotNull("wakes when the hold is up", r.advance(1_000))
-        assertEquals(CARD_HOLD_MS, r.advance(1_000))
-        assertFalse(r.readerOn(1_000 + CARD_HOLD_MS - 1))
-        assertTrue(r.readerOn(1_000 + CARD_HOLD_MS))
+        assertFalse(r.readerOn(1_000, current = true))
+        assertEquals("wakes when the hold is up", CARD_HOLD_MS, r.advance(1_000))
+        assertFalse(r.readerOn(1_000 + CARD_HOLD_MS - 1, current = false))
+        assertTrue(r.readerOn(1_000 + CARD_HOLD_MS, current = false))
         r.holdAsCard(10_000)
         r.release()
-        assertTrue(r.readerOn(10_000))
+        assertTrue(r.readerOn(10_000, current = false))
     }
 }

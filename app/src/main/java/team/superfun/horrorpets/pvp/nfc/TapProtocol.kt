@@ -10,10 +10,12 @@ package team.superfun.horrorpets.pvp.nfc
  * and the 4-digit code, then status 90 00), or 6A 82 (not found) when it has no room open.
  *
  * Two phones that are both just on Home can start a fight with a tap too. Each takes turns being a reader and a card
- * (see `TapRadio`), so a tap finds one of each. A card that is open to a tap fight but hosts no room answers the
- * SELECT with [readyResponse] (`HPVP?`); the reader then opens a room itself and, over the same tap, hands the card
- * its code with [handOverApdu], which the card takes ([handedOverCode]) to join. Older versions read `HPVP?` as no
- * room, so they never mistake it for a code.
+ * (see `TapRadio`), so a tap finds one of each. Newer answers to the SELECT, which older versions read as no room:
+ * - [readyResponse] (`HPVP?`): no room, but a tap may start a fight from where this phone is. The reader claims it
+ *   ([claimApdu]: "I'm opening a room for you"), opens a room, and hands over its code ([handOverApdu]) over the same
+ *   tap, asking "still there?" ([pingApdu]) while the room opens. The card joins the code it is handed.
+ * - [openingResponse] (`HPVP.`): this phone's room is opening and its code is not in yet. The reader asks again
+ *   until it gets the code (so a tap that comes too soon, or a hand-over cut short, still ends in a join).
  */
 
 /** The application ID a tap selects: proprietary (it starts with F0), "HPVP" and 1. Also in res/xml/pvp_tap_service.xml. */
@@ -23,6 +25,7 @@ private val OK = byteArrayOf(0x90.toByte(), 0x00)
 private val NOT_FOUND = byteArrayOf(0x6A, 0x82.toByte())
 private const val PREFIX = "HPVP:"
 private const val READY = "HPVP?"
+private const val OPENING = "HPVP."
 
 /** SELECT by name of [PVP_AID] (CLA 00, INS A4, P1 04, P2 00, Lc, the AID, Le 00). */
 fun selectApdu(): ByteArray = byteArrayOf(0x00, 0xA4.toByte(), 0x04, 0x00, PVP_AID.size.toByte()) + PVP_AID + byteArrayOf(0x00)
@@ -51,9 +54,11 @@ fun codeFrom(response: ByteArray): String? {
 /** Anything a host does not understand. */
 val UNKNOWN_COMMAND: ByteArray = byteArrayOf(0x6D, 0x00)
 
-/** What a tapped phone said to the SELECT: a room to join, or that it is ready for a tap fight and hosts none. */
+/** What a tapped phone said to the SELECT: a room to join, a room on its way, or that it is ready for a tap fight. */
 sealed interface TapAnswer {
     data class Room(val code: String) : TapAnswer
+
+    data object Opening : TapAnswer
 
     data object Ready : TapAnswer
 }
@@ -61,15 +66,30 @@ sealed interface TapAnswer {
 /** A card's answer when it hosts no room but a tap may start a fight from where it is: "HPVP?", then 90 00. */
 fun readyResponse(): ByteArray = READY.toByteArray(Charsets.US_ASCII) + OK
 
+/** A card's answer while its room is opening and the code is not in yet: "HPVP.", then 90 00. */
+fun openingResponse(): ByteArray = OPENING.toByteArray(Charsets.US_ASCII) + OK
+
 /** What a tapped phone's [response] to the SELECT says, or null when it is nothing this app understands. */
 fun answerFrom(response: ByteArray): TapAnswer? {
     codeFrom(response)?.let { return TapAnswer.Room(it) }
-    return TapAnswer.Ready.takeIf { response.contentEquals(readyResponse()) }
+    if (response.contentEquals(readyResponse())) return TapAnswer.Ready
+    if (response.contentEquals(openingResponse())) return TapAnswer.Opening
+    return null
 }
 
+/** The reader's claim on a ready card, "I'm opening a room for you": CLA 80, INS 43 ("C"), P1 00, P2 00. */
+fun claimApdu(): ByteArray = byteArrayOf(0x80.toByte(), 0x43, 0x00, 0x00)
+
+fun isClaim(apdu: ByteArray): Boolean = apdu.size >= 4 && apdu.copyOfRange(0, 4).contentEquals(claimApdu())
+
+/** A reader's "still there?" while its room opens: CLA 80, INS 50 ("P"), P1 00, P2 00. */
+fun pingApdu(): ByteArray = byteArrayOf(0x80.toByte(), 0x50, 0x00, 0x00)
+
+fun isPing(apdu: ByteArray): Boolean = apdu.size >= 4 && apdu.copyOfRange(0, 4).contentEquals(pingApdu())
+
 /**
- * The reader's room [code], handed to a ready card over the same tap: a proprietary command (CLA 80, INS 4A for
- * "J", P1 00, P2 00, Lc 04) with the code's four ASCII digits.
+ * The reader's room [code], handed to the card it claimed: a proprietary command (CLA 80, INS 4A for "J", P1 00,
+ * P2 00, Lc 04) with the code's four ASCII digits.
  */
 fun handOverApdu(code: String): ByteArray {
     require(code.length == 4 && code.all(Char::isDigit)) { "A room code is 4 digits" }
@@ -85,11 +105,8 @@ fun handedOverCode(apdu: ByteArray): String? {
     return code.takeIf { it.all(Char::isDigit) }
 }
 
-/** The card's answer to a hand-over: taken (90 00), or not wanted any more (6A 82). */
-fun handOverResponse(taken: Boolean): ByteArray = if (taken) OK.copyOf() else NOT_FOUND.copyOf()
+/** The card's answer to a claim, a ping or a hand-over: yes (90 00), or no (6A 82): it has moved on, or never took it. */
+fun yesNo(yes: Boolean): ByteArray = if (yes) OK.copyOf() else NOT_FOUND.copyOf()
 
-/** A reader's "still there?" while it opens its room: a card answers anything it does not know with 6D 00. */
-fun pingApdu(): ByteArray = byteArrayOf(0x80.toByte(), 0x50, 0x00, 0x00)
-
-/** Whether the card took the code it was handed. */
-fun handOverTaken(response: ByteArray): Boolean = response.contentEquals(OK)
+/** Whether the card said yes. */
+fun saidYes(response: ByteArray): Boolean = response.contentEquals(OK)

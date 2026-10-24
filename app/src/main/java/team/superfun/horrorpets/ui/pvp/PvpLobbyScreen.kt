@@ -76,9 +76,9 @@ internal fun problemText(problem: PvpProblem): String = when (problem) {
 /**
  * The PvP lobby, from the opponent switcher's PvP Battle: HOST A ROOM shows a 4-digit code to give a friend and
  * waits for them; JOIN A ROOM takes a friend's code on a keypad (D-pad and OK, a remote's number keys, or taps),
- * joining as the fourth digit goes in. On phones with NFC, tapping two together does it all (see ui/TapFight.kt):
- * the phone that opens a room for a tap shows it here as hosting, and the other waits here for its code. Back steps
- * out: from hosting, joining or waiting to the menu, from the menu to the opponent switcher.
+ * joining as the fourth digit goes in. On phones with NFC, tapping two together does it all (see ui/TapFight.kt),
+ * and both just say they are connecting (or ask for another tap), with no code or room on show. Back steps out: from
+ * hosting or joining to the menu, from the menu to the opponent switcher, and from a tap's fight back to Home.
  */
 @Composable
 fun PvpLobbyScreen(
@@ -118,9 +118,13 @@ fun PvpLobbyScreen(
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 when (phase) {
                     is LobbyPhase.Menu -> MenuWindow(phase, canTap, onHost, onJoin, focusEntry)
-                    is LobbyPhase.Hosting -> HostWindow(phase, canTap, onBack, focusEntry)
-                    is LobbyPhase.Joining -> JoinWindow(phase, canTap, onDigit, onErase, focusEntry)
-                    LobbyPhase.Tapped -> TappedWindow(onBack, focusEntry)
+                    is LobbyPhase.Hosting ->
+                        if (phase.fromTap) TapWindow(connecting = !phase.tapAgain, problem = null, onBack, focusEntry)
+                        else HostWindow(phase, canTap, onBack, focusEntry)
+                    is LobbyPhase.Joining ->
+                        if (phase.fromTap) TapWindow(connecting = true, problem = null, onBack, focusEntry)
+                        else JoinWindow(phase, canTap, onDigit, onErase, focusEntry)
+                    is LobbyPhase.Tapped -> TapWindow(connecting = !phase.again, problem = phase.problem, onBack, focusEntry)
                 }
             }
         }
@@ -226,15 +230,26 @@ private fun HostWindow(phase: LobbyPhase.Hosting, canTap: Boolean, onCancel: () 
     }
 }
 
-/** A friend's phone, tapped against this one, is opening a room: hold the phones together while its code comes over. */
+/**
+ * A fight started by tapping two phones together, with no codes or rooms on show: [connecting] while the phones get
+ * the fight set up between them, else asking for another tap (the phones parted too soon, or [problem]).
+ */
 @Composable
-private fun TappedWindow(onCancel: () -> Unit, focusEntry: Any?) {
+private fun TapWindow(connecting: Boolean, problem: PvpProblem?, onCancel: () -> Unit, focusEntry: Any?) {
     val cancel = remember { FocusRequester() }
     FocusOnShow(cancel, focusEntry)
     LobbyWindow("PHONES TAPPED", Modifier.width(500.dp)) {
-        WaitingLine("GETTING YOUR FRIEND'S ROOM")
+        if (connecting) {
+            WaitingLine("CONNECTING")
+        } else {
+            BasicText("TAP AGAIN", style = displayStyle(22.sp, color = TextHi, tracking = 0.1f), maxLines = 1)
+        }
         Spacer(Modifier.height(10.dp))
-        Note("Keep the phones back to back", TextLo)
+        if (problem != null) {
+            Note(problemText(problem), BloodGlow)
+            Spacer(Modifier.height(6.dp))
+        }
+        Note(if (connecting) "Keep the phones back to back" else "Touch the phones back to back again", TextLo)
         Spacer(Modifier.height(14.dp))
         CommandItem(onClick = onCancel, modifier = Modifier.focusRequester(cancel).width(180.dp).height(40.dp)) { lit ->
             BasicText("CANCEL", style = displayStyle(24.sp, color = if (lit) TextHi else TextHi.copy(alpha = 0.7f), tracking = 0.06f), maxLines = 1)

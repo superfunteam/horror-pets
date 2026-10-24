@@ -382,7 +382,7 @@ class PvpFlowTest {
         assertTrue(host.lobby is LobbyPhase.Hosting)
     }
 
-    /** Two phones on Home, tapped together: one reads the other as ready, opens a room and hands its code over. */
+    /** Two phones on Home, tapped together: one claims the other, opens a room and hands its code over. */
     @Test
     fun aTapBetweenTwoPhonesOnHomeStartsAFight() {
         val reader = jasonApp()
@@ -390,18 +390,44 @@ class PvpFlowTest {
         assertEquals(Screen.Home, reader.ui.screen)
         assertEquals(Screen.Home, card.ui.screen)
 
+        assertTrue("the reader would host", reader.vm.canHostForTap())
+        assertEquals("asking changes nothing", Screen.Home, reader.ui.screen)
+        assertTrue("the card can be claimed", card.vm.canBeTapped())
         card.vm.onTappedAsCard()
-        assertEquals(LobbyPhase.Tapped, card.lobby)
-        assertTrue("found ready: the reader opens a room", reader.vm.onTapFoundReady())
-        assertEquals(LobbyPhase.Hosting(), reader.lobby)
-        assertTrue(reader.vm.tapHosting())
+        assertEquals(LobbyPhase.Tapped(), card.lobby)
+        assertTrue(card.ui.sfx.contains("gotcha"))
+        assertTrue(reader.vm.onHostForTap())
+        assertEquals("no code on show", LobbyPhase.Hosting(fromTap = true), reader.lobby)
+        assertTrue(reader.vm.hostingForTap())
         reader.pump(0)
-        assertEquals(LobbyPhase.Hosting("4821"), reader.lobby)
+        assertEquals(LobbyPhase.Hosting("4821", fromTap = true), reader.lobby)
         assertEquals("the code goes to the tap", listOf<String?>("4821"), reader.hostCodes)
+        reader.vm.onTapHandOver(ok = true)
 
         assertTrue("handed over: the card takes it", card.vm.onTapHandedCode("4821"))
+        assertEquals("still no code on show", LobbyPhase.Joining("4821", busy = true, fromTap = true), card.lobby)
         card.pump(0)
-        reader.pump(2_000)
+        reader.pump(500)
+        assertEquals("straight to the VS card", Screen.Versus(PetId.JASON, pvp = true), card.ui.screen)
+        assertEquals(Screen.Versus(PetId.FREDDY, pvp = true), reader.ui.screen)
+    }
+
+    @Test
+    fun phonesPartedBeforeTheHandOverTapAgain() {
+        val reader = jasonApp()
+        val card = freddyApp()
+        card.vm.onTappedAsCard()
+        reader.vm.onHostForTap()
+        reader.pump(0)
+        reader.vm.onTapHandOver(ok = false)
+        assertEquals(LobbyPhase.Hosting("4821", fromTap = true, tapAgain = true), reader.lobby)
+        card.vm.onTapLost()
+        assertEquals(LobbyPhase.Tapped(again = true), card.lobby)
+
+        // Tapped again: the card, reading now, reads the reader's room.
+        card.vm.onTapCode("4821")
+        card.pump(0)
+        reader.pump(500)
         assertEquals(Screen.Versus(PetId.JASON, pvp = true), card.ui.screen)
         assertEquals(Screen.Versus(PetId.FREDDY, pvp = true), reader.ui.screen)
     }
@@ -415,50 +441,71 @@ class PvpFlowTest {
         val guest = freddyApp()
         assertEquals(Screen.Home, guest.ui.screen)
         guest.vm.onTapCode("4821")
+        assertEquals("no code on show", LobbyPhase.Joining("4821", busy = true, fromTap = true), guest.lobby)
         guest.pump(0)
         assertEquals(Screen.Versus(PetId.JASON, pvp = true), guest.ui.screen)
     }
 
     @Test
-    fun aPhoneReadByATapOffersTheKeypadIfNoCodeComes() {
+    fun aClaimedPhoneAsksForAnotherTapIfNoRoomComes() {
         val card = freddyApp()
         card.vm.onTappedAsCard()
         card.pump(TAP_WAIT_MS - 1)
-        assertEquals(LobbyPhase.Tapped, card.lobby)
+        assertEquals(LobbyPhase.Tapped(), card.lobby)
         card.pump(1)
-        assertEquals("tapping again reads the friend's room", LobbyPhase.Joining(), card.lobby)
-        assertFalse("too late for a hand-over", card.vm.onTapHandedCode("4821"))
-        assertEquals(LobbyPhase.Joining(), card.lobby)
+        assertEquals(LobbyPhase.Tapped(again = true), card.lobby)
+        assertTrue("its turn to read, and claimable again", card.vm.canBeTapped())
     }
 
     @Test
-    fun phonesPartedBeforeTheCodeCameOfferTheKeypadAtOnce() {
+    fun aClaimedPhoneOpensNoRoomOfItsOwn() {
         val card = freddyApp()
         card.vm.onTappedAsCard()
+        assertFalse(card.vm.canHostForTap())
         card.vm.onTapLost()
-        assertEquals(LobbyPhase.Joining(), card.lobby)
-        card.pump(TAP_WAIT_MS)
-        assertEquals(LobbyPhase.Joining(), card.lobby)
+        assertTrue("asking for another tap, it may", card.vm.canHostForTap())
     }
 
     @Test
-    fun backingOutOfATapRefusesItsCode() {
+    fun aFailedTapJoinAsksForAnotherTapWithTheProblem() {
+        val guest = freddyApp()
+        guest.vm.onTapCode("9999")
+        guest.pump(0)
+        assertEquals(LobbyPhase.Tapped(again = true, problem = PvpProblem.NO_ROOM), guest.lobby)
+    }
+
+    @Test
+    fun cancellingATapGoesHomeAndIgnoresTapsForAMoment() {
         val card = freddyApp()
         card.vm.onTappedAsCard()
         card.vm.onLobbyBack()
-        assertEquals(LobbyPhase.Menu(), card.lobby)
-        assertFalse(card.vm.onTapHandedCode("4821"))
+        assertEquals(Screen.Home, card.ui.screen)
+        assertFalse("the code that comes anyway is turned down", card.vm.onTapHandedCode("4821"))
+        assertFalse(card.vm.canBeTapped())
+        card.vm.onTapCode("4821")
+        assertEquals("and so is the friend's room, read a moment later", Screen.Home, card.ui.screen)
         card.pump(TAP_WAIT_MS)
-        assertEquals("the wait was called off with it", LobbyPhase.Menu(), card.lobby)
+        assertEquals(Screen.Home, card.ui.screen)
+
+        val reader = jasonApp()
+        reader.vm.onHostForTap()
+        reader.pump(0)
+        reader.vm.onLobbyBack()
+        reader.pump(0)
+        assertEquals(Screen.Home, reader.ui.screen)
+        assertEquals("its room is closed", Role.HOST, hub.rooms.single().left)
+        assertFalse(reader.vm.canHostForTap())
     }
 
     @Test
     fun aStarvingPetTakesNoTapFight() {
         val starving = App(PetState(PetId.FREDDY, hunger = 90.0), hub.app())
         assertFalse(tapFightOpen(starving.ui))
+        assertFalse(starving.vm.canBeTapped())
         starving.vm.onTappedAsCard()
         assertEquals(Screen.Home, starving.ui.screen)
-        assertFalse(starving.vm.onTapFoundReady())
+        assertFalse(starving.vm.canHostForTap())
+        assertFalse(starving.vm.onHostForTap())
         starving.vm.onTapCode("4821")
         assertEquals(Screen.Home, starving.ui.screen)
     }
@@ -466,19 +513,19 @@ class PvpFlowTest {
     @Test
     fun aTapIsIgnoredWithoutARelay() {
         val offline = App(PetState(PetId.JASON), relay = null)
-        offline.vm.onTappedAsCard()
-        assertFalse(offline.vm.onTapFoundReady())
+        assertFalse(offline.vm.canBeTapped())
+        assertFalse(offline.vm.onHostForTap())
         offline.vm.onTapCode("4821")
         assertEquals(Screen.Home, offline.ui.screen)
     }
 
     @Test
-    fun aHostWhoseRoomWillNotOpenStopsHosting() {
+    fun aTapHostWhoseRoomWillNotOpenSaysSo() {
         hub.offline = true
         val reader = jasonApp()
-        assertTrue(reader.vm.onTapFoundReady())
+        assertTrue(reader.vm.onHostForTap())
         reader.pump(0)
-        assertEquals(LobbyPhase.Menu(PvpProblem.OFFLINE), reader.lobby)
+        assertEquals(LobbyPhase.Tapped(again = true, problem = PvpProblem.OFFLINE), reader.lobby)
         assertFalse("so the tap stops waiting for a code", reader.vm.tapHosting())
     }
 

@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -17,6 +18,8 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -57,6 +60,7 @@ import team.superfun.horrorpets.ui.common.isTouchDevice
 import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.pvp.LocalCanTap
 import team.superfun.horrorpets.ui.tapModeOf
+import team.superfun.horrorpets.ui.tapOpeningOf
 import team.superfun.horrorpets.ui.tapReadyOf
 import team.superfun.horrorpets.ui.theme.HorrorPetsTheme
 import team.superfun.horrorpets.update.AndroidUpdateHost
@@ -114,20 +118,35 @@ class MainActivity : ComponentActivity() {
     /** This phone's NFC for PvP taps; null without NFC (every TV). */
     private var tap: NfcTapReader? = null
 
+    /** Whether this phone can tap another for PvP right now: it has NFC, switched on. Checked as the game comes back. */
+    private var canTap by mutableStateOf(false)
+
     /** What a tap read off another phone means to the game. */
     private val tapEvents = object : TapEvents {
         override fun onCodeRead(code: String) = vm.onTapCode(code)
 
-        override fun onReadyFound(): Boolean = vm.onTapFoundReady()
+        override fun canHost(): Boolean = vm.canHostForTap()
+
+        override fun onClaimed(): Boolean = vm.onHostForTap()
+
+        override fun hostingForTap(): Boolean = vm.hostingForTap()
 
         override fun stillHosting(): Boolean = vm.tapHosting()
+
+        override fun onHandOver(ok: Boolean) = vm.onTapHandOver(ok)
+
+        override fun onCaught() = buzz()
     }
 
-    /** This phone read by another's tap: it holds still as a card while the other opens a room, then joins it. */
+    /** This phone claimed by another's tap: it holds still as a card while the other opens a room, then joins it. */
     private val cardListener = object : TapCard.Listener {
-        override fun onFound() {
+        override fun onClaimed(): Boolean {
+            if (!vm.canBeTapped()) return false
             tap?.holdAsCard()
-            vm.onTappedAsCard()
+            buzz()
+            // After this answer is on its way: the reader is waiting on it, and the switch to the lobby can wait.
+            window.decorView.post { vm.onTappedAsCard() }
+            return true
         }
 
         override fun onHandedCode(code: String): Boolean {
@@ -139,6 +158,11 @@ class MainActivity : ComponentActivity() {
             tap?.release()
             vm.onTapLost()
         }
+    }
+
+    /** A short buzz: the players feel the tap catch, with the phones back to back and the screens out of sight. */
+    private fun buzz() {
+        window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -193,14 +217,16 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 try {
-                    vm.state.map { tapModeOf(it) to tapReadyOf(it) }
+                    vm.state.map { Triple(tapModeOf(it), tapReadyOf(it), tapOpeningOf(it)) }
                         .distinctUntilChanged()
-                        .collect { (mode, ready) ->
+                        .collect { (mode, ready, opening) ->
                             TapCard.shared.ready = ready
+                            TapCard.shared.opening = opening
                             tap?.setMode(mode)
                         }
                 } finally {
                     TapCard.shared.ready = false
+                    TapCard.shared.opening = false
                     tap?.setMode(TapMode.OFF)
                 }
             }
@@ -226,7 +252,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalCanTap provides (tap != null)) {
+            CompositionLocalProvider(LocalTouchDevice provides touchDevice, LocalCanTap provides canTap) {
                 ProvideScreenDensity {
                     HorrorPetsTheme {
                         val showFightHud by Puppet.current.fightHud.collectAsState()
@@ -252,6 +278,7 @@ class MainActivity : ComponentActivity() {
         audio.resume()
         vm.onResume()
         tap?.onResume()
+        canTap = tap?.nfcOn == true
         // Back from allowing installs from this app, maybe: the update carries on.
         updates.onResume()
     }
@@ -269,6 +296,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         if (TapCard.shared.listener === cardListener) TapCard.shared.listener = null
+        tap?.close()
         // Also reached after a config change, where the new Activity builds its own GameAudio.
         if (::audio.isInitialized) audio.release()
         super.onDestroy()

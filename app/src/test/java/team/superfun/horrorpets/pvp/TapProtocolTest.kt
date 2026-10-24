@@ -11,14 +11,18 @@ import team.superfun.horrorpets.pvp.nfc.TapAnswer
 import team.superfun.horrorpets.pvp.nfc.answerFrom
 import team.superfun.horrorpets.pvp.nfc.codeFrom
 import team.superfun.horrorpets.pvp.nfc.codeResponse
+import team.superfun.horrorpets.pvp.nfc.claimApdu
 import team.superfun.horrorpets.pvp.nfc.handOverApdu
-import team.superfun.horrorpets.pvp.nfc.handOverResponse
-import team.superfun.horrorpets.pvp.nfc.handOverTaken
 import team.superfun.horrorpets.pvp.nfc.handedOverCode
+import team.superfun.horrorpets.pvp.nfc.isClaim
+import team.superfun.horrorpets.pvp.nfc.isPing
 import team.superfun.horrorpets.pvp.nfc.isPvpSelect
+import team.superfun.horrorpets.pvp.nfc.openingResponse
 import team.superfun.horrorpets.pvp.nfc.pingApdu
 import team.superfun.horrorpets.pvp.nfc.readyResponse
+import team.superfun.horrorpets.pvp.nfc.saidYes
 import team.superfun.horrorpets.pvp.nfc.selectApdu
+import team.superfun.horrorpets.pvp.nfc.yesNo
 
 /** The two-phone tap: a SELECT of the PvP AID, answered with the hosted room's code (or "ready", then a hand-over). */
 class TapProtocolTest {
@@ -74,16 +78,44 @@ class TapProtocolTest {
     }
 
     @Test
+    fun aRoomOnItsWaySaysSoAndOlderReadersSeeNoRoom() {
+        val opening = openingResponse()
+        assertEquals("HPVP.", String(opening, 0, opening.size - 2, Charsets.US_ASCII))
+        assertEquals(TapAnswer.Opening, answerFrom(opening))
+        assertNull("0.8.0 reads it as no room", codeFrom(opening))
+    }
+
+    @Test
+    fun claimsAndPingsAreTheirOwnCommands() {
+        assertTrue(isClaim(claimApdu()))
+        assertTrue(isPing(pingApdu()))
+        assertFalse(isClaim(pingApdu()))
+        assertFalse(isPing(claimApdu()))
+        assertFalse(isClaim(selectApdu()))
+        assertFalse(isPvpSelect(claimApdu()))
+        assertNull(handedOverCode(claimApdu()))
+        assertFalse(isClaim(ByteArray(2)))
+    }
+
+    @Test
     fun aHandOverCarriesTheCode() {
         val apdu = handOverApdu("0427")
         assertArrayEquals(byteArrayOf(0x80.toByte(), 0x4A, 0x00, 0x00, 0x04) + "0427".toByteArray(), apdu)
         assertEquals("0427", handedOverCode(apdu))
         assertFalse("not a SELECT", isPvpSelect(apdu))
+        assertFalse(isClaim(apdu))
         assertNull(handedOverCode(selectApdu()))
         assertNull(handedOverCode(pingApdu()))
         assertNull(handedOverCode(byteArrayOf(0x80.toByte(), 0x4A, 0x00, 0x00, 0x04) + "04a7".toByteArray()))
-        assertTrue(handOverTaken(handOverResponse(taken = true)))
-        assertFalse(handOverTaken(handOverResponse(taken = false)))
+    }
+
+    @Test
+    fun yesIsNineThousandAndNoIsNotFound() {
+        assertArrayEquals(byteArrayOf(0x90.toByte(), 0x00), yesNo(true))
+        assertArrayEquals(byteArrayOf(0x6A, 0x82.toByte()), yesNo(false))
+        assertTrue(saidYes(yesNo(true)))
+        assertFalse(saidYes(yesNo(false)))
+        assertFalse(saidYes(ByteArray(0)))
     }
 
     @Test(expected = IllegalArgumentException::class)
