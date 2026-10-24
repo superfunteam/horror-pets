@@ -87,15 +87,17 @@ SNACKS = {
     "buffalo_bat_wings": "a small paper-lined basket of saucy orange-red buffalo-style bat wings, little leathery wings "
                          "glazed in sauce, with celery sticks and a cup of dip.",
     # Campfire
-    "toasted_marshmallow": "a golden-brown toasted marshmallow on a long roasting stick, slightly melting, a tiny wisp "
-                           "of smoke.",
+    "toasted_marshmallow": "a big, plump golden-brown toasted marshmallow on the end of a short, chunky roasting stick, "
+                           "the marshmallow filling most of the frame, slightly melting, a tiny wisp of smoke.",
     "popcorn": "an overflowing red-and-white striped movie-theater popcorn bucket heaped high with fluffy buttery "
                "popcorn, a few kernels tumbling off the top.",
     "baked_potato": "a baked potato split open on crinkled foil with a pat of melting butter, sour cream and chives.",
     "campfire_bread": "a rustic round loaf of campfire bread with a golden scored crust and a few charred spots.",
-    "caramel": "a wooden spoon dripping thick glossy golden caramel into a little puddle.",
+    "caramel": "a little glass dish brimming with thick, glossy golden caramel, a fat drip over the rim, two wrapped "
+               "caramel candies beside it.",
     "roasted_pumpkin": "half a roasted pumpkin, cut side up, caramelized orange flesh, roasted seeds scattered around.",
-    "finger_dog": "a cartoon finger roasted on a long stick like a hot dog, charred and blistered, a chipped purple nail.",
+    "finger_dog": "a fat cartoon finger roasted like a hot dog, charred and blistered with a chipped purple nail, on a "
+                  "short, chunky stick, the finger filling most of the frame.",
     # Pot
     "tomato_soup": "a steaming bowl of bright red tomato soup with a swirl of cream.",
     "boiled_egg": "a soft-boiled egg in a little egg cup, its top cracked off, a runny yolk.",

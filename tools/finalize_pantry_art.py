@@ -28,7 +28,7 @@ BOARD_SIZE = 768
 MARGIN = 0.03  # of the longer side, so a bite mark or the bounce never clips a hard edge
 ALPHA_FLOOR = 8  # specks fainter than this are the model's haze, not food
 
-PICKS: dict[str, int] = {}  # item id -> candidate, where it isn't 1
+PICKS: dict[str, int] = {"toasted_marshmallow": 2, "finger_dog": 3, "caramel": 2}  # item id -> candidate, where not 1
 BOARD_PICK = 2
 KITCHEN_PICK = 2
 KITCHEN_META = {"floorY": 0.7531, "tintStrength": 0.12, "shadowOpacity": 0.55, "accent": "#FF7A3D"}

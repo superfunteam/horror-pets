@@ -25,7 +25,10 @@ nothing else.
   and Mood; open the stable there (or with the remote's Menu key) to go see any of them.
 - **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
-- **Feeding time:** a snack whistles down from the sky (meat on the bone, a turkey leg, canned spinach, a cake with a knife in it, popcorn or a jello brain) and gets munched, bite by bite.
+- **The pantry:** FEED opens a horror kitchen where you cook two things at a time into snacks and meals (raw steak on
+  the grill, a severed foot left in the sun, worms in the pot), using five ways to cook that get used up like any
+  ingredient. Some dishes are gross on purpose; a wrong pair makes slop, and nothing cooks with slop. Feed one to your
+  killer and it reacts to its taste: better food pays more, and every killer has a secret favorite to find.
 - **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
   your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
   killer trains (up to triple the strength and XP), and it keeps its best in each. Quick Draw and Hide and Eek! need a
