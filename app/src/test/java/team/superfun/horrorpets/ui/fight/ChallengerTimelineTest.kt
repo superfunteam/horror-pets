@@ -6,7 +6,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.assets.CHALLENGER_BANNER_FILE
 import team.superfun.horrorpets.assets.parseManifest
+import team.superfun.horrorpets.assets.vsNameFile
+import team.superfun.horrorpets.audio.VOICE_GAP_MS
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.fight.Entrance.BANNER_AT
 import team.superfun.horrorpets.ui.fight.Entrance.BURST_AT
@@ -32,6 +35,9 @@ class ChallengerTimelineTest {
         val format = AudioSystem.getAudioFileFormat(File(root, "audio-final/$path"))
         return (format.frameLength * 1000L / format.format.frameRate).toLong()
     }
+
+    /** How long the VS card may take, once the entrance ends, to open and claim the announcer: a frame or two. */
+    private val cardOpensMs = 100L
 
     /** Steps a run frame by frame, [steps] ms apart (cycling), until it is over: every sound it played, in order. */
     private fun playThrough(run: EntranceRun, steps: List<Long>): List<EntranceSound> {
@@ -97,11 +103,44 @@ class ChallengerTimelineTest {
         assertTrue(Entrance.flashAt(lands) > 0.2f)
     }
 
+    /**
+     * Where on the timeline [pet]'s entrance's last announcer line ends, from the bundled clips: each line starts when
+     * it falls due or, if the one before is still being said, [VOICE_GAP_MS] after that one ends.
+     */
+    private fun lastLineEndsAt(pet: PetId): Long {
+        var free = 0L
+        var end = 0L
+        for (sound in entranceSounds(pet)) {
+            val line = sound.voice ?: continue
+            val start = maxOf(sound.at, free)
+            end = start + lengthMs("voice/$line.wav")
+            free = end + VOICE_GAP_MS
+        }
+        return end
+    }
+
     @Test
     fun itRunsAboutFourSecondsAndHoldsTheNameABeat() {
-        assertTrue("$END_AT", END_AT in 3_000L..4_000L)
+        assertTrue("$END_AT", END_AT in 3_000L..5_000L)
         assertTrue("the name holds a beat before the VS card", END_AT >= NAME_AT + SLAM_MS + 500)
         assertTrue("the hit has rung out", END_AT >= lengthMs("sfx/challenger_hit.wav"))
+    }
+
+    @Test
+    fun itEndsOnlyOnceTheAnnouncerHasSaidHisName() {
+        // The VS card that follows cuts whatever the announcer is still saying as it opens, so his name, the entrance's
+        // last word, must be over by the end, with a moment to spare for the card's first frame. Measured on the clips,
+        // so a line recorded again longer cannot cut it short.
+        for (pet in PetId.entries.filter { it.secret }) {
+            val said = lastLineEndsAt(pet)
+            assertTrue("$pet: the entrance ends at $END_AT, his name at $said", END_AT >= said + cardOpensMs)
+        }
+    }
+
+    @Test
+    fun theSplashOffHisNameHasFallenBeforeTheLastPictureHolds() {
+        // Its droplets are drawn on the timeline: still in the air at the end, they would hang there.
+        assertTrue(END_AT >= NAME_AT + SLAM_MS + Entrance.NAME_SPLASH_MS)
     }
 
     @Test
@@ -168,12 +207,12 @@ class ChallengerTimelineTest {
     @Test
     fun theArtAndSoundsAreShipped() {
         assertTrue(File(root, "sprites-final/vs/challenger.webp").isFile)
-        assertEquals("sprites/vs/challenger.webp", CHALLENGER_BANNER_ART)
+        assertEquals("sprites/vs/challenger.webp", CHALLENGER_BANNER_FILE)
         assertTrue(File(root, "audio-final/sfx/challenger_hit.wav").isFile)
         assertTrue(File(root, "audio-final/voice/new_challenger.wav").isFile)
         for (pet in PetId.entries.filter { it.secret }) {
             val dir = pet.name.lowercase()
-            assertEquals("sprites/vs/$dir-name.webp", vsNameArt(pet))
+            assertEquals("sprites/vs/$dir-name.webp", vsNameFile(pet))
             assertTrue("$pet name", File(root, "sprites-final/vs/$dir-name.webp").isFile)
             assertTrue("$pet line", File(root, "audio-final/voice/$dir.wav").isFile)
             val attack = parseManifest(File(root, "sprites-final/$dir/manifest.json").readText()).animations.getValue("attack")

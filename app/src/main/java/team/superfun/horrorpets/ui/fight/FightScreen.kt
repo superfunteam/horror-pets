@@ -80,6 +80,7 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.fight.attackFor
+import team.superfun.horrorpets.model.Facing
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.SpecialEffect
@@ -90,6 +91,7 @@ import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
+import team.superfun.horrorpets.ui.common.SIDE_ON_REACH_OF_CELL
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -118,11 +120,14 @@ private const val CPU_X = 0.70f
 /** How far the widest idle pose reaches out from a fighter's centre, in dp: Leatherface's saw (Jason's machete is 56). */
 private const val FIGHTER_REACH_DP = 60f
 
-/** Jaws, side-on, reaches further, nose or tail: 180 px either side of his anchor in his 416 px cell. */
-private const val JAWS_REACH_DP = 180f / 416f * 540f * FIGHTER_HEIGHT
+/** Side-on art (Jaws) reaches further, nose or tail: see [SIDE_ON_REACH_OF_CELL]. */
+private const val SIDE_ON_REACH_DP = SIDE_ON_REACH_OF_CELL * 540f * FIGHTER_HEIGHT
 
-/** How far [pet]'s idle reaches out from its centre, in dp (see [playerHomeFraction]). */
-internal fun fighterReachDp(pet: PetId): Float = if (pet == PetId.JAWS) JAWS_REACH_DP else FIGHTER_REACH_DP
+/** How far art that faces [facing] reaches out from its centre in its idle, in dp (see [playerHomeFraction]). */
+internal fun fighterReachDp(facing: Facing): Float = if (facing == Facing.LEFT) SIDE_ON_REACH_DP else FIGHTER_REACH_DP
+
+/** How far [pet]'s idle reaches out from its centre, in dp: by which way its art faces. */
+internal fun fighterReachDp(pet: PetId): Float = fighterReachDp(pet.spec.facing)
 
 /** The gap kept between the command window and the player's widest pose, in dp. */
 private const val MENU_CLEARANCE_DP = 10f

@@ -52,6 +52,10 @@ internal class VoiceQueue {
      * - else, if they are [queued], the line sounding is cut and every line queued ahead of their last run is dropped;
      * - else (they are not queued yet) everything is dropped, so they start the moment they are.
      *
+     * Their last line sounding alone, with nothing behind it, is not taken for them being said: the screen claims the
+     * announcer as it opens, too soon for its lines to be that far on, so it is an earlier screen's line that happens
+     * to match (the challenger entrance ends on the name the VS card ends on) and is cut.
+     *
      * Returns whether the line sounding (or the gap after it) was cut: the caller silences it.
      */
     fun skipTo(lines: List<String>): Boolean {
@@ -66,6 +70,7 @@ internal class VoiceQueue {
         val now = sounding
         if (now != null) {
             for (j in lines.indices) {
+                if (j > 0 && j == lines.lastIndex) continue // their last line alone: see above
                 val rest = lines.subList(j + 1, lines.size)
                 if (lines[j] == now && waiting.size >= rest.size && rest.indices.all { waiting[it] == rest[it] }) return false
             }

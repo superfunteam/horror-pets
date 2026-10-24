@@ -196,7 +196,6 @@ fun HorrorPetsApp(
                 is Screen.Versus -> VersusScreen(
                     player = state.game.selected ?: screen.opponent,
                     opponent = screen.opponent,
-                    game = state.game,
                     loader = loader,
                     arenaRoll = arenaRoll,
                     onDone = vm::onVersusDone,

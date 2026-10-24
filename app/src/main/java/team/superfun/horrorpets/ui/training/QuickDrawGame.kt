@@ -159,9 +159,15 @@ fun QuickDrawGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
         SideEffect { play.ring = spot }
 
         if (mate != null) {
-            // Both face the camera, standing apart on the scene's floor.
-            TrainingKiller(env, env.pet.id, play.pet, petHeight, 0L, Modifier.placeAt(x = { w * PET_X }, y = { env.floorY }))
-            TrainingKiller(env, mate.id, play.mate, petHeight, MATE_IDLE_OFFSET_MS, Modifier.placeAt(x = { w * MATE_X }, y = { env.floorY }))
+            // Standing apart on the scene's floor, facing the camera (side-on art, Jaws, turns to face the other).
+            TrainingKiller(
+                env, env.pet.id, play.pet, petHeight, 0L, onLeft = true,
+                Modifier.placeAt(x = { w * PET_X }, y = { env.floorY }),
+            )
+            TrainingKiller(
+                env, mate.id, play.mate, petHeight, MATE_IDLE_OFFSET_MS, onLeft = false,
+                Modifier.placeAt(x = { w * MATE_X }, y = { env.floorY }),
+            )
         }
         DrawRingView(play, spot, env.clock)
         DrawCallout(play, Modifier.placeAt(x = { w / 2f }, y = { spot.cy + spot.reach + h * CALLOUT_GAP }, pivotY = 0f))

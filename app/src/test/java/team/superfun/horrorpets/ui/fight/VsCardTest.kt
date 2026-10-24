@@ -12,7 +12,9 @@ import team.superfun.horrorpets.assets.CHALLENGER_BANNER_FILE
 import team.superfun.horrorpets.audio.VOICE_GAP_MS
 import team.superfun.horrorpets.assets.vsLogoFile
 import team.superfun.horrorpets.assets.vsNameFile
+import team.superfun.horrorpets.model.Facing
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.common.SIDE_ON_REACH_OF_CELL
 import team.superfun.horrorpets.ui.fight.VsTimeline.DONE_AT
 import team.superfun.horrorpets.ui.fight.VsTimeline.FIGHTER_IN_AT
 import team.superfun.horrorpets.ui.fight.VsTimeline.FIGHTER_IN_MS
@@ -277,17 +279,37 @@ class VsCardTest {
     }
 
     @Test
+    fun aSideOnKillerStandsClearOfTheOverscanOnAFourByThreeScreen() {
+        // A 4:3 TV: 720 x 540 dp, its safe inset 5% (36 dp); the card's cells are 70% of the height.
+        val w = 720f
+        val cellH = 540f * 0.70f
+        val safe = 36f
+        val reach = cellH * SIDE_ON_REACH_OF_CELL
+        val left = vsFighterX(-1, w, cellH, safe, Facing.LEFT)
+        val right = vsFighterX(1, w, cellH, safe, Facing.LEFT)
+        assertTrue("his tail, on the left, clears the inset: ${left - reach}", left - reach >= safe - 1e-3f)
+        assertTrue("and on the right: ${right + reach}", right + reach <= w - safe + 1e-3f)
+        assertTrue("moved in", left > w * VS_PLAYER_X && right < w * VS_OPPONENT_X)
+        // Art that faces the camera stands where it always has.
+        assertEquals(w * VS_PLAYER_X, vsFighterX(-1, w, cellH, safe, Facing.FRONT), 0f)
+        assertEquals(w * VS_OPPONENT_X, vsFighterX(1, w, cellH, safe, Facing.FRONT), 0f)
+        // On a 16:9 TV (960 x 540 dp) there is room: everyone stands at home.
+        for (facing in Facing.entries) {
+            assertEquals("$facing", 960f * VS_PLAYER_X, vsFighterX(-1, 960f, cellH, 48f, facing), 0f)
+            assertEquals("$facing", 960f * VS_OPPONENT_X, vsFighterX(1, 960f, cellH, 48f, facing), 0f)
+        }
+    }
+
+    @Test
     fun theArtIsShippedWhereTheLoaderLooks() {
         for (pet in PetId.entries) {
             val dir = pet.name.lowercase()
             assertEquals("sprites/vs/$dir-name.webp", vsNameFile(pet))
             assertEquals("sprites/vs/$dir-vs.webp", vsLogoFile(pet))
-            assertEquals("the entrance's name lettering is the card's", vsNameArt(pet), vsNameFile(pet))
             for (path in listOf(vsNameFile(pet), vsLogoFile(pet))) {
                 assertTrue(path, File(root, path.replaceFirst("sprites/", "sprites-final/")).isFile)
             }
         }
-        assertEquals(CHALLENGER_BANNER_ART, CHALLENGER_BANNER_FILE)
         assertTrue(File(root, CHALLENGER_BANNER_FILE.replaceFirst("sprites/", "sprites-final/")).isFile)
     }
 }

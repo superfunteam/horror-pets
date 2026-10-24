@@ -57,13 +57,7 @@ import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.rememberTouchTick
 
-// ---- the art and the sounds ----
-
-/** The "HERE COMES A NEW CHALLENGER!" banner: 1400 x 495, on a transparent background. */
-internal const val CHALLENGER_BANNER_ART = "sprites/vs/challenger.webp"
-
-/** [pet]'s name lettering from the VS art (`sprites/vs/<pet>-name.webp`), on a transparent background. */
-internal fun vsNameArt(pet: PetId): String = "sprites/vs/${pet.name.lowercase()}-name.webp"
+// ---- the sounds ----
 
 /** A sound the entrance plays [at] ms in: an effect ([sfx]) or an announcer line ([voice]). */
 internal data class EntranceSound(val at: Long, val sfx: String? = null, val voice: String? = null)
@@ -112,8 +106,15 @@ internal object Entrance {
      */
     const val NAME_AT = 3_150L
 
-    /** The end: the last picture holds and the VS card takes over. */
-    const val END_AT = 4_000L
+    /**
+     * The end: the last picture holds and the VS card takes over. Not before the announcer has said his name: the card
+     * cuts whatever he is still saying as it opens. His line starts about 3.27 s in (the banner's 2.18 s line, then
+     * the gap between lines) and lasts 1.03 s, so it is over by about 4.3 s, with a moment to spare for the card.
+     */
+    const val END_AT = 4_450L
+
+    /** The splash his name lands in: its longest-lived droplet falls away this long after the name lands. */
+    const val NAME_SPLASH_MS = 850L
 
     /** A frame never moves the timeline more than this, so a stall slows it instead of skipping part of it. */
     const val MAX_STEP_MS = 100L
@@ -178,26 +179,20 @@ internal object Entrance {
      */
     fun shakeAt(t: Long): Float = max(
         max(
-            max(shakePulse(t, HIT_AT, 240L, 0.3f), shakePulse(t, BURST_AT, 520L, 1f)),
-            max(shakePulse(t, BANNER_AT + SLAM_MS, 340L, 0.8f), shakePulse(t, NAME_AT + SLAM_MS, 280L, 0.55f)),
+            max(pulse(t, HIT_AT, 240L, 0.3f), pulse(t, BURST_AT, 520L, 1f)),
+            max(pulse(t, BANNER_AT + SLAM_MS, 340L, 0.8f), pulse(t, NAME_AT + SLAM_MS, 280L, 0.55f)),
         ),
-        max(shakePulse(t, CHOMPS[0], 160L, 0.22f), shakePulse(t, CHOMPS[1], 160L, 0.22f)),
+        max(pulse(t, CHOMPS[0], 160L, 0.22f), pulse(t, CHOMPS[1], 160L, 0.22f)),
     )
 
     /** 0..1 white flash at [t]: the burst, then each slam landing. Each pops and clears fast. */
     fun flashAt(t: Long): Float = max(
-        flashPulse(t, BURST_AT, 260L, 0.9f),
-        max(flashPulse(t, BANNER_AT + SLAM_MS, 220L, 0.5f), flashPulse(t, NAME_AT + SLAM_MS, 200L, 0.4f)),
+        pulse(t, BURST_AT, 260L, 0.9f),
+        max(pulse(t, BANNER_AT + SLAM_MS, 220L, 0.5f), pulse(t, NAME_AT + SLAM_MS, 200L, 0.4f)),
     )
 
-    private fun shakePulse(t: Long, at: Long, ms: Long, strength: Float): Float {
-        val since = t - at
-        if (since < 0 || since >= ms) return 0f
-        val fade = 1f - since / ms.toFloat()
-        return strength * fade * fade
-    }
-
-    private fun flashPulse(t: Long, at: Long, ms: Long, strength: Float): Float {
+    /** A jolt or a flash [at] a time, as strong as [strength] at first and gone [ms] later, at [t]. */
+    private fun pulse(t: Long, at: Long, ms: Long, strength: Float): Float {
         val since = t - at
         if (since < 0 || since >= ms) return 0f
         val fade = 1f - since / ms.toFloat()
@@ -329,8 +324,9 @@ fun ChallengerScreen(
                 }
             }
             .drawWithCache {
-                val kit = Kit(size, 1.dp.toPx())
-                onDrawBehind { drawEntrance(clock.longValue, kit, art) }
+                val shown = art
+                val kit = Kit(size, 1.dp.toPx(), shown)
+                onDrawBehind { drawEntrance(clock.longValue, kit, shown) }
             },
     )
 }
@@ -350,8 +346,8 @@ private class EntranceArt(
         fun load(loader: AssetLoader, pet: PetId): EntranceArt {
             val manifest = loader.manifest(pet)
             return EntranceArt(
-                banner = loader.prop(CHALLENGER_BANNER_ART),
-                name = loader.prop(vsNameArt(pet)),
+                banner = loader.challengerBanner(),
+                name = loader.vsName(pet),
                 strip = loader.strip(pet, Anim.ATTACK),
                 cellW = manifest.cell[0],
                 cellH = manifest.cell[1],
@@ -398,8 +394,8 @@ private val Foam = Color(0xFFE6FAFF)
 private val Heat = Color(0xFFFF7A1A)
 private val FlashTint = Color(0xFFF2FCFF)
 
-/** Everything the entrance draws with that depends only on the screen's size: made once per size. */
-private class Kit(size: Size, val unit: Float) {
+/** Everything the entrance draws with that depends only on the screen's size and the [art]: made once per both. */
+private class Kit(size: Size, val unit: Float, art: EntranceArt?) {
     val w = size.width
     val h = size.height
     val diag = hypot(w, h)
@@ -470,9 +466,10 @@ private class Kit(size: Size, val unit: Float) {
     )
 
     // The banner across the top and the name across the bottom, each as wide as fits: set by the width on a narrow
-    // screen and by the height on a wide one, so neither crowds him out.
-    val bannerRect = centred(Offset(w / 2f, h * BANNER_Y), min(w * 0.70f, h * 1.19f), 495f / 1400f)
-    val nameRect = centred(Offset(w / 2f, h * NAME_Y), min(w * 0.40f, h * 0.66f), 381f / 900f)
+    // screen and by the height on a wide one, so neither crowds him out. Each keeps its art's shape (nothing is drawn
+    // before the art is there).
+    val bannerRect = centred(Offset(w / 2f, h * BANNER_Y), min(w * 0.70f, h * 1.19f), art?.banner.aspect())
+    val nameRect = centred(Offset(w / 2f, h * NAME_Y), min(w * 0.40f, h * 0.66f), art?.name.aspect())
     val bannerGlow = Brush.radialGradient(
         0f to Heat.copy(alpha = 0.8f),
         0.5f to Heat.copy(alpha = 0.3f),
@@ -490,6 +487,8 @@ private class Kit(size: Size, val unit: Float) {
     val bannerShine = shine(bannerRect)
     val nameShine = shine(nameRect)
 
+    /** This picture's height to its width; 0 for none. */
+    private fun ImageBitmap?.aspect(): Float = if (this == null) 0f else height / width.toFloat()
 
     private fun centred(c: Offset, width: Float, aspect: Float): Rect {
         val height = width * aspect
@@ -759,12 +758,15 @@ private const val SHINE_AFTER_MS = 220L
 /** ...taking this long. */
 private const val SHINE_MS = 520L
 
+/** The shortest-lived droplet off his name, in s; the longest lasts [Entrance.NAME_SPLASH_MS]. */
+private const val NAME_DROP_MIN_S = 0.4f
+
 /** His name lands in a splash of its own: droplets thrown up off it, [since] ms after it landed. */
 private fun DrawScope.nameSplash(since: Long, k: Kit) {
     val r = k.nameRect
     val seconds = since / 1000f
     for (i in 0 until NAME_DROPS) {
-        val life = 0.4f + 0.45f * hash01(i, 51)
+        val life = NAME_DROP_MIN_S + (Entrance.NAME_SPLASH_MS / 1000f - NAME_DROP_MIN_S) * hash01(i, 51)
         if (seconds >= life) continue
         val startX = lerp(r.left + r.width * 0.1f, r.right - r.width * 0.1f, hash01(i, 52))
         val startY = r.center.y - r.height * 0.15f

@@ -50,8 +50,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
-import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
@@ -150,11 +150,9 @@ internal enum class VsCue {
     DONE,
 }
 
-private val CUES = listOf(
-    0L to VsCue.CLAIM_ANNOUNCER,
-    VsTimeline.FIGHT_AT to VsCue.FIGHT_CALL,
-    VsTimeline.DONE_AT to VsCue.DONE,
-)
+/** The cues, in order, and when each falls due ([CUE_AT]): side by side, so a frame walks them without allocating. */
+private val CUES = arrayOf(VsCue.CLAIM_ANNOUNCER, VsCue.FIGHT_CALL, VsCue.DONE)
+private val CUE_AT = longArrayOf(0L, VsTimeline.FIGHT_AT, VsTimeline.DONE_AT)
 
 /**
  * One run of the card, frame by frame: where it is ([t]) and what falls due as it gets there, each once. It has no
@@ -181,8 +179,9 @@ internal class VsRun {
         started = true
         if (t >= VsTimeline.DONE_AT) over = true
         var due: MutableList<VsCue>? = null
-        for ((at, cue) in CUES) {
-            if (at > from && at <= t) (due ?: ArrayList<VsCue>(CUES.size).also { due = it }).add(cue)
+        for (i in CUES.indices) {
+            val at = CUE_AT[i]
+            if (at > from && at <= t) (due ?: ArrayList<VsCue>(CUES.size).also { due = it }).add(CUES[i])
         }
         return due ?: emptyList()
     }
@@ -278,14 +277,12 @@ private val FightFill = Brush.verticalGradient(listOf(Color(0xFFFF8A90), BloodGl
  * frame, and once the card stops its clock nothing moves.
  *
  * The names and the logo decode off the main thread as the card opens. While the card plays, the fight's strips and
- * the arena scene are decoded, so the first turn starts at once. [game] is not read: the router still passes it.
+ * the arena scene are decoded, so the first turn starts at once.
  */
-@Suppress("UNUSED_PARAMETER")
 @Composable
 fun VersusScreen(
     player: PetId,
     opponent: PetId,
-    game: GameState,
     loader: AssetLoader,
     arenaRoll: Int,
     onDone: () -> Unit,
@@ -385,11 +382,12 @@ fun VersusScreen(
         ) {
             VsBackdrop(leftPalette, rightPalette, clock = { clock.longValue })
 
-            // The fighters slide in from their own sides, idle, each facing the other.
+            // The fighters slide in from their own sides, idle, each facing the other (a side-on one a little further
+            // in on a 4:3 screen, so its nose or tail stays clear of the overscan).
             for (side in listOf(-1, 1)) {
                 val pet = if (side < 0) lineup.left else lineup.right
                 val mirror = if (side < 0) lineup.mirrorLeft else lineup.mirrorRight
-                val homeX = w * if (side < 0) VS_PLAYER_X else VS_OPPONENT_X
+                val homeX = vsFighterX(side, w, cellH, safeX, pet.spec.facing)
                 SpriteView(
                     loader = loader,
                     pet = pet,
@@ -479,7 +477,15 @@ private class Words(val art: VsArt, w: Float, h: Float, safeX: Float, safeY: Flo
     val rightName = nameRect(art.rightName, w, h, safeX, safeY, w * VS_OPPONENT_X)
     val logo: Rect
     val logoGlow: Brush
-    val shadow = 5f * unit
+    private val shadow = 5f * unit
+
+    /** Where each piece's drop shadow goes: just below it. */
+    val leftNameShadow = leftName.translate(0f, shadow)
+    val rightNameShadow = rightName.translate(0f, shadow)
+    val logoShadow: Rect
+
+    /** The shock rings' outlines, thinning as they spread: one per whole dp of width, from [RING_MIN_DP]. */
+    val ringStrokes = Array(RING_STEPS) { Stroke(width = (RING_MIN_DP + it) * unit) }
 
     init {
         val aspect = art.logo.height / art.logo.width.toFloat()
@@ -487,6 +493,7 @@ private class Words(val art: VsArt, w: Float, h: Float, safeX: Float, safeY: Flo
         if (lw * aspect > h * LOGO_MAX_H) lw = h * LOGO_MAX_H / aspect
         val c = Offset(w / 2f, h / 2f)
         logo = Rect(c.x - lw / 2f, c.y - lw * aspect / 2f, c.x + lw / 2f, c.y + lw * aspect / 2f)
+        logoShadow = logo.translate(0f, shadow * 1.4f)
         logoGlow = Brush.radialGradient(
             0f to Color.White.copy(alpha = 0.75f),
             0.3f to glow.copy(alpha = 0.5f),
@@ -512,8 +519,8 @@ private class Words(val art: VsArt, w: Float, h: Float, safeX: Float, safeY: Flo
 }
 
 private fun DrawScope.drawWords(t: Long, k: Words) {
-    drawName(k.art.leftName, k.leftName, t - VsTimeline.PLAYER_NAME_AT, -NAME_TILT, k.shadow)
-    drawName(k.art.rightName, k.rightName, t - VsTimeline.OPPONENT_NAME_AT, NAME_TILT, k.shadow)
+    drawName(k.art.leftName, k.leftName, k.leftNameShadow, t - VsTimeline.PLAYER_NAME_AT, -NAME_TILT)
+    drawName(k.art.rightName, k.rightName, k.rightNameShadow, t - VsTimeline.OPPONENT_NAME_AT, NAME_TILT)
     drawLogo(t - VsTimeline.VS_AT, k)
 }
 
@@ -524,8 +531,11 @@ private fun landFlash(since: Long): Float {
     return 0.85f * f * f
 }
 
-/** A name, [since] it started to slam in: falling from [NAME_FROM] to its place, tilted [tilt] degrees. */
-private fun DrawScope.drawName(img: ImageBitmap, place: Rect, since: Long, tilt: Float, shadow: Float) {
+/**
+ * A name, [since] it started to slam in: falling from [NAME_FROM] to its [place] (its [shadow] below), tilted [tilt]
+ * degrees.
+ */
+private fun DrawScope.drawName(img: ImageBitmap, place: Rect, shadow: Rect, since: Long, tilt: Float) {
     if (since < 0) return
     val s = VsTimeline.slamScale(since, VsTimeline.NAME_SLAM_MS, NAME_FROM)
     val a = (since / (VsTimeline.NAME_SLAM_MS * 0.4f)).coerceIn(0f, 1f)
@@ -533,7 +543,7 @@ private fun DrawScope.drawName(img: ImageBitmap, place: Rect, since: Long, tilt:
         rotate(tilt, place.center)
         scale(s, s, place.center)
     }) {
-        art(img, place.translate(0f, shadow), a * 0.55f, Silhouette)
+        art(img, shadow, a * 0.55f, Silhouette)
         art(img, place, a)
         val flash = landFlash(since - VsTimeline.NAME_SLAM_MS)
         if (flash > 0f) art(img, place, flash, WhiteOut)
@@ -557,8 +567,8 @@ private fun DrawScope.drawLogo(since: Long, k: Words) {
     drawCircle(k.logoGlow, radius = r * s, center = c, alpha = a)
     // Two shock rings off the landing: white, then the glow's colour a beat behind.
     val landed = since - VsTimeline.VS_SLAM_MS
-    for ((i, delayMs) in RING_DELAYS.withIndex()) {
-        val ring = landed - delayMs
+    for (i in RING_DELAYS.indices) {
+        val ring = landed - RING_DELAYS[i]
         if (ring < 0 || ring >= RING_MS) continue
         val q = ring / RING_MS.toFloat()
         drawCircle(
@@ -566,11 +576,11 @@ private fun DrawScope.drawLogo(since: Long, k: Words) {
             radius = k.logo.width * (0.4f + 0.9f * q + 0.15f * i),
             center = c,
             alpha = (1f - q) * (1f - q) * 0.9f,
-            style = Stroke(width = (16f * (1f - q) + 2f) * k.unit),
+            style = k.ringStrokes[(RING_SPAN_DP * (1f - q)).roundToInt().coerceIn(0, RING_STEPS - 1)],
         )
     }
     withTransform({ scale(s, s, c) }) {
-        art(k.art.logo, k.logo.translate(0f, k.shadow * 1.4f), a * 0.55f, Silhouette)
+        art(k.art.logo, k.logoShadow, a * 0.55f, Silhouette)
         art(k.art.logo, k.logo, a)
         val flash = landFlash(landed)
         if (flash > 0f) art(k.art.logo, k.logo, flash, WhiteOut)
@@ -578,6 +588,11 @@ private fun DrawScope.drawLogo(since: Long, k: Words) {
 }
 
 private val RING_DELAYS = longArrayOf(0L, 90L)
+
+/** A shock ring's outline thins from [RING_MIN_DP] + [RING_SPAN_DP] to [RING_MIN_DP] as it spreads. */
+private const val RING_MIN_DP = 2
+private const val RING_SPAN_DP = 16
+private const val RING_STEPS = RING_SPAN_DP + 1
 
 /** [img] drawn whole into [place]. */
 private fun DrawScope.art(img: ImageBitmap, place: Rect, alpha: Float, filter: ColorFilter? = null) {

@@ -27,11 +27,14 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+import team.superfun.horrorpets.model.Facing
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.common.SIDE_ON_REACH_OF_CELL
 import team.superfun.horrorpets.ui.common.hash01
 
 // ---- each killer's colours ----
@@ -85,13 +88,14 @@ internal object VsStreaks {
     /** How long streak [i] takes to cross its half, tail to tail. */
     fun crossMs(i: Int): Long = FASTEST_MS + ((SLOWEST_MS - FASTEST_MS) * hash01(i, 71)).toLong()
 
+    /** Where streak [i] is at 0 ms: spread out (a golden-ratio sequence), so they never set off in a bunch. */
+    fun start(i: Int): Float = (i * 0.618034f) % 1f
+
     /** Where streak [i] is at [t] ms: 0 with its head at the seam's side, 1 with its tail past the outer edge; wrapping. */
-    fun progress(i: Int, t: Long): Float {
-        val cross = crossMs(i)
-        // Spread out from the start (a golden-ratio sequence), so they never set off in a bunch.
-        val start = (i * 0.618034f) % 1f
-        return ((t.mod(cross)).toFloat() / cross + start) % 1f
-    }
+    fun progress(i: Int, t: Long): Float = progress(t, crossMs(i), start(i))
+
+    /** Where a streak that crosses in [cross] ms and starts at [start] is at [t] ms (see the other [progress]). */
+    fun progress(t: Long, cross: Long, start: Float): Float = ((t.mod(cross)).toFloat() / cross + start) % 1f
 
     /** Streak [i]'s lane across the half, 0..1: every lane a different one, jittered within it. */
     fun lane(i: Int): Float = (((i * 11) % COUNT) + hash01(i, 73)) / COUNT
@@ -119,6 +123,19 @@ private const val BURST_TURN_PER_S = 7f
 /** Where each fighter stands, and so where its half is hottest. */
 internal const val VS_PLAYER_X = 0.25f
 internal const val VS_OPPONENT_X = 0.75f
+
+/**
+ * Where the fighter on [side] (-1 the left, 1 the right) of a card [w] px wide stands, its cell [cellH] px tall: at
+ * [VS_PLAYER_X] or [VS_OPPONENT_X] of the width, unless its art faces side-on ([facing] [Facing.LEFT]) and its nose or
+ * tail ([SIDE_ON_REACH_OF_CELL]) would reach into the safe inset [safeX] (on a 4:3 screen): then as far in as keeps it
+ * clear. Art that faces the camera never reaches that far.
+ */
+internal fun vsFighterX(side: Int, w: Float, cellH: Float, safeX: Float, facing: Facing): Float {
+    val home = w * if (side < 0) VS_PLAYER_X else VS_OPPONENT_X
+    if (facing != Facing.LEFT) return home
+    val reach = cellH * SIDE_ON_REACH_OF_CELL
+    return if (side < 0) max(home, safeX + reach) else min(home, w - safeX - reach)
+}
 
 /** The fighters' bodies are about this far down: the burst's centre. */
 private const val BURST_Y = 0.58f
@@ -286,23 +303,30 @@ private fun VsHalf(side: Int, palette: VsPalette, clock: () -> Long) {
                         endX = 0f,
                     )
                     val looks = arrayOf(unitStreak(palette.streak), unitStreak(Color.White), unitStreak(palette.hot))
+                    // Each streak's fixed lane, length, speed and look, worked out once per size, not every frame.
+                    val n = VsStreaks.COUNT
+                    val cross = LongArray(n) { VsStreaks.crossMs(it) }
+                    val start = FloatArray(n) { VsStreaks.start(it) }
+                    val len = FloatArray(n) { VsStreaks.length(it) * halfW }
+                    val lane = FloatArray(n) { (VsStreaks.lane(it) * 2f - 1f) * across }
+                    val thickness = FloatArray(n) { VsStreaks.thicknessDp(it) * unit }
+                    val alpha = FloatArray(n) { VsStreaks.alpha(it) }
+                    val look = Array(n) { looks[VsStreaks.kind(it)] }
                     // Only where they darken: the top quarter and the bottom fifth.
                     val topShade = Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.42f), 1f to Color.Transparent, endY = h * 0.26f)
                     val bottomShade = Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.5f), startY = h * 0.78f, endY = h)
                     onDrawBehind {
                         val t = clock()
-                        for (i in 0 until VsStreaks.COUNT) {
-                            val len = VsStreaks.length(i) * halfW
-                            val head = -travel + VsStreaks.progress(i, t) * (2f * travel + len)
-                            val lane = (VsStreaks.lane(i) * 2f - 1f) * across
-                            val x = centre.x + ux * head - uy * lane
-                            val y = centre.y + uy * head + ux * lane
+                        for (i in 0 until n) {
+                            val head = -travel + VsStreaks.progress(t, cross[i], start[i]) * (2f * travel + len[i])
+                            val x = centre.x + ux * head - uy * lane[i]
+                            val y = centre.y + uy * head + ux * lane[i]
                             withTransform({
                                 translate(x, y)
                                 rotate(degrees, Offset.Zero)
-                                scale(len, VsStreaks.thicknessDp(i) * unit, Offset.Zero)
+                                scale(len[i], thickness[i], Offset.Zero)
                             }) {
-                                drawRect(looks[VsStreaks.kind(i)], Offset(-1f, -0.5f), Size(1f, 1f), alpha = VsStreaks.alpha(i))
+                                drawRect(look[i], STREAK_TOP_LEFT, STREAK_SIZE, alpha = alpha[i])
                             }
                         }
                         drawRect(topShade, size = Size(w, h * 0.26f))
@@ -312,6 +336,10 @@ private fun VsHalf(side: Int, palette: VsPalette, clock: () -> Long) {
         )
     }
 }
+
+/** A streak as drawn before it is scaled into place: a unit rectangle, x -1..0 (head at 0), y -0.5..0.5. */
+private val STREAK_TOP_LEFT = Offset(-1f, -0.5f)
+private val STREAK_SIZE = Size(1f, 1f)
 
 private const val HALFTONE_ALPHA = 0.5f
 

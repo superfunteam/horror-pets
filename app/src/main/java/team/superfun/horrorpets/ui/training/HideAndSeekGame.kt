@@ -234,8 +234,11 @@ fun HideAndSeekGame(env: TrainingEnv, onOver: (score: Int) -> Unit) {
 
         SeekStones(play, row, tombs, stoneFilter, env.clock)
         if (mate != null) SeekMate(env, mate.id, play, row, petHeight, h * MATE_IN_FRONT)
-        // Facing the camera at the left edge, its feet on the scene's floor.
-        TrainingKiller(env, env.pet.id, play.pet, watcher.height, 0L, Modifier.placeAt(x = { watcher.x }, y = { env.floorY }))
+        // Facing the camera at the left edge, its feet on the scene's floor (side-on art, Jaws, turns to the stones).
+        TrainingKiller(
+            env, env.pet.id, play.pet, watcher.height, 0L, onLeft = true,
+            Modifier.placeAt(x = { watcher.x }, y = { env.floorY }),
+        )
         SeekPointer(play, row, env.clock)
         val calloutTop = safeInset().vertical + SEEK_CALLOUT_TOP
         SeekCallout(play, mateName, Modifier.align(Alignment.TopCenter).padding(top = calloutTop))
@@ -259,6 +262,7 @@ private fun SeekMate(env: TrainingEnv, mate: PetId, play: HideAndSeekPlay, row: 
         play.mate,
         heightPx,
         MATE_IDLE_OFFSET_MS,
+        onLeft = false, // right of the watcher, facing back at it
         Modifier
             .placeAt(x = { row.x(at) }, y = { row.footY + inFront + play.mateDown(clock.nowMs) * heightPx })
             .graphicsLayer { alpha = play.mateAlpha(clock.nowMs) }

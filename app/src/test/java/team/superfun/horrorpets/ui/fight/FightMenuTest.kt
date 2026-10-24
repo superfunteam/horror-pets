@@ -4,7 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.model.Facing
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.spec
 import androidx.compose.ui.unit.dp
 import team.superfun.horrorpets.model.Attacks
 import team.superfun.horrorpets.model.attackById
@@ -106,5 +108,13 @@ class PlayerHomeTest {
         assertEquals(0.30f, playerHomeFraction(960f, 48f + window, reach), 1e-4f)
         // Everyone else keeps the usual reach.
         for (pet in PetId.entries - PetId.JAWS) assertEquals("$pet", fighterReachDp(PetId.JASON), fighterReachDp(pet), 0f)
+    }
+
+    @Test
+    fun theReachGoesByWhichWayTheArtFacesNotWhoItIs() {
+        // Side-on art reaches further (nose or tail) than art that faces the camera, whichever killer it is.
+        assertTrue(fighterReachDp(Facing.LEFT) > fighterReachDp(Facing.FRONT))
+        assertEquals(60f, fighterReachDp(Facing.FRONT), 0f)
+        for (pet in PetId.entries) assertEquals("$pet", fighterReachDp(pet.spec.facing), fighterReachDp(pet), 0f)
     }
 }

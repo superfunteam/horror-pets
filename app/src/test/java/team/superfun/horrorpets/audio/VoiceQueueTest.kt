@@ -82,6 +82,23 @@ class VoiceQueueTest {
     }
 
     @Test
+    fun hisNameLeftOverFromTheEntranceIsNotTakenForTheEndOfTheVsLines() {
+        // The entrance ended on "JAWS!!!" and the card claimed the announcer before the view model's lines came. That
+        // "jaws" is the entrance's, not the card's last line: the card's lines cannot be that far on as it opens.
+        val q = queue("jaws")
+        assertTrue("his name is cut", q.skipTo(vs))
+        assertTrue(q.idle)
+        q.add(vs)
+        assertEquals("the VS lines start at once", "jason", q.start())
+
+        // The same in a mirror match: a lone "jason" sounding is not the card's second "jason".
+        val mirror = listOf("jason", "versus", "jason")
+        val alone = queue("jason")
+        assertTrue(alone.skipTo(mirror))
+        assertTrue(alone.idle)
+    }
+
+    @Test
     fun aQuietAnnouncerHasNothingToCut() {
         val q = VoiceQueue()
         assertFalse(q.skipTo(vs))
