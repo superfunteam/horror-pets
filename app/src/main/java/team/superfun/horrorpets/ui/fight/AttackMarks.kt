@@ -119,24 +119,36 @@ internal fun DrawScope.drawMarks(f: MarkFx, p: Float) {
             )
         }
     }
-    val len = f.bodyH * plan.length
     for (i in 0 until plan.count) {
         val start = markStart(i, plan.count)
         val cut = ((p - start) / 0.14f).coerceIn(0f, 1f)
         if (cut <= 0f) continue
-        // Marks fall across the body at varied angles; an X's two big cuts cross, a third cuts between.
-        val baseAngle = when {
-            f.slot == Slot.HEAVY && plan.count == 3 -> listOf(-40f, 40f, 0f)[i]
-            else -> -55f + 110f * hash01(f.seed + i * 17, 3) + if (i % 2 == 1) 90f else 0f
-        }
-        val angle = baseAngle * DEG
-        val off = Offset((hash01(f.seed + i * 29, 5) - 0.5f) * f.bodyH * 0.25f, (hash01(f.seed + i * 31, 7) - 0.5f) * f.bodyH * 0.3f)
-        val dir = Offset(cos(angle), sin(angle))
-        val a = Offset(f.cx, f.cy) + off - dir * (len / 2f)
-        val b = Offset(f.cx, f.cy) + off + dir * (len / 2f)
+        val (a, b) = markCut(f, plan, i)
         drawMark(f.pet, a, b, cut, fade, plan.width * unit, ink, f.seed + i)
     }
     if (plan.sparks > 0) sparks(f, p, plan.sparks, ink, unit)
+}
+
+/**
+ * Where [f]'s mark [i] (one of [plan]'s) cuts, from end to end: across the body at its own angle, a little off its
+ * middle. Michael's long diagonal runs on a fifth of its length past either end. The cut's own shape (a bow, teeth,
+ * links) and its stroke lie along this line.
+ */
+internal fun markCut(f: MarkFx, plan: MarkPlan, i: Int): Pair<Offset, Offset> {
+    val len = f.bodyH * plan.length
+    // Marks fall across the body at varied angles; an X's two big cuts cross, a third cuts between.
+    val baseAngle = when {
+        f.slot == Slot.HEAVY && plan.count == 3 -> listOf(-40f, 40f, 0f)[i]
+        else -> -55f + 110f * hash01(f.seed + i * 17, 3) + if (i % 2 == 1) 90f else 0f
+    }
+    val angle = baseAngle * DEG
+    val off = Offset((hash01(f.seed + i * 29, 5) - 0.5f) * f.bodyH * 0.25f, (hash01(f.seed + i * 31, 7) - 0.5f) * f.bodyH * 0.3f)
+    val dir = Offset(cos(angle), sin(angle))
+    val a = Offset(f.cx, f.cy) + off - dir * (len / 2f)
+    val b = Offset(f.cx, f.cy) + off + dir * (len / 2f)
+    if (f.pet != PetId.MICHAEL) return a to b
+    val d = b - a
+    return (a - d * 0.2f) to (a + d * 1.2f)
 }
 
 private const val DEG = (PI / 180.0).toFloat()
@@ -209,12 +221,11 @@ private fun DrawScope.drawMark(pet: PetId, a: Offset, b: Offset, cut: Float, alp
             drawLine(ink.core.copy(alpha = alpha), c, tip, strokeWidth = width * 0.5f, cap = StrokeCap.Round)
             drawCircle(ink.body.copy(alpha = alpha), radius = width * 0.9f, center = c)
         }
-        // One long, white-hot diagonal.
+        // One long, white-hot diagonal (its cut runs past the others' ends: see markCut).
         PetId.MICHAEL -> {
-            val far = a - d * 0.2f
             val path = Path().apply {
-                moveTo(far.x, far.y)
-                lineTo(far.x + (d.x * 1.4f) * cut, far.y + (d.y * 1.4f) * cut)
+                moveTo(a.x, a.y)
+                lineTo(end.x, end.y)
             }
             layered(path, alpha, width * 1.1f, ink)
         }

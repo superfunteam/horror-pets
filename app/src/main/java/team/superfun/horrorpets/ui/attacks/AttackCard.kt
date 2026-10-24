@@ -44,11 +44,14 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +82,7 @@ import team.superfun.horrorpets.ui.fight.SpecialFx
 import team.superfun.horrorpets.ui.fight.SpecialVfx
 import team.superfun.horrorpets.ui.fight.TANK_ART
 import team.superfun.horrorpets.ui.fight.attackSwing
+import team.superfun.horrorpets.ui.fight.markCut
 import team.superfun.horrorpets.ui.fight.markPlan
 import team.superfun.horrorpets.ui.fight.mirroredInFight
 import team.superfun.horrorpets.ui.fight.specialLandsAtMs
@@ -231,7 +235,10 @@ internal fun AttackCard(
     }
 }
 
-/** An attack's name on one line, as big as it fits: 30sp down to 15sp for the longest. */
+/**
+ * An attack's name on one line, as big as it fits: 30sp down to 15sp for the longest. A locked one's [LOCKED_TEXT]
+ * is read out as "Locked" (see [lockedSemantics]).
+ */
 @Composable
 internal fun AttackName(name: String, modifier: Modifier = Modifier, max: Float = 30f, center: Boolean = false) {
     BasicText(
@@ -239,9 +246,16 @@ internal fun AttackName(name: String, modifier: Modifier = Modifier, max: Float 
         style = displayStyle(max.sp, tracking = 0.04f, lineHeight = max.sp).copy(textAlign = if (center) TextAlign.Center else TextAlign.Start),
         maxLines = 1,
         autoSize = TextAutoSize.StepBased(minFontSize = 13.sp, maxFontSize = max.sp, stepSize = 1.sp),
-        modifier = modifier,
+        modifier = modifier.lockedSemantics(name),
     )
 }
+
+/** What a screen reader says for [LOCKED_TEXT], instead of "question mark" three times. */
+internal const val LOCKED_SPOKEN = "Locked"
+
+/** [text], if it is [LOCKED_TEXT], is read out as [LOCKED_SPOKEN]; any other text is read as it is. */
+internal fun Modifier.lockedSemantics(text: String): Modifier =
+    if (text == LOCKED_TEXT) clearAndSetSemantics { contentDescription = LOCKED_SPOKEN } else this
 
 private val PreviewHeight: Dp = 92.dp
 
@@ -325,14 +339,34 @@ internal fun previewLunge(attack: Attack, manifest: SpriteManifest, timing: Prev
 }
 
 /**
- * Where a preview [w] by [h] px stages an attack: the attacker's cell [cellH] tall, its feet on the [floor] at [homeX],
- * stepping [stepPx] in; the target (not drawn) as tall, its body centred on ([targetX], [targetY]).
+ * Where a preview [width] by [height] px stages an attack: the attacker's cell [cellH] tall, its feet on the [floor]
+ * at [homeX], stepping [stepPx] in; the target (not drawn) at most [targetH] tall (see [previewTargetH]), its body
+ * centred on ([targetX], [targetY]), the middle of the preview's height.
  */
-internal data class PreviewStage(val cellH: Float, val floor: Float, val homeX: Float, val stepPx: Float, val targetX: Float, val targetY: Float)
+internal data class PreviewStage(
+    val width: Float,
+    val height: Float,
+    val cellH: Float,
+    val floor: Float,
+    val homeX: Float,
+    val stepPx: Float,
+    val targetX: Float,
+    val targetY: Float,
+    val targetH: Float,
+)
 
 /** The attacker's cell is this share of the preview's height, its feet this far down it. */
 private const val PREVIEW_CELL = 0.92f
 private const val PREVIEW_FLOOR = 0.95f
+
+/** The target is at most this share of the preview's height (see [previewTargetH]). */
+private const val PREVIEW_TARGET = 0.8f
+
+/**
+ * Room kept round a mark's cut for its stroke, in its plan's widths: the soft glow round the widest one (Jason's, 1.3
+ * widths, glowing 2.6 times as wide), so not even the glow is cut off at the preview's edge.
+ */
+internal const val MARK_ROOM = 1.7f
 
 /**
  * The attacker stands this many cells from the target (closer in a narrow preview, so half a cell either side of the
@@ -342,32 +376,60 @@ private const val PREVIEW_FLOOR = 0.95f
 private const val PREVIEW_GAP_CELLS = 1.5f
 private const val PREVIEW_STEP = 0.3f
 
-/** The target's body is centred this far up its cell, as a fighter's is. */
-private const val PREVIEW_BODY_AT = 0.45f
-
 /** How [w] by [h] px stage an attack: attacker on the left, target on the right, the pair centred. */
 internal fun previewStage(w: Float, h: Float): PreviewStage {
     val cellH = h * PREVIEW_CELL
     val floor = h * PREVIEW_FLOOR
     val gap = minOf(cellH * PREVIEW_GAP_CELLS, w - cellH).coerceAtLeast(0f)
     return PreviewStage(
+        width = w,
+        height = h,
         cellH = cellH,
         floor = floor,
         homeX = (w - gap) / 2f,
         stepPx = gap * PREVIEW_STEP,
         targetX = (w + gap) / 2f,
-        targetY = floor - cellH * PREVIEW_BODY_AT,
+        targetY = h / 2f,
+        targetH = h * PREVIEW_TARGET,
     )
 }
 
-/** A preview's inset: dark, with a soft light in the middle. */
+/** The seed of [attack]'s marks in a preview: the same marks every showing. */
+private fun previewSeed(attack: Attack): Int = attack.tier * 7
+
+/**
+ * How tall [attack]'s target is in [stage], so its marks and effect are as big as they can be while every cut, and
+ * its stroke ([unit] px a dp), stays inside the preview: [PreviewStage.targetH], or less for marks that reach further
+ * than most (Michael's long diagonals). An attack that leaves no marks gets the whole [PreviewStage.targetH].
+ */
+internal fun previewTargetH(attack: Attack, stage: PreviewStage, unit: Float): Float {
+    val plan = markPlan(attack.slot, attack.tier) ?: return stage.targetH
+    // The marks scale with the target: measure them on one a pixel tall, centred on the origin.
+    val probe = MarkFx(attack.pet, attack.slot, attack.tier, 0f, 0f, 1f, seed = previewSeed(attack))
+    var reachX = 0f
+    var reachY = 0f
+    for (i in 0 until plan.count) {
+        val (a, b) = markCut(probe, plan, i)
+        reachX = maxOf(reachX, abs(a.x), abs(b.x))
+        reachY = maxOf(reachY, abs(a.y), abs(b.y))
+    }
+    val room = plan.width * unit * MARK_ROOM
+    val roomX = minOf(stage.targetX, stage.width - stage.targetX) - room
+    val roomY = minOf(stage.targetY, stage.height - stage.targetY) - room
+    return minOf(stage.targetH, roomX / reachX, roomY / reachY).coerceAtLeast(0f)
+}
+
+/** [attack]'s marks in a preview staged as [stage] says, on a target [previewTargetH] tall. */
+internal fun previewMarks(attack: Attack, stage: PreviewStage, unit: Float): MarkFx =
+    MarkFx(attack.pet, attack.slot, attack.tier, stage.targetX, stage.targetY, previewTargetH(attack, stage, unit), seed = previewSeed(attack))
+
+/** A preview's inset: dark, with a soft light on the target's spot (see [previewStage]), where the attack lands. */
 private fun Modifier.previewInset(): Modifier = clipToBounds().drawBehind {
     drawRoundRect(Color(0xFF0B0709), cornerRadius = CornerRadius(6.dp.toPx()))
-    drawCircle(
-        Brush.radialGradient(listOf(Color(0x33FFFFFF), Color.Transparent), center = center, radius = size.height * 0.6f),
-        radius = size.height * 0.6f,
-        center = center,
-    )
+    val stage = previewStage(size.width, size.height)
+    val spot = Offset(stage.targetX, stage.targetY)
+    val radius = size.height * 0.62f
+    drawCircle(Brush.radialGradient(listOf(Color(0x33FFFFFF), Color.Transparent), center = spot, radius = radius), radius = radius, center = spot)
 }
 
 /**
@@ -432,15 +494,18 @@ internal fun AttackPreview(attack: Attack, loader: AssetLoader, modifier: Modifi
             )
             return@BoxWithConstraints
         }
+        // The target's size, so its marks stay inside the inset; a special's own effect is sized to match them.
+        val unit = density.density
+        val targetH = remember(attack, stage, unit) { previewTargetH(attack, stage, unit) }
         if (special) {
-            val fx = remember(attack, stage, body) {
+            val fx = remember(attack, stage, body, targetH) {
                 // Anything it throws (Jaws's tank) leaves its mouth, stepped in, as in a fight.
                 val thrower = stage.cellH * body
                 SpecialFx(
                     style,
                     stage.targetX,
                     stage.targetY,
-                    stage.cellH,
+                    targetH,
                     fromX = tankMouthX(stage.homeX + stage.stepPx, thrower, dir = 1f),
                     fromY = tankMouthY(stage.floor, thrower),
                     throwerH = thrower,
@@ -449,7 +514,7 @@ internal fun AttackPreview(attack: Attack, loader: AssetLoader, modifier: Modifi
             SpecialVfx(fx, progress = { showing(since() / timing.effectMs) }, tank = tank)
         }
         if (plan != null) {
-            val fx = remember(attack, stage) { MarkFx(pet, attack.slot, attack.tier, stage.targetX, stage.targetY, stage.cellH, seed = attack.tier * 7) }
+            val fx = remember(attack, stage, unit) { previewMarks(attack, stage, unit) }
             AttackMarks(fx, progress = { showing((since() - timing.marksAtMs) / plan.ms) })
         }
     }
@@ -484,7 +549,7 @@ internal fun LockedPreview(attack: Attack, loader: AssetLoader, modifier: Modifi
         Spacer(
             Modifier
                 .fillMaxSize()
-                .drawBehind { drawPadlock(Offset(stage.targetX, stage.targetY), stage.cellH * 0.42f, TextLo) },
+                .drawBehind { drawPadlock(Offset(stage.targetX, stage.targetY), stage.height * 0.39f, TextLo) },
         )
     }
 }
@@ -546,7 +611,7 @@ private fun StatRow(line: StatLine) {
                 style = displayStyle(14.sp, color = TextHi, tracking = 0.04f, lineHeight = 15.sp),
                 maxLines = 1,
                 autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).lockedSemantics(line.value),
             )
         }
         Box(Modifier.width(18.dp), contentAlignment = Alignment.CenterEnd) {

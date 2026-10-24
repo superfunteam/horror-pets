@@ -42,10 +42,17 @@ class LockedCardTest {
             assertEquals(null, line.bar)
             assertEquals(Change.NONE, line.change)
         }
-        // Nothing on it names the move or what it does.
-        val shown = listOf(face.name, face.sub) + face.stats.map { it.value }
-        assertTrue(shown.none { final.name.uppercase() in it.uppercase() })
-        assertTrue(shown.none { (effectText(final) ?: "Bleeds") in it })
+        // What it is shown against changes nothing: there is nothing to weigh it against yet.
+        assertEquals(cardFace(final, vs = null, locked = true), face)
+        assertEquals(face, cardFace(final, vs = heavies[2], locked = true))
+    }
+
+    @Test
+    fun aLockedCardsTitleSaysLockedRatherThanWhatItIsAgainst() {
+        val equipped = heavies[1]
+        assertEquals("HEAVY · LOCKED", movesCardTitle(heavies[3], equipped, locked = true))
+        assertEquals("HEAVY · AGAINST SLEEPING BAG SLAM", movesCardTitle(heavies[2], equipped, locked = false))
+        assertEquals("EQUIPPED HEAVY", movesCardTitle(equipped, equipped, locked = false))
     }
 
     @Test

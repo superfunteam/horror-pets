@@ -43,11 +43,12 @@ import team.superfun.horrorpets.ui.theme.TextLo
 
 /**
  * "JASON CAN LEARN A NEW HEAVY!": the attack [pet] has in that slot now ([current], NOW) beside the one it just
- * unlocked ([attack], NEW), each playing what it does on a loop, the new one's stats marked better ▲ or worse ▼.
+ * unlocked ([attack], NEW), each landed by the killer on a loop (see `AttackPreview`), the new one's stats marked
+ * better ▲ or worse ▼.
  * LEARN IT ([onLearn], focused first) swaps it in; KEEP ([onKeep]) leaves the old one. Either way the pet knows it
  * now and can equip it later from MOVES. Back ([onLater]) puts the choice off until the next launch. OK and taps are
  * ignored for a moment after it comes up (see `rememberOkReady`), so a press mashed through the results cannot
- * choose for the player. The cards' previews take any picture they throw from [loader].
+ * choose for the player. The cards' previews take the killer's sprites, and any picture they throw, from [loader].
  */
 @Composable
 fun LearnScreen(
