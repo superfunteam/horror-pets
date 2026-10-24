@@ -11,6 +11,7 @@ Coordinate spaces for the floor line:
     floorYOnScreen(crop, imgH, floorY) expects. This script converts one to the other.
 
 Usage: tools/.venv/bin/python -I tools/finalize_scenes.py --pick jason/dock=2 --pick jason/cabin=1 ...
+       tools/.venv/bin/python -I tools/finalize_scenes.py --keep-others --pick jaws/beach=1 ...   # just those
 """
 from __future__ import annotations
 
@@ -62,6 +63,8 @@ def main() -> int:
     ap.add_argument("--pick", action="append", required=True, help="pet/id=k")
     ap.add_argument("--src", default="art-work/scenes")
     ap.add_argument("--out", default="scenes-final")
+    ap.add_argument("--keep-others", action="store_true",
+                    help="finalize only the picked scenes; keep every other scene's file and catalog entry as it is")
     args = ap.parse_args()
 
     prompts = json.loads((ROOT / "tools/scene_prompts.json").read_text())
@@ -70,9 +73,17 @@ def main() -> int:
     picks = dict(p.split("=") for p in args.pick)
 
     out = ROOT / args.out
+    kept: dict[str, list[dict]] = json.loads((out / "scenes.json").read_text()) if args.keep_others else {}
     catalog: dict[str, list[dict]] = {}
     for s in prompts["scenes"]:
         key = f"{s['pet']}/{s['id']}"
+        if key not in picks and args.keep_others:
+            entry = next((e for e in kept.get(s["pet"], []) if e["id"] == s["id"]), None)
+            if entry is None:
+                print(f"no pick and no existing entry for {key}", file=sys.stderr)
+                return 1
+            catalog.setdefault(s["pet"], []).append(entry)
+            continue
         if key not in picks:
             print(f"missing pick for {key}", file=sys.stderr)
             return 1

@@ -126,6 +126,24 @@
       "id": "butcher",
       "title": "The Butcher Room",
       "prompt": "A dark, filthy farmhouse basement workshop: two big rusty steel meat hooks hanging from heavy chains in the foreground sides, more chains hanging from wooden beams, a stained cream-tiled support pillar, an old clawfoot bathtub with peeling enamel, a wooden workbench with tools and a gas can, metal shelving and stacked pallets, a single harsh bare bulb and a shaft of light from a small window. Spooky and grimy but not gory, no meat or bodies. A cracked dirty concrete floor forms the open floor in the foreground. No people."
+    },
+    {
+      "pet": "jaws",
+      "id": "beach",
+      "title": "Amity Beach",
+      "prompt": "A small New England island beach at dusk in 1975. A tall wooden lifeguard chair and a striped beach umbrella at the sides, a blank wooden warning sign on a post, a long wooden pier stretching out into a calm dark sea under an orange and violet sky. Smooth pale sand forms the open floor in the foreground."
+    },
+    {
+      "pet": "jaws",
+      "id": "orca",
+      "title": "The Orca",
+      "prompt": "The deck of an old wooden shark-fishing boat at night. Coiled ropes, three yellow barrels, a mounted harpoon gun and a bait bucket at the sides, the little wheelhouse cabin with a warm lit window behind, the open ocean under a full moon. Weathered wooden deck planks form the open floor in the foreground."
+    },
+    {
+      "pet": "jaws",
+      "id": "cage",
+      "title": "Shark Cage",
+      "prompt": "Deep underwater at night by moonlight: a bent steel diving cage hanging on cables at one side, swaying kelp and dark rocks, shafts of pale moonlight slanting down from the rippling surface far above, drifting bubbles and tiny fish. A flat sandy sea floor forms the open floor in the foreground."
     }
   ]
 }

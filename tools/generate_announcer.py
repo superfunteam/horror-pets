@@ -83,6 +83,9 @@ LINES = {
     "swing_and_a_miss": "[shouting] SWING AND A MISS!!!",
     "whiffed": "[shouting] WHIFFED IT!!!",
     "nowhere_close": "[shouting] NOWHERE CLOSE!!!",
+    "jaws": "[shouting] JAWS!!!",
+    "jaws_never_dies": "[shouting] JAWS... NEVER DIES!!!",
+    "new_challenger": "[shouting] HERE COMES A NEW CHALLENGER!!!",
 }
 NUMBERS = {"2": "two", "25": "twenty five", "60": "sixty"}
 

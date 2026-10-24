@@ -145,5 +145,26 @@
     "tintStrength": 0.12,
     "shadowOpacity": 0.55,
     "accent": "#C1121F"
+  },
+  "jaws/beach": {
+    "floorY16x9": 0.8,
+    "tint": "#592D2A",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FF9A4D"
+  },
+  "jaws/orca": {
+    "floorY16x9": 0.8,
+    "tint": "#595358",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#FFC24D"
+  },
+  "jaws/cage": {
+    "floorY16x9": 0.8,
+    "tint": "#114259",
+    "tintStrength": 0.12,
+    "shadowOpacity": 0.55,
+    "accent": "#4DD2FF"
   }
 }

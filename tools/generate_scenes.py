@@ -129,7 +129,8 @@ def main() -> int:
         d.mkdir(parents=True, exist_ok=True)
         stem = f"{s['id']}{tag}-{k}"
         img.save(d / f"{stem}.png")
-        composite(img, s["pet"]).save(d / f"{stem}-composite.jpg", quality=88)
+        if (ROOT / f"sprites-final/{s['pet']}/manifest.json").is_file():  # a new killer may not have sprites yet
+            composite(img, s["pet"]).save(d / f"{stem}-composite.jpg", quality=88)
         return f"ok {s['pet']}/{stem} {img.size[0]}x{img.size[1]}"
 
     failed = 0
