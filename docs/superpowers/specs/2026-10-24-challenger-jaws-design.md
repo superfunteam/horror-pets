@@ -80,7 +80,8 @@ The player approved the mockup (`art-work/vs/` candidates; the mockup and VS opt
   underwater shark cage.
 - **Sound:** a menacing low-strings music track, synthesized like the others (`tools/synth_audio.py`, appended so no
   existing sound changes; not the film's theme); his special's sound (a hiss, a whoosh, a big explosion) synthesized
-  too; the announcer's "JAWS!!!", "JAWS... NEVER DIES!!!" and a new "HERE COMES A NEW CHALLENGER!!!" (ElevenLabs, same
+  too; the announcer's "JAWS!!!", "YOU'RE GONNA NEED A BIGGER BOAT!!!" (his "never dies" line, the player's call; the
+  fake-death caption reads the same for him in place of "JAWS NEVER DIES.") and a new "HERE COMES A NEW CHALLENGER!!!" (ElevenLabs, same
   voice and tool as the others).
 - **Pantry:** loves Gross, fine with Savory, hates Sweet; favorite Foot & Potatoes. *(My call.)*
 

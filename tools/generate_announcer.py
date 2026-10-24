@@ -84,7 +84,7 @@ LINES = {
     "whiffed": "[shouting] WHIFFED IT!!!",
     "nowhere_close": "[shouting] NOWHERE CLOSE!!!",
     "jaws": "[shouting] JAWS!!!",
-    "jaws_never_dies": "[shouting] JAWS... NEVER DIES!!!",
+    "jaws_never_dies": "[shouting] YOU'RE GONNA NEED A BIGGER BOAT!!!",
     "new_challenger": "[shouting] HERE COMES A NEW CHALLENGER!!!",
 }
 NUMBERS = {"2": "two", "25": "twenty five", "60": "sixty"}
