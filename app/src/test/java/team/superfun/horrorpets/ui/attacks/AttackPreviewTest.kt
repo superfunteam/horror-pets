@@ -10,6 +10,7 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.Slot
 import team.superfun.horrorpets.model.SpecialStyle
+import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.attacksOf
 import team.superfun.horrorpets.ui.fight.AFTER_IMPACT_MS
 import team.superfun.horrorpets.ui.fight.SPECIAL_MS
@@ -17,6 +18,7 @@ import team.superfun.horrorpets.ui.fight.STEP_BACK_MS
 import team.superfun.horrorpets.ui.fight.STEP_IN_MS
 import team.superfun.horrorpets.ui.fight.TANK_BLAST_MS
 import team.superfun.horrorpets.ui.fight.TANK_FLIGHT_MS
+import team.superfun.horrorpets.ui.fight.markCut
 import team.superfun.horrorpets.ui.fight.markPlan
 import team.superfun.horrorpets.ui.fight.specialLandsAtMs
 import team.superfun.horrorpets.ui.fight.specialMs
@@ -150,7 +152,50 @@ class AttackPreviewTest {
             assertTrue(s.homeX - s.cellH * 0.47f >= 0f)
             assertTrue(s.targetX + s.cellH * 0.47f <= w)
             assertTrue(s.floor < h && s.floor - s.cellH * 0.98f >= 0f)
-            assertTrue(s.targetY > 0f && s.targetY < s.floor)
+            assertEquals(h / 2f, s.targetY, 0.01f)
         }
+    }
+
+    @Test
+    fun everyMarkStaysInsideThePreview() {
+        // The previews on a 1080p TV (2 px a dp): MOVES's 92 dp tall card, and the learn screen's shorter one. Every
+        // killer's marks, every slot and tier, as the preview draws them, with room for their stroke.
+        val unit = 2f
+        for ((w, h) in listOf(800f to 184f, 760f to 128f)) {
+            val stage = previewStage(w, h)
+            for (pet in PetId.entries) for (slot in Slot.entries) for (attack in attacksOf(pet, slot)) {
+                val plan = markPlan(slot, attack.tier) ?: continue
+                val fx = previewMarks(attack, stage, unit)
+                val margin = plan.width * unit * MARK_ROOM - 0.01f
+                for (i in 0 until plan.count) {
+                    val (a, b) = markCut(fx, plan, i)
+                    for (end in listOf(a, b)) {
+                        val where = "${attack.id} mark $i in ${w}x$h: $end"
+                        assertTrue(where, end.y >= margin && end.y <= h - margin)
+                        assertTrue(where, end.x >= margin && end.x <= w - margin)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun onlyMarksThatReachFurtherThanMostAreDrawnSmaller() {
+        val stage = previewStage(800f, 184f)
+        fun targetOf(id: String) = previewTargetH(attackById(id)!!, stage, unit = 2f)
+        // Every killer's light marks, and its first heavy and special, are drawn on the whole target.
+        for (pet in PetId.entries) {
+            val id = pet.name.lowercase()
+            for (attack in listOf("${id}_light_1", "${id}_light_2", "${id}_light_3", "${id}_heavy_1", "${id}_special_1")) {
+                assertEquals(attack, stage.targetH, targetOf(attack), 0.01f)
+            }
+        }
+        // Longer cuts take a little less, so their glow stays inside...
+        assertTrue(targetOf("jason_special_2") in stage.targetH * 0.8f..stage.targetH)
+        // ...and Michael's long diagonals take less again, but not a tiny target.
+        val shape = targetOf("michael_special_2")
+        assertTrue(shape < targetOf("jason_special_2") && shape > stage.targetH * 0.6f)
+        // A plain hit leaves no marks: its spot gets the whole target.
+        assertEquals(stage.targetH, targetOf("michael_light_0"), 0f)
     }
 }

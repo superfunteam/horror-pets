@@ -69,6 +69,19 @@ internal enum class Standing { EQUIPPED, READY, LOCKED }
 /** Whether [a] is still locked for [pet]: its level has not reached [a]'s. A starting attack never is. */
 internal fun isLocked(pet: PetState, a: Attack): Boolean = a.level > pet.level
 
+/**
+ * The gold title over the MOVES card for [browsed], with [equipped] in its slot: EQUIPPED LIGHT for the one in it,
+ * LIGHT · LOCKED for a [locked] one (nothing to weigh it against yet), else LIGHT · AGAINST what is equipped.
+ */
+internal fun movesCardTitle(browsed: Attack, equipped: Attack, locked: Boolean): String {
+    val slot = browsed.slot.label.uppercase()
+    return when {
+        browsed == equipped -> "EQUIPPED $slot"
+        locked -> "$slot · LOCKED"
+        else -> "$slot · AGAINST ${equipped.name.uppercase()}"
+    }
+}
+
 /** [a]'s standing for [pet]: in its slot now, unlocked and ready to equip, or still locked by level. */
 internal fun standingOf(pet: PetState, a: Attack): Standing = when {
     kitOf(pet).of(a.slot) == a -> Standing.EQUIPPED
@@ -134,14 +147,15 @@ fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, o
                 }
                 val browsed = attacksOf(pet.id, looking)[shown[looking] ?: 0]
                 val equipped = kit.of(looking)
+                val locked = isLocked(pet, browsed)
                 AttackCard(
                     browsed,
                     vs = equipped.takeIf { it != browsed },
-                    title = if (browsed == equipped) "EQUIPPED ${looking.label.uppercase()}" else "${looking.label.uppercase()} · AGAINST ${equipped.name.uppercase()}",
+                    title = movesCardTitle(browsed, equipped, locked),
                     loader = loader,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     lit = browsed == equipped,
-                    locked = isLocked(pet, browsed),
+                    locked = locked,
                 )
             }
             Spacer(Modifier.height(8.dp))
