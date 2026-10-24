@@ -17,7 +17,8 @@ better", and dropped the craving box).
 - FEED opens **the pantry**: its own full screen with its own art (a horror kitchen), like training has the film reel.
 - Cook by combining two things at a time, Elements-style, through three tiers: ingredients → snacks → meals.
 - Ways to cook (Grill, Campfire, Pot, Cauldron, Sun) are ingredients like any other, used up when used.
-- Wrong combinations fail: a pile of slop, or a specific named disaster. A failed dish is a dead end.
+- Wrong combinations fail: a pile of slop, or a specific named disaster. A failed dish is a dead end: it cooks into
+  nothing but more slop (two of them squash into one, since 0.8.0).
 - Some successful dishes are gross on purpose (a grilled foot). Successful doesn't always mean delicious.
 - Each killer has a taste and one secret favorite, learned only by feeding. Better food pays more; the favorite pays
   the most.

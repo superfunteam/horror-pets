@@ -1019,7 +1019,7 @@ class GameViewModelTest {
         assertEquals(0L, visit.refusedCook)
         assertEquals(0L, visit.tooFull)
         // An empty pantry starts with a handful, the cooks and foods every visit needs.
-        assertEquals(Tuning.PANTRY_START_METHODS + Tuning.PANTRY_START_FOODS, rig.shelf.size)
+        assertEquals(Tuning.PANTRY_PAIRS + Tuning.PANTRY_START_FOODS, rig.shelf.size)
         assertTrue(rig.shelf.count { it.raw } >= Tuning.PANTRY_MIN_RAW)
         assertEquals(before, rig.jason)
         assertFalse("opening the pantry is not an action", rig.ui.busy)

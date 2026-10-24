@@ -497,9 +497,10 @@ class FeedingTest {
 
     @Test
     fun aFullShelfOfBotchesThrowsOutItsOldestToMakeRoom() {
-        // Slop can't be cooked or thrown away, only eaten one a visit: a shelf full of it would get nothing new for
-        // days. It makes room for the top-up's minimums (a way to cook, two foods, four raw: 4 places here) by
-        // throwing out its oldest botches, the ones at the front, and no more than that.
+        // Slop only cooks into more slop and can't be thrown away, only eaten one a visit or squashed two into one: a
+        // shelf full of it would get nothing new for days. It makes room for the top-up's two cookable pairs (4
+        // places here, which meet every minimum too) by throwing out its oldest botches, the ones at the front, and no
+        // more than that.
         val full = botches(Tuning.PANTRY_MAX)
         for (seed in 0 until 500) {
             val topped = topUp(full, Random(seed))

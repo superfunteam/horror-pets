@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.game.pantry
 
+import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.Flavor
 import team.superfun.horrorpets.model.ItemKind
 import team.superfun.horrorpets.model.PantryItem
@@ -140,7 +141,7 @@ val RAW_RECIPES: List<Set<PantryItem>> =
  * and the cookbook has 41 such recipes, so it is cheap). Each pair is its recipe's inputs; which pairs come back, when
  * there is a choice, is the first way in the cookbook's order. Cooked dishes and botches are never in a pair.
  */
-fun cookablePairs(shelf: List<PantryItem>, most: Int = 2): List<Set<PantryItem>> {
+fun cookablePairs(shelf: List<PantryItem>, most: Int = Tuning.PANTRY_PAIRS): List<Set<PantryItem>> {
     val left = shelf.filter { it.raw }.groupingBy { it }.eachCount().toMutableMap()
     // The most pairs (up to [want]) from the recipes at [from] on, with what is [left]; a recipe may come up again,
     // on two more copies of its items.

@@ -152,12 +152,12 @@ class ShelfFocusTest {
         assertEquals("EGG", labelText("Egg"))
         assertEquals(emptySet<Int>(), labelBreaks(labelText("Egg")))
         val strawberry = labelText("Not-Strawberry Milk")
-        assertEquals("NOT-​STRAWBERRY MILK", strawberry)
+        assertEquals("NOT-\u200BSTRAWBERRY MILK", strawberry)
         // After "NOT-" and its zero-width space (5), and after "STRAWBERRY " (16).
         assertEquals(setOf(5, 16), labelBreaks(strawberry))
         assertEquals(setOf(5, 13, 18), labelBreaks(labelText("Camp Crystal Fish Fry")))
         // A label reads as its name in capitals: the breaks show nothing.
-        for (item in PantryItem.entries) assertEquals(item.title.uppercase(), labelText(item.title).replace("​", ""))
+        for (item in PantryItem.entries) assertEquals(item.title.uppercase(), labelText(item.title).replace("\u200B", ""))
     }
 
     /**
