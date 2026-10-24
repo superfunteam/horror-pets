@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -29,8 +30,17 @@ import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 
-/** How long a special's effect runs over its target. */
+/** How long a special's effect runs over its target (Jaws's tank flies first: see [specialMs]). */
 const val SPECIAL_MS = 950
+
+/**
+ * How long [style]'s effect runs, from the swing's impact: [SPECIAL_MS], or for the Oxygen Tank its flight and its
+ * blast ([TANK_FLIGHT_MS] + [TANK_BLAST_MS]).
+ */
+internal fun specialMs(style: SpecialStyle): Int = when (style) {
+    SpecialStyle.OXYGEN_TANK -> TANK_FLIGHT_MS + TANK_BLAST_MS
+    else -> SPECIAL_MS
+}
 
 /**
  * The Shape's slash, as fractions of [SPECIAL_MS]: it starts at [SHAPE_SLASH_START] (once the dark has closed
@@ -42,11 +52,13 @@ internal const val SHAPE_SLASH_CUT = 0.24f
 
 /**
  * How far into its effect a special's blow lands: its sound, damage number, hit flash and HP drain wait this
- * long after the impact. The Shape's lands as its slash cuts through (about 550 ms in); every other special's
- * effect is the blow itself and lands at the impact (0).
+ * long after the impact. The Shape's lands as its slash cuts through (about 550 ms in), and the Oxygen Tank's as the
+ * tank lands and blows up ([TANK_FLIGHT_MS], where `special_jaws` explodes); every other special's effect is the blow
+ * itself and lands at the impact (0).
  */
 internal fun specialLandsAtMs(style: SpecialStyle): Long = when (style) {
     SpecialStyle.THE_SHAPE -> ((SHAPE_SLASH_START + SHAPE_SLASH_LIFE * SHAPE_SLASH_CUT) * SPECIAL_MS).toLong()
+    SpecialStyle.OXYGEN_TANK -> TANK_FLIGHT_MS.toLong()
     else -> 0L
 }
 
@@ -65,10 +77,19 @@ const val SHIELD_MS = 480
 /**
  * One special's effect: the attacker's signature [style], over a target whose body is centred on ([cx], [cy])
  * pixels and whose sprite cell is drawn [bodyH] pixels tall (its display scale included, so a half-height
- * Chucky gets an effect his size). A new instance is a new showing.
+ * Chucky gets an effect his size). A special that throws something throws it from ([fromX], [fromY]) (Jaws's mouth),
+ * sized by the thrower's cell as drawn, [throwerH]. A new instance is a new showing.
  */
 @Immutable
-internal class SpecialFx(val style: SpecialStyle, val cx: Float, val cy: Float, val bodyH: Float)
+internal class SpecialFx(
+    val style: SpecialStyle,
+    val cx: Float,
+    val cy: Float,
+    val bodyH: Float,
+    val fromX: Float = cx,
+    val fromY: Float = cy,
+    val throwerH: Float = bodyH,
+)
 
 private val DreamGreen = Color(0xFF63F25A)
 private val DreamPale = Color(0xFFE6FFD9)
@@ -79,7 +100,7 @@ private val VoodooGreen = Color(0xFF59FF8C)
 private val VoodooPale = Color(0xFFF1E6FF)
 
 /**
- * The special effects layer, over the fighters. [progress] runs 0..1 over [SPECIAL_MS] and is only read
+ * The special effects layer, over the fighters. [progress] runs 0..1 over the effect's [specialMs] and is only read
  * while drawing; at 0 or 1 the layer draws nothing, so it costs nothing between specials.
  * - Jason, Machete Frenzy: four red slashes cut diagonally across the target, one after another.
  * - Freddy, Dream Claws: green dream-warp ripples spread from the target while two rakes of four claw
@@ -93,13 +114,14 @@ private val VoodooPale = Color(0xFFF1E6FF)
  * - Leatherface, Saw Dance: three white-hot chainsaw blades whirl around the target on two tilted orbits,
  *   trailing orange arcs (dimmer where they pass behind it) and biting as they sweep across its front,
  *   while a shower of orange-yellow sparks flies off the blades and falls.
- * - Jaws, Oxygen Tank: TEMPORARY, a generic blast (a white flash, a swelling fireball and a ring) until his own
- *   tank-and-explosion effect is drawn.
- * Everything is lines, arcs, circles and ovals placed by [hash01], with brushes and strokes built once
+ * - Jaws, Oxygen Tank: a silver scuba tank ([tank], his one picture) lobs spinning from his mouth onto the target and
+ *   blows up as his sound explodes: a fireball that swells and rolls up into smoke, a shock ring, debris and sparks
+ *   (see [oxygenTank]; the fight screen adds the white flash and the shake, see [specialJolt]).
+ * Everything else is lines, arcs, circles and ovals placed by [hash01], with brushes and strokes built once
  * per showing, so a frame allocates nothing.
  */
 @Composable
-internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
+internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float, tank: ImageBitmap? = null) {
     Spacer(
         Modifier
             .fillMaxSize()
@@ -127,7 +149,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                 val voodoo = VoodooKit(unit, fx)
                 val shape = ShapeKit(w, h, fx)
                 val saw = SawKit(fx)
-                val blastRing = Stroke(6f * unit)
+                val tankKit = if (fx?.style == SpecialStyle.OXYGEN_TANK) TankKit() else null
                 onDrawBehind {
                     val p = progress()
                     if (p <= 0f || p >= 1f) return@onDrawBehind
@@ -140,7 +162,7 @@ internal fun SpecialVfx(fx: SpecialFx?, progress: () -> Float) {
                         SpecialStyle.VOODOO_STAB -> voodooStab(f, p, unit, voodoo)
                         SpecialStyle.THE_SHAPE -> theShape(f, p, unit, shape)
                         SpecialStyle.SAW_DANCE -> sawDance(f, p, unit, saw)
-                        SpecialStyle.OXYGEN_TANK -> genericBlast(f, p, blastRing)
+                        SpecialStyle.OXYGEN_TANK -> if (tankKit != null) oxygenTank(f, tankMsAt(p), unit, tankKit, tank)
                     }
                 }
             },
@@ -681,22 +703,4 @@ private fun DrawScope.sawDance(f: SpecialFx, p: Float, unit: Float, kit: SawKit)
         drawLine(color, Offset(tx, ty), Offset(hx, hy), strokeWidth = (2.5f + 2f * (1f - age)) * unit, cap = StrokeCap.Round, alpha = alpha)
         if (age < 0.4f) drawCircle(SawHot, 3f * unit, Offset(hx, hy), alpha = alpha)
     }
-}
-
-private val BlastFire = Color(0xFFFF8A1F)
-private val BlastCore = Color(0xFFFFE08A)
-
-/**
- * TEMPORARY: a generic blast over the target, standing in for Jaws's Oxygen Tank until its own effect (the tank's
- * arc and the explosion) replaces it. A white flash, a fireball that swells and fades, and a white [ring] flaring out.
- */
-private fun DrawScope.genericBlast(f: SpecialFx, p: Float, ring: Stroke) {
-    val center = Offset(f.cx, f.cy)
-    if (p < 0.18f) drawRect(Color.White, alpha = 0.35f * (1f - p / 0.18f))
-    val swell = easeOut((p / 0.45f).coerceAtMost(1f))
-    val fade = if (p < 0.5f) 1f else 1f - (p - 0.5f) / 0.5f
-    drawCircle(BlastFire, radius = f.bodyH * (0.15f + 0.4f * swell), center = center, alpha = 0.55f * fade)
-    drawCircle(BlastCore, radius = f.bodyH * (0.08f + 0.22f * swell), center = center, alpha = 0.85f * fade)
-    val flare = (p / 0.6f).coerceIn(0f, 1f)
-    if (flare < 1f) drawCircle(Color.White, radius = f.bodyH * (0.2f + 0.6f * flare), center = center, alpha = 1f - flare, style = ring)
 }

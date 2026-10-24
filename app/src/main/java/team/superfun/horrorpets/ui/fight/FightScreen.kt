@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -82,6 +83,7 @@ import team.superfun.horrorpets.fight.attackFor
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.SpecialEffect
+import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.PetAnimRequest
 import team.superfun.horrorpets.ui.Screen
@@ -106,14 +108,21 @@ import team.superfun.horrorpets.ui.theme.TextHi
 private const val FIGHTER_HEIGHT = 0.38f
 
 /**
- * Where the fighters stand. Neither is mirrored: the attack sprites face the camera. On a narrow screen the
- * player stands a little further in, clear of the command window (see [playerHomeFraction]).
+ * Where the fighters stand. The killers' sprites face the camera and are drawn as they are, but Jaws, side-on, is
+ * turned to face the other fighter (see [mirroredInFight]). On a narrow screen the player stands a little further
+ * in, clear of the command window (see [playerHomeFraction]).
  */
 private const val PLAYER_X = 0.30f
 private const val CPU_X = 0.70f
 
 /** How far the widest idle pose reaches out from a fighter's centre, in dp: Leatherface's saw (Jason's machete is 56). */
 private const val FIGHTER_REACH_DP = 60f
+
+/** Jaws, side-on, reaches further, nose or tail: 180 px either side of his anchor in his 416 px cell. */
+private const val JAWS_REACH_DP = 180f / 416f * 540f * FIGHTER_HEIGHT
+
+/** How far [pet]'s idle reaches out from its centre, in dp (see [playerHomeFraction]). */
+internal fun fighterReachDp(pet: PetId): Float = if (pet == PetId.JAWS) JAWS_REACH_DP else FIGHTER_REACH_DP
 
 /** The gap kept between the command window and the player's widest pose, in dp. */
 private const val MENU_CLEARANCE_DP = 10f
@@ -191,9 +200,18 @@ internal fun arenaScene(loader: AssetLoader, opponent: PetId, roll: Int): SceneS
     return scenes[roll.mod(scenes.size)]
 }
 
-/** Whether [pet] performs its special with its DANCE: [dancesSpecial] for its special and its sprites. */
-private fun petDancesSpecial(loader: AssetLoader, pet: PetId): Boolean =
-    dancesSpecial(pet.spec.special, loader.manifest(pet).has(Anim.DANCE))
+/** How [pet]'s sprites stage it in a fight: its display scale, whether it dances its special, and what it ships. */
+private fun fighterLook(loader: AssetLoader, pet: PetId): FighterLook {
+    val manifest = loader.manifest(pet)
+    return FighterLook(
+        body = manifest.bodyScale,
+        dancesSpecial = dancesSpecial(pet.spec.special, manifest.has(Anim.DANCE)),
+        ships = Anim.entries.filterTo(mutableSetOf()) { manifest.has(it) },
+    )
+}
+
+/** Whether either fighter's special throws the oxygen tank, so the fight needs its picture. */
+private fun throwsTank(vararg pets: PetId): Boolean = pets.any { it.spec.special == SpecialStyle.OXYGEN_TANK }
 
 /**
  * Decodes the strips a fight between [player] and [cpu] starts with. Blocking: call it off the main thread.
@@ -206,25 +224,27 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
 
 /**
  * The turn-based fight in the opponent's [arena][arenaScene]: the player's pet at 30% of the width (a little
- * more on a narrow screen, see [playerHomeFraction]), the CPU's at 70%, both cells 38% of the height and
- * neither mirrored; Street-Fighter HP bars, names and special meters along the top; the moves in an RPG
- * command window down the left (`STRIKE HEAVY BLOCK [SPECIAL] | RUN`, see [CommandWindow]) with the
- * move's explanation in a help window under it. While the player picks, the CPU's tell for the coming turn
+ * more on a narrow screen, see [playerHomeFraction]), the CPU's at 70%, both cells 38% of the height, and only
+ * Jaws, side-on, mirrored to face the other ([mirroredInFight]); Street-Fighter HP bars, names and special meters
+ * along the top; the moves in an RPG command window down the left (`STRIKE HEAVY BLOCK [SPECIAL] | RUN`, see
+ * [CommandWindow]) with the move's explanation in a help window under it. While the player picks, the CPU's tell for the coming turn
  * (`fight.cpuPlan`) sits in a thought bubble over its head ([TellBubble]).
  *
  * **A turn.** When the view model resolves a move it hands over the turn's [Screen.Fight.lastEvents] and
  * a marker [PetAnimRequest]. This screen plays the turn out and then reports the marker finished, exactly
  * once, with [onAnimFinished] (the view model ignores moves until then):
  * 1. Both chosen moves pop up over the fighters (600ms), with FEINT! over the CPU when its tell lied.
- * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK, or its
- *    DANCE for a danced special, see [swingAnim]) and hops back. At the impact the defender flashes white
+ * 2. Each event in order (see [beatsOf]): the attacker runs 12% of the width in, swings (ATTACK, its DANCE for a
+ *    danced special, or the attack's own animation, as Jaws's Barrel Breach and Ultra Thrash have: see [swingAnim])
+ *    and hops back. At the impact the defender flashes white
  *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
  *    with CRITICAL! and a screen shake, a HEAVY flashes the screen, a SPECIAL darkens the arena and plays its
  *    pet's effect ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
  *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]), and now and
  *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); a special
- *    whose blow comes later in its effect (The Shape's slash) lands its sound, number and drain then (see
- *    [specialLandsAtMs]).
+ *    whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
+ *    then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast flashes the screen white
+ *    and shakes it hard ([specialJolt]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
  *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
  *    Otherwise the bars settle on the real values and the command window comes back, the cursor on the last move.
@@ -269,8 +289,8 @@ fun FightScreen(
         FightStage(
             screen,
             turnPending = petAnim != null,
-            playerLook = FighterLook(loader.manifest(playerId).bodyScale, petDancesSpecial(loader, playerId)),
-            cpuLook = FighterLook(loader.manifest(cpuId).bodyScale, petDancesSpecial(loader, cpuId)),
+            playerLook = fighterLook(loader, playerId),
+            cpuLook = fighterLook(loader, cpuId),
         )
     }
     val finished by rememberUpdatedState(onAnimFinished)
@@ -318,8 +338,11 @@ fun FightScreen(
     }
     RequestFocusOnEntry(requesters.getValue(Move.STRIKE), focusEntry)
 
+    // Jaws's oxygen tank, decoded off the main thread only for a fight he is in (it is ready long before a special).
+    var tankImage by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(loader, playerId, cpuId) {
         withContext(Dispatchers.IO) { warmFightStrips(loader, playerId, cpuId) }
+        if (throwsTank(playerId, cpuId)) tankImage = withContext(Dispatchers.IO) { loader.prop(TANK_ART) }
     }
     // Asked to run: decode the run-off (the player's run left, the CPU's goodbye wave) while it decides.
     LaunchedEffect(askRun) {
@@ -392,7 +415,7 @@ fun FightScreen(
         val insetPx = with(density) { safe.horizontal.toPx() }
         // Read below as the fighters, their effects and their callouts are placed; it only follows the screen's
         // size, so writing it here gives every reader this layout's value.
-        stage.playerHome = playerHomeFraction(maxWidth.value, safe.horizontal.value + CommandWindowWidth.value)
+        stage.playerHome = playerHomeFraction(maxWidth.value, safe.horizontal.value + CommandWindowWidth.value, fighterReachDp(playerId))
         SideEffect {
             stage.width = w
             stage.height = h
@@ -441,7 +464,7 @@ fun FightScreen(
                         )
                     }
                 }
-                SpecialVfx(stage.special, progress = { stage.specialT.value })
+                SpecialVfx(stage.special, progress = { stage.specialT.value }, tank = tankImage)
                 // Learned attacks' marks on whoever they land on.
                 for (m in stage.markings) key(m) { AttackMarks(m.fx, progress = { m.t.value }) }
                 PotionLayer(stage.toss, potionImage, sizePx = cellH * POTION_SIZE)
@@ -600,11 +623,11 @@ fun FightScreen(
 
 /**
  * Where the player stands, as a fraction of a screen [widthDp] wide: [PLAYER_X], or as far in as it takes for
- * its widest pose to clear the command window, whose right edge is [menuRightDp] from the left (on a 4:3
- * screen, about 0.32).
+ * its widest pose, [reachDp] from its centre (see [fighterReachDp]), to clear the command window, whose right edge is
+ * [menuRightDp] from the left (on a 4:3 screen, about 0.32; for Jaws, whose tail reaches back at it, about 0.36).
  */
-internal fun playerHomeFraction(widthDp: Float, menuRightDp: Float): Float =
-    max(PLAYER_X, (menuRightDp + MENU_CLEARANCE_DP + FIGHTER_REACH_DP) / widthDp)
+internal fun playerHomeFraction(widthDp: Float, menuRightDp: Float, reachDp: Float = FIGHTER_REACH_DP): Float =
+    max(PLAYER_X, (menuRightDp + MENU_CLEARANCE_DP + reachDp) / widthDp)
 
 /**
  * The turn the badge shows: the one being played while a turn is on, or the last one played once the
@@ -677,6 +700,9 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     /** Whether it performs its special with its DANCE (see [swingAnim]). */
     val dancesSpecial = look.dancesSpecial
 
+    /** The animations its sprites ship (Jaws's include his thrash and barrels). */
+    private val ships = look.ships
+
     /** The attacks it fights with (see [Fighter.kit]): what its callouts name, its marks and its meter fills. */
     val kit = start.kit
 
@@ -685,6 +711,12 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
 
     var pose by mutableStateOf(Pose(Anim.IDLE))
         private set
+
+    /**
+     * The animation on screen: a new [pose] comes up once its strip is decoded, and until then the last one stays.
+     * Its facing follows this, so a sprite never turns round before its new strip is up (see [mirroredInFight]).
+     */
+    var shownAnim by mutableStateOf(Anim.IDLE)
     val step = Animatable(0f)
     val hop = Animatable(0f)
     val alpha = Animatable(1f)
@@ -721,6 +753,9 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
         pose.ended.complete(Unit)
         return Pose(anim).also { pose = it }
     }
+
+    /** What it swings to deliver [event]: see [swingAnim] and [ownSwingAnim]. */
+    fun swingFor(event: FightEvent): Anim = swingAnim(event, dancesSpecial, ownSwingAnim(event, kit, ships::contains))
 
     /** Plays [anim] once and returns when it ends, or after [timeoutMs] if it never reports. */
     suspend fun play(anim: Anim, timeoutMs: Long) {
@@ -762,7 +797,10 @@ private fun FighterView(
         shadowOpacity = shadowOpacity,
         loopOffsetMs = if (rig.side == Side.CPU) 380L else 0L,
         playKey = pose,
-        onStarted = { pose.started.complete(Unit) },
+        onStarted = {
+            rig.shownAnim = pose.anim
+            pose.started.complete(Unit)
+        },
         onFinished = { pose.ended.complete(Unit) },
         modifier = Modifier
             .zIndex(if (front) 1f else 0f)
@@ -772,15 +810,20 @@ private fun FighterView(
                 if (k > 0f) translationX = (hash01((k * 50f).toInt(), 7 + rig.side.ordinal) - 0.5f) * 2f * jitterPx * k
                 translationY = rig.hop.value
                 alpha = rig.alpha.value
+                // Turned about its feet (the middle of its box). Nothing clips: the rows under the feet still draw.
+                scaleX = if (mirroredInFight(rig.pet, rig.side, rig.shownAnim)) -1f else 1f
             },
     )
 }
 
 // ---- the stage and the turn playback ----
 
-/** What a fighter's sprites say about how it is staged: its display [body] scale and whether it [dancesSpecial]. */
+/**
+ * What a fighter's sprites say about how it is staged: its display [body] scale, whether it [dancesSpecial], and the
+ * animations it [ships] (the optional ones decide what an attack that names its own swings with).
+ */
 @Immutable
-private class FighterLook(val body: Float, val dancesSpecial: Boolean)
+private class FighterLook(val body: Float, val dancesSpecial: Boolean, val ships: Set<Anim>)
 
 /** Everything the turn playback animates, remembered for the life of one fight screen. */
 @Stable
@@ -861,9 +904,23 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     /** The middle of [side]'s body as drawn (a half-height Chucky's is lower). */
     fun bodyCenter(side: Side): Offset = Offset(homeX(side), floor - cellH * rig(side).body * BODY_AT)
 
-    fun specialOn(pet: PetId, target: Side): SpecialFx {
-        val c = bodyCenter(target)
-        return SpecialFx(pet.spec.special, c.x, c.y, cellH * rig(target).body)
+    /**
+     * [a]'s special on the other fighter, as [a] stands now (stepped in): anything it throws (Jaws's tank) leaves
+     * from its mouth.
+     */
+    fun specialOn(a: FighterRig): SpecialFx {
+        val c = bodyCenter(a.side.other())
+        val thrower = cellH * a.body
+        val feetX = homeX(a.side) + a.dir * a.step.value * width
+        return SpecialFx(
+            style = a.pet.spec.special,
+            cx = c.x,
+            cy = c.y,
+            bodyH = cellH * rig(a.side.other()).body,
+            fromX = tankMouthX(feetX, thrower, a.dir),
+            fromY = tankMouthY(floor, thrower),
+            throwerH = thrower,
+        )
     }
 
     /** How much a sprite of [rig] playing [anim] may take before the turn stops waiting for it. */
@@ -882,7 +939,7 @@ private fun FightStage.turnStrips(turn: Screen.Fight): List<Pair<PetId, Anim>> =
         if (beat !is Beat.Lunge) continue
         val r = rig(beat.attacker)
         add(r.pet to (if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT))
-        add(r.pet to swingAnim(beat.event, r.dancesSpecial))
+        add(r.pet to r.swingFor(beat.event))
     }
     val winner = fight.winner
     when {
@@ -1056,7 +1113,7 @@ private suspend fun FightStage.lunge(
     a.show(if (beat.attacker == Side.PLAYER) Anim.RUN_RIGHT else Anim.RUN_LEFT)
     a.step.animateTo(STEP, tween(STEP_IN_MS, easing = FastOutSlowInEasing))
 
-    val swingAnim = swingAnim(event, a.dancesSpecial)
+    val swingAnim = a.swingFor(event)
     val swingSpec = loader.manifest(a.pet).spec(swingAnim)
     val impact = swingImpactMs(swingAnim, swingSpec)
     val swingPose = a.show(swingAnim)
@@ -1107,13 +1164,13 @@ private fun FightStage.impactOf(
     val landMs = if (isSpecial) specialLandsAtMs(a.pet.spec.special) else 0L
     val soundMs = if (specialHit != null && isSpecial) specialSoundAtMs(landMs, a.pet.spec.specialHitMs, specialHit.crit) else 0L
     val sound = sounds.of(event)
-    if (soundMs == 0L) {
-        play(sound)
+    // The announcer reacts to the blow itself, which for a late-landing special comes after its clip has started.
+    val voiceMs = if (sound.voice.isEmpty()) soundMs else landMs
+    if (voiceMs == soundMs) {
+        at(scope, soundMs) { play(sound) }
     } else {
-        scope.launch {
-            delay(soundMs)
-            play(sound)
-        }
+        at(scope, soundMs) { play(FightSounds(sound.sfx, emptyList())) }
+        at(scope, voiceMs) { play(FightSounds(emptyList(), sound.voice)) }
     }
     // An interrupt is the defender's: say it on the defender's number rather than over it.
     val interrupted = riders.any { it is Beat.Interrupt && it.side == d.side }
@@ -1155,7 +1212,16 @@ private fun FightStage.impactOf(
                 }
                 if (event.shattered > 0) shatter(scope, d, event.shattered)
                 if (attack != null) mark(scope, a, d, attack)
+                val jolt = if (isSpecial) specialJolt(a.pet.spec.special) else null
                 when {
+                    // The tank's blast: the whole screen flashes white and shakes its hardest.
+                    jolt != null -> {
+                        flash(scope, Color.White, jolt.flashAlpha, jolt.flashMs)
+                        scope.launch {
+                            shake.snapTo(1f)
+                            shake.animateTo(0f, tween(jolt.shakeMs, easing = LinearEasing))
+                        }
+                    }
                     event.crit -> scope.launch {
                         shake.snapTo(1f)
                         shake.animateTo(0f, tween(SHAKE_MS, easing = LinearEasing))
@@ -1173,10 +1239,11 @@ private fun FightStage.impactOf(
             }
             if (event.move != Move.SPECIAL) charge(scope, a, if (event.counter) FightTuning.METER_PER_HIT else attack?.meterGain ?: FightTuning.METER_PER_HIT)
             if (event.move == Move.SPECIAL) {
-                special = specialOn(a.pet, d.side)
+                val fx = specialOn(a)
+                special = fx
                 effect = scope.launch {
                     specialT.snapTo(0f)
-                    specialT.animateTo(1f, tween(SPECIAL_MS, easing = LinearEasing))
+                    specialT.animateTo(1f, tween(specialMs(fx.style), easing = LinearEasing))
                     special = null
                     specialT.snapTo(0f)
                     darken.animateTo(0f, tween(260))
@@ -1229,6 +1296,18 @@ private fun FightStage.impactOf(
         heal(scope, a, r.amount)
     }
     return effect
+}
+
+/** Runs [block] now if [ms] is 0 (in this frame, as the blow lands), else [ms] later. */
+private inline fun at(scope: CoroutineScope, ms: Long, crossinline block: () -> Unit) {
+    if (ms == 0L) {
+        block()
+    } else {
+        scope.launch {
+            delay(ms)
+            block()
+        }
+    }
 }
 
 /** A drain's +HP follows its special's blow by this much, so the two numbers read one after the other. */

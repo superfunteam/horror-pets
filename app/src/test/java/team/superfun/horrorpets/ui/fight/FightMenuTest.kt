@@ -92,4 +92,19 @@ class PlayerHomeTest {
         // Leatherface's saw, the widest idle pose (59dp), still clears the window by 10dp.
         assertTrue(home * 720f - 59f >= menuRight + 10f)
     }
+
+    @Test
+    fun jawsSideOnStandsFurtherInSoHisTailClearsTheWindow() {
+        // Turned to face right, his tail reaches back toward the window: 180 px of his 416 px cell, 205 dp tall.
+        val reach = fighterReachDp(PetId.JAWS)
+        assertEquals(180f / 416f * 540f * 0.38f, reach, 1f)
+        val menuRight = 36f + window
+        val home = playerHomeFraction(720f, menuRight, reach)
+        assertTrue(home * 720f - reach >= menuRight + 10f - 1e-3f)
+        assertTrue(home > playerHomeFraction(720f, menuRight))
+        // On a widescreen he still stands at 30%, like everyone.
+        assertEquals(0.30f, playerHomeFraction(960f, 48f + window, reach), 1e-4f)
+        // Everyone else keeps the usual reach.
+        for (pet in PetId.entries - PetId.JAWS) assertEquals("$pet", fighterReachDp(PetId.JASON), fighterReachDp(pet), 0f)
+    }
 }

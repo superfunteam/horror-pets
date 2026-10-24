@@ -10,6 +10,8 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.attackFor
 import team.superfun.horrorpets.fight.other
+import team.superfun.horrorpets.model.Kit
+import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.SpecialStyle
 
 /** One step of a fight turn's playback, in the order the fight screen plays them. */
@@ -130,17 +132,36 @@ internal const val AFTER_IMPACT_MS = 420L
 internal fun dancesSpecial(style: SpecialStyle, hasDance: Boolean): Boolean = style.danced && hasDance
 
 /**
- * What an attacker plays for the swing that delivers [event]: its DANCE for a special it dances
- * ([dancesSpecial]: its special is `danced` and its sprites ship a dance, as Leatherface's Saw Dance does),
- * otherwise ATTACK.
+ * What an attacker plays for the swing that delivers [event]: the attack's [own] animation if it has one (see
+ * [ownSwingAnim]: Jaws's Barrel Breach plays his barrels), else its DANCE for a special it dances ([dancesSpecial]:
+ * its special is `danced` and its sprites ship a dance, as Leatherface's Saw Dance does), otherwise ATTACK.
  */
-internal fun swingAnim(event: FightEvent, dancesSpecial: Boolean): Anim =
-    if (dancesSpecial && event is FightEvent.Hit && event.move == Move.SPECIAL) Anim.DANCE else Anim.ATTACK
+internal fun swingAnim(event: FightEvent, dancesSpecial: Boolean, own: Anim? = null): Anim = when {
+    own != null -> own
+    dancesSpecial && event is FightEvent.Hit && event.move == Move.SPECIAL -> Anim.DANCE
+    else -> Anim.ATTACK
+}
 
 /**
- * When a [swing] played from [spec] lands, in ms from its first frame. An ATTACK lands on its snap frame
- * (see [impactMs]). A DANCE has no snap: it lands at the start of the frame on screen a third of the way
- * through, once the wind-up is done (Leatherface's saw is overhead).
+ * The animation the attack behind [event]'s swing names for itself ([Attack.anim][team.superfun.horrorpets.model.Attack.anim]),
+ * for an attacker with [kit] whose sprites ship what [ships] says: null for the usual swing. That is the attack
+ * of the move it hit or missed with, or the STRIKE that hit a shield; a counter is a plain swing back, and so is an
+ * attack that names no animation, or one its sprites don't ship (a manifest without it never asks for a missing strip).
+ */
+internal fun ownSwingAnim(event: FightEvent, kit: Kit, ships: (Anim) -> Boolean): Anim? {
+    val attack = when (event) {
+        is FightEvent.Hit -> if (event.counter) null else kit.attackFor(event.move)
+        is FightEvent.Miss -> kit.attackFor(event.move)
+        is FightEvent.Blocked -> kit.attackFor(Move.STRIKE)
+        else -> null
+    }
+    return attack?.anim?.let(Anim::fromKey)?.takeIf(ships)
+}
+
+/**
+ * When a [swing] played from [spec] lands, in ms from its first frame. An ATTACK, and a move's own animation (Jaws's
+ * thrash and barrels), lands on its snap frame (see [impactMs]). A DANCE has no snap: it lands at the start of the
+ * frame on screen a third of the way through, once the wind-up is done (Leatherface's saw is overhead).
  */
 internal fun swingImpactMs(swing: Anim, spec: AnimSpec): Long {
     if (swing != Anim.DANCE) return impactMs(spec)
@@ -156,13 +177,31 @@ internal fun swingImpactMs(swing: Anim, spec: AnimSpec): Long {
 
 /**
  * How long the attacker keeps swinging after the [impact] before it hops back: [AFTER_IMPACT_MS] for an
- * ATTACK, whose last frames only ease back to standing, and the rest of a DANCE (never less), which is
- * danced to its end.
+ * ATTACK, whose last frames only ease back to standing, and the rest of anything else (never less): a DANCE is
+ * danced to its end, and a move's own animation plays out (Jaws's barrels sink again rather than vanish half-sunk).
  */
 internal fun swingHoldMs(swing: Anim, spec: AnimSpec, impact: Long): Long {
-    if (swing != Anim.DANCE) return AFTER_IMPACT_MS
+    if (swing == Anim.ATTACK) return AFTER_IMPACT_MS
     val rest = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() } - impact
     return maxOf(AFTER_IMPACT_MS, rest)
+}
+
+/**
+ * Which way [pet]'s sprites face, its runs aside (every run faces the way it goes): -1 screen-left (Jaws, side-on),
+ * 0 the camera (everyone else).
+ */
+private fun spriteFacing(pet: PetId): Int = if (pet == PetId.JAWS) -1 else 0
+
+/**
+ * Whether [pet] is drawn mirrored on [side] while it shows [anim], so that it faces the other fighter: art that
+ * faces left turns round on the player's side (the left of the screen), art that faces right on the CPU's, and art
+ * that faces the camera never does. A run is never mirrored: it already faces the way it goes (in at the other
+ * fighter, or off the screen).
+ */
+internal fun mirroredInFight(pet: PetId, side: Side, anim: Anim): Boolean {
+    if (anim == Anim.RUN_LEFT || anim == Anim.RUN_RIGHT) return false
+    val facing = spriteFacing(pet)
+    return if (side == Side.PLAYER) facing < 0 else facing > 0
 }
 
 /** Where a side's HP bar and special meter stand, in hit points and meter points. */

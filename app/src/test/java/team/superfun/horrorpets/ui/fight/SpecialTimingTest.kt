@@ -26,9 +26,12 @@ class SpecialTimingTest {
         assertEquals(0L, specialSoundAtMs(300L, hitMs = 750L, crit = false))
     }
 
+    /** The specials whose blow lands later in their effect: The Shape's slash, Jaws's tank (see OxygenTankTest). */
+    private val lateLanders = setOf(SpecialStyle.THE_SHAPE, SpecialStyle.OXYGEN_TANK)
+
     @Test
     fun theOtherSpecialsSoundAtTheImpactAsBefore() {
-        for (style in SpecialStyle.entries - SpecialStyle.THE_SHAPE) {
+        for (style in SpecialStyle.entries - lateLanders) {
             val land = specialLandsAtMs(style)
             for (crit in listOf(false, true)) assertEquals("$style crit=$crit", 0L, specialSoundAtMs(land, 420L, crit))
         }
@@ -36,7 +39,7 @@ class SpecialTimingTest {
 
     @Test
     fun everyOtherSpecialLandsAtItsImpact() {
-        for (style in SpecialStyle.entries - SpecialStyle.THE_SHAPE) assertEquals("$style", 0L, specialLandsAtMs(style))
+        for (style in SpecialStyle.entries - lateLanders) assertEquals("$style", 0L, specialLandsAtMs(style))
     }
 
     @Test

@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -230,24 +231,42 @@ private fun DrawScope.drawMark(pet: PetId, a: Offset, b: Offset, cut: Float, alp
             }
             layered(path, alpha, width * 0.8f, ink)
         }
-        // A bite: two bowed rows of tooth punctures, an upper jaw and a lower one, closing on the line of the cut.
+        // A bite: an upper and a lower jaw of pointed tooth wounds, curved like a mouth, snapping shut as it cuts in.
+        // Each sits somewhere along its cut, so a few bites spread over the body rather than pile up in its middle.
+        // Blood red with a dark rim; the sea-blue is left to the spray and the flash.
         PetId.JAWS -> {
-            val teeth = 7
-            for (k in 0 until (teeth * cut).toInt().coerceAtLeast(1)) {
-                val t = (k + 0.5f) / teeth
-                val bow = sin(PI.toFloat() * t) * width * 2.2f
-                for (jaw in 0..1) {
-                    val side = if (jaw == 0) -1f else 1f
-                    val root = a + d * t + normal * (side * (width * 1.4f + bow))
-                    val tip = root - normal * (side * width * 1.3f)
-                    drawLine(ink.glow.copy(alpha = alpha * 0.5f), root, tip, strokeWidth = width * 1.3f, cap = StrokeCap.Round)
-                    drawLine(ink.body.copy(alpha = alpha), root, tip, strokeWidth = width * 0.8f, cap = StrokeCap.Round)
-                    drawLine(ink.core.copy(alpha = alpha), root, tip, strokeWidth = width * 0.3f, cap = StrokeCap.Round)
+            val span = d.getDistance()
+            val along = d / span.coerceAtLeast(1f)
+            val mid = a + d * (0.18f + 0.64f * hash01(seed, 13))
+            val half = span * 0.19f
+            val gap = span * 0.1f * (1f + 0.6f * (1f - cut))
+            val tooth = width * 1.15f
+            val tri = Path()
+            val rim = Stroke(width * 0.35f, join = StrokeJoin.Round)
+            for (jaw in 0..1) {
+                val side = if (jaw == 0) -1f else 1f
+                for (k in 0 until BITE_TEETH) {
+                    val t = (k + 0.5f) / BITE_TEETH * 2f - 1f
+                    val bow = 1f - t * t
+                    val root = mid + along * (half * t) + normal * (side * gap * (0.4f + 0.6f * bow))
+                    val tip = root - normal * (side * tooth * (0.65f + 0.35f * bow))
+                    val w = tooth * 0.26f
+                    tri.reset()
+                    tri.moveTo(root.x - along.x * w, root.y - along.y * w)
+                    tri.lineTo(root.x + along.x * w, root.y + along.y * w)
+                    tri.lineTo(tip.x, tip.y)
+                    tri.close()
+                    drawPath(tri, BiteRim.copy(alpha = alpha * 0.9f), style = rim)
+                    drawPath(tri, ink.body.copy(alpha = alpha))
                 }
             }
         }
     }
 }
+
+/** Teeth in each of a bite's jaws, and the dark rim round each wound. */
+private const val BITE_TEETH = 6
+private val BiteRim = Color(0xFF3A060B)
 
 /** [path] stroked three times: a wide soft glow, the body, a thin bright core. */
 private fun DrawScope.layered(path: Path, alpha: Float, width: Float, ink: MarkInk) {
