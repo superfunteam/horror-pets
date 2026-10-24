@@ -163,9 +163,14 @@ private const val CALLOUT_MS = 600
 
 /** The first beat starts while the callouts fade out. */
 private const val CALLOUT_LEAD_MS = 470L
-private const val STEP_IN_MS = 240
 
-private const val STEP_BACK_MS = 260
+/** An attacker runs in over this long, and hops back over [STEP_BACK_MS] (the MOVES card's preview too). */
+internal const val STEP_IN_MS = 240
+
+internal const val STEP_BACK_MS = 260
+
+/** How high an attacker hops on its way back, as a share of its cell as drawn. */
+internal const val HOP_BACK = 0.05f
 private const val FLASH_MS = 250
 private const val SHAKE_MS = 250
 private const val DRAIN_MS = 450
@@ -1139,7 +1144,7 @@ private suspend fun FightStage.lunge(
 
     return scope.launch {
         launch {
-            val up = -cellHeight() * a.body * 0.05f
+            val up = -cellHeight() * a.body * HOP_BACK
             a.hop.animateTo(up, tween(STEP_BACK_MS / 2, easing = FastOutSlowInEasing))
             a.hop.animateTo(0f, tween(STEP_BACK_MS / 2, easing = FastOutLinearInEasing))
         }

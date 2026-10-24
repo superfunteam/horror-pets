@@ -35,7 +35,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -67,19 +66,23 @@ import team.superfun.horrorpets.ui.theme.TextLo
 /** Where an attack stands for a pet on the MOVES screen. */
 internal enum class Standing { EQUIPPED, READY, LOCKED }
 
+/** Whether [a] is still locked for [pet]: its level has not reached [a]'s. A starting attack never is. */
+internal fun isLocked(pet: PetState, a: Attack): Boolean = a.level > pet.level
+
 /** [a]'s standing for [pet]: in its slot now, unlocked and ready to equip, or still locked by level. */
 internal fun standingOf(pet: PetState, a: Attack): Standing = when {
     kitOf(pet).of(a.slot) == a -> Standing.EQUIPPED
-    a.level <= pet.level -> Standing.READY
+    !isLocked(pet, a) -> Standing.READY
     else -> Standing.LOCKED
 }
 
 /**
  * MOVES: [pet]'s three slots down the left, each showing one of its four attacks (starting on the equipped one),
  * and that attack's card on the right, against what is equipped. Up and Down pick a slot; Left and Right (or the
- * arrows, on a phone) browse its attacks, the locked ones too, with the level they unlock at; OK (or a tap on the
- * slot) equips the one shown ([onEquip] with its id), when it is unlocked. Back ([onBack]) returns Home. The card's
- * preview takes any picture it throws from [loader].
+ * arrows, on a phone) browse its attacks, the locked ones too, which keep their secret (no name, stats or preview:
+ * see [cardFace]) and say the level they unlock at; OK (or a tap on the slot) equips the one shown ([onEquip] with
+ * its id), when it is unlocked. Back ([onBack]) returns Home. The card's preview takes the killer's sprites and any
+ * picture it throws from [loader].
  */
 @Composable
 fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, onBack: () -> Unit, focusEntry: Any? = Unit) {
@@ -111,14 +114,19 @@ fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, o
                             slot = slot,
                             attack = attacks[tier],
                             tier = tier,
+                            // Browsing or tapping a slot looks at it too: on a phone, nothing takes focus to say so.
                             onBrowse = { delta ->
+                                looking = slot
                                 val next = (tier + delta).coerceIn(0, attacks.lastIndex)
                                 if (next != tier) {
                                     shown[slot] = next
                                     sounds.sfx("ui_move")
                                 }
                             },
-                            onEquip = { onEquip(attacks[tier].id) },
+                            onEquip = {
+                                looking = slot
+                                onEquip(attacks[tier].id)
+                            },
                             onFocus = { looking = slot },
                             modifier = Modifier.weight(1f).let { if (slot == Slot.LIGHT) it.focusRequester(first) else it },
                         )
@@ -133,6 +141,7 @@ fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, o
                     loader = loader,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     lit = browsed == equipped,
+                    locked = isLocked(pet, browsed),
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -147,8 +156,9 @@ fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, o
 }
 
 /**
- * One slot: its label, ◀ the attack it shows ▶ (its name stepping down to fit), four pips for the tiers (the shown
- * one ringed, locked ones hollow), and where that attack stands. Lit blood red while focused.
+ * One slot: its label, ◀ the attack it shows ▶ (its name stepping down to fit, or [LOCKED_TEXT] while it is locked),
+ * four pips for the tiers (the shown one gold and bigger, a locked one a tiny padlock), and where that attack stands.
+ * Lit blood red while focused.
  */
 @Composable
 private fun SlotRow(
@@ -197,7 +207,7 @@ private fun SlotRow(
                 Chevron(left = true, color = if (tier > 0) TextHi else TextLo.copy(alpha = 0.3f), modifier = Modifier.size(16.dp))
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                AttackName(attack.name, max = 24f, center = true, modifier = Modifier.fillMaxWidth())
+                AttackName(if (standing == Standing.LOCKED) LOCKED_TEXT else attack.name, max = 24f, center = true, modifier = Modifier.fillMaxWidth())
             }
             Box(Modifier.size(28.dp).clickable { onBrowse(1) }, contentAlignment = Alignment.Center) {
                 Chevron(left = false, color = if (tier < 3) TextHi else TextLo.copy(alpha = 0.3f), modifier = Modifier.size(16.dp))
@@ -207,13 +217,21 @@ private fun SlotRow(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Spacer(Modifier.width(28.dp))
             for (t in 0..3) {
-                val unlocked = t == 0 || pet.level >= attacksOf(pet.id, slot)[t].level
+                val locked = isLocked(pet, attacksOf(pet.id, slot)[t])
+                // A locked tier's pip is a padlock a little taller than a dot, so it still reads as one of the four.
                 Box(
                     Modifier
-                        .size(if (t == tier) 10.dp else 8.dp)
+                        .size(
+                            when {
+                                locked && t == tier -> 13.dp
+                                locked -> 11.dp
+                                t == tier -> 10.dp
+                                else -> 8.dp
+                            },
+                        )
                         .drawBehind {
-                            if (unlocked) drawCircle(if (t == tier) Amber else TextHi.copy(alpha = 0.6f))
-                            else drawCircle(TextLo.copy(alpha = 0.5f), style = Stroke(1.5.dp.toPx()))
+                            val color = if (t == tier) Amber else if (locked) TextLo.copy(alpha = 0.55f) else TextHi.copy(alpha = 0.6f)
+                            if (locked) drawPadlock(center, size.height, color) else drawCircle(color)
                         },
                 )
             }
