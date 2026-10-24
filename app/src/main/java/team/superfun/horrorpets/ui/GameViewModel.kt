@@ -379,7 +379,8 @@ class GameViewModel(
      * COOK pantry [session]'s board, which must hold two items (so a second press on a board that has just been cooked
      * does nothing). Both are used up and the result takes the shelf place of the earlier of them; the board is cleared,
      * [Screen.Pantry.cook] shows the cook and the game is saved. A way to cook among them plays its own sound (the first
-     * on the board, when both are), then the poof. A board that can not be cooked (a botch is a dead end, see [cook])
+     * on the board, when both are); the screen plays the poof as it shows it. A board that can not be cooked (a botch is
+     * a dead end, see [cook])
      * uses nothing and keeps its board: only [Screen.Pantry.refusedCook] changes, with a squelch.
      */
     fun onPantryCook(session: Long) {
@@ -396,7 +397,7 @@ class GameViewModel(
         val left = shelf.filterIndexed { i, _ -> i !in pantry.board }
         val game = s.game.copy(pantry = (left.take(at) + result + left.drop(at)).map { it.id })
         val method = inputs.firstOrNull { it.kind == ItemKind.METHOD }
-        val sfx = listOfNotNull(method?.let { "cook_${it.id}" }, "pantry_poof")
+        val sfx = listOfNotNull(method?.let { "cook_${it.id}" })
         val show = CookShow(result, inputs, at, nextToken++)
         _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), cook = show), sfx = s.sfx + sfx)
         persist(game)
@@ -422,7 +423,16 @@ class GameViewModel(
         val item = shelf[place]
         val outcome = feed(pet, item)
         val game = s.game.withPet(outcome.pet).copy(pantry = shelf.filterIndexed { i, _ -> i != place }.map { it.id })
-        val fed = FedShow(item, outcome.reaction, outcome.line, outcome.xpGained, outcome.levelsGained)
+        val fed = FedShow(
+            item = item,
+            reaction = outcome.reaction,
+            line = outcome.line,
+            xp = outcome.xpGained,
+            levelsGained = outcome.levelsGained,
+            strength = outcome.strengthGained,
+            funLevel = outcome.funGained,
+            mood = outcome.moodGained,
+        )
         _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed))
         persist(game)
     }

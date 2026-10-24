@@ -74,10 +74,20 @@ data class CookShow(val result: PantryItem, val inputs: List<PantryItem>, val at
 
 /**
  * What the killer made of the meal it was just fed, for the pantry's screen to show: the [item] it ate, how it took it
- * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past. All of it is
- * already paid and saved when this is set.
+ * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past, and how far
+ * it moved [strength], [funLevel] and the [mood] bonus (as clamped; negative for a loss). All of it is already paid
+ * and saved when this is set.
  */
-data class FedShow(val item: PantryItem, val reaction: Reaction, val line: String, val xp: Int, val levelsGained: Int)
+data class FedShow(
+    val item: PantryItem,
+    val reaction: Reaction,
+    val line: String,
+    val xp: Int,
+    val levelsGained: Int,
+    val strength: Double = 0.0,
+    val funLevel: Double = 0.0,
+    val mood: Double = 0.0,
+)
 
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
 sealed interface Screen {

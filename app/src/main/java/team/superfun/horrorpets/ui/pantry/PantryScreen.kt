@@ -90,6 +90,7 @@ import team.superfun.horrorpets.ui.training.TrainingActor
 import team.superfun.horrorpets.ui.training.TrainingGold
 import team.superfun.horrorpets.ui.training.reachesGame
 import team.superfun.horrorpets.ui.training.rememberAwayPause
+import team.superfun.horrorpets.ui.training.rememberGameClock
 import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
 import team.superfun.horrorpets.ui.training.trainingKeyOf
@@ -232,14 +233,16 @@ private fun PantryVisit(
         if (tooFull === said) tooFull = null
     }
 
-    // Fed: the meal, the munch and the reaction, then Home. A visit that started with the meal eaten (the Activity
-    // came back on it) goes straight to the reaction.
+    // Fed: the meal, the munch and the reaction, then Home, on the show's own clock (stopped while the app is away, and
+    // only running while the show plays). A visit that started with the meal eaten (the Activity was made again on it)
+    // shows the reaction finished and silent: it has played once already.
     val feedStage = remember { FeedStage() }
+    val showClock = rememberGameClock(paused = away.paused || !feedStage.playing)
     val fedAtStart = remember { fed != null }
     val latestOnDone by rememberUpdatedState(onDone)
     LaunchedEffect(fed) {
         if (fed == null) return@LaunchedEffect
-        playFeedShow(fed, loader, manifest, feedStage, actor, sounds, away = { away.paused }, atReaction = fedAtStart) {
+        playFeedShow(fed, loader, manifest, feedStage, actor, sounds, showClock, replay = fedAtStart) {
             latestOnDone(session)
         }
     }
@@ -406,16 +409,17 @@ private fun PantryVisit(
                 ),
             )
         }
+        // Nothing while a show holds the keys; then what carries on, once it may.
         HelpStrip(
             help = when {
-                fed == null -> kitchenHelp(cursor.row, cursor.button, screen.board, cursor.focus, shelf.size)
-                feedStage.carryOn -> CarryOnHelp
-                else -> emptyList()
+                fed != null -> if (feedStage.carryOn) CarryOnHelp else emptyList()
+                cooking -> emptyList()
+                else -> kitchenHelp(cursor.row, cursor.button, screen.board, cursor.focus, shelf.size)
             },
             touchHelp = when {
-                fed == null -> kitchenTouchHelp(screen.board.size)
-                feedStage.carryOn -> CARRY_ON_TOUCH
-                else -> ""
+                fed != null -> if (feedStage.carryOn) CARRY_ON_TOUCH else ""
+                cooking -> ""
+                else -> kitchenTouchHelp(screen.board.size)
             },
             modifier = Modifier.placeAt(x = { px(layout.columnCenter) }, y = { px(layout.helpBottom) }),
         )
@@ -469,6 +473,7 @@ private fun PantryVisit(
                 munchMs = MUNCHES * manifest.lengthMs(manifest.feedAnim()),
                 filter = filter,
                 from = from,
+                clock = showClock,
             )
             if (feedStage.hearts) {
                 HeartBurst(origin = Offset(px(layout.killerX), floor - drawnHeight * 0.62f), height = drawnHeight) {

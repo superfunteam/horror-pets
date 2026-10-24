@@ -205,6 +205,37 @@ class FeedingTest {
     }
 
     @Test
+    fun itReportsWhatItGaveAsClamped() {
+        fun gains(out: FeedOutcome) = Triple(out.strengthGained, out.funGained, out.moodGained)
+        // A loved meal: 6 strength doubled, and the mood a loved dish lifts.
+        assertEquals(Triple(12.0, 0.0, 10.0), gains(feed(pet(), STEAK_DINNER)))
+        // A sweet snack Jason is fine with: fun only.
+        assertEquals(Triple(0.0, 3.0, 0.0), gains(feed(pet(), CARAMEL)))
+        // A botch: only a loss of mood. A gross dish Freddy loves: its stat and its mood both in the mood.
+        assertEquals(Triple(0.0, 0.0, -15.0), gains(feed(pet(), PILE_OF_SLOP)))
+        assertEquals(Triple(0.0, 0.0, 16.0), gains(feed(pet(PetId.FREDDY), GRILLED_FOOT)))
+        // Clamped: strength 99 can only go to 100, a mood of 25 only to 30, and -28 only down to -30.
+        assertEquals(Triple(1.0, 0.0, 5.0), gains(feed(pet(hunger = 5.0, strength = 99.0, bonus = 25.0), STEAK_DINNER)))
+        assertEquals(Triple(0.0, 0.0, -2.0), gains(feed(pet(bonus = -28.0), GRILLED_FOOT)))
+        // Already at the top: nothing moved, so nothing to show.
+        assertEquals(Triple(0.0, 0.0, 0.0), gains(feed(pet(strength = 100.0, bonus = 30.0), STEAK_DINNER)))
+        // Always exactly the change in the pet.
+        val rng = Random(17)
+        repeat(300) {
+            val before = pet(
+                id = PetId.entries.random(rng),
+                strength = rng.nextDouble(0.0, 100.0),
+                fn = rng.nextDouble(0.0, 100.0),
+                bonus = rng.nextDouble(-30.0, 30.0),
+            )
+            val out = feed(before, PantryItem.entries.random(rng))
+            assertEquals(out.pet.strength - before.strength, out.strengthGained, 0.0)
+            assertEquals(out.pet.funLevel - before.funLevel, out.funGained, 0.0)
+            assertEquals(out.pet.moodBonus - before.moodBonus, out.moodGained, 0.0)
+        }
+    }
+
+    @Test
     fun firstFavoriteOnlyOnce() {
         val first = feed(pet(), CAMP_CRYSTAL_FISH_FRY)
         assertTrue(first.firstFavorite)

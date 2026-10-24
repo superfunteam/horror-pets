@@ -55,6 +55,9 @@ class CookShowTest {
         assertEquals("the poof starts as they meet", 0f, poofAt(CookTimeline.CONVERGE_MS)!!, 0.001f)
         assertNull(poofAt(CookTimeline.CONVERGE_MS - 1))
         assertTrue("the dish pops up inside the smoke", poofAt(CookTimeline.REVEAL_AT) != null)
+        // The screen plays the poof's sound as the poof shows (the view model only plays the way to cook's).
+        assertEquals(0f, poofAt(CookTimeline.POOF_SOUND_MS)!!, 0.001f)
+        assertNull(poofAt(CookTimeline.POOF_SOUND_MS - 1))
     }
 
     @Test

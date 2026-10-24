@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,16 +27,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.SpriteManifest
@@ -46,9 +43,11 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.ui.FedShow
+import team.superfun.horrorpets.ui.common.OK_GUARD_MS
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.training.GameClock
 import team.superfun.horrorpets.ui.training.GlowText
 import team.superfun.horrorpets.ui.training.TrainingActor
 import team.superfun.horrorpets.ui.training.TrainingGold
@@ -69,10 +68,11 @@ internal const val TOO_FULL_LINE = "Too full!"
 internal enum class FeedPhase { TOSS, MUNCH, REACT, DONE }
 
 /**
- * A feed show's timeline, in ms from FEED: the meal lands (and the munching starts) at [landMs], the reaction comes at
- * [reactMs] when the munching is done, and at [doneMs] the kitchen carries on Home by itself.
+ * A feed show's timeline, in ms of the show's own clock from FEED (it stops while the app is away): the meal lands
+ * (and the munching starts) at [landMs], the reaction comes at [reactMs] when the munching is done, OK or a tap may
+ * carry on Home from [carryOnMs], and at [doneMs] the kitchen carries on Home by itself.
  */
-internal data class FeedTimeline(val landMs: Long, val reactMs: Long, val doneMs: Long) {
+internal data class FeedTimeline(val landMs: Long, val reactMs: Long, val carryOnMs: Long, val doneMs: Long) {
     fun phaseAt(ms: Long): FeedPhase = when {
         ms < landMs -> FeedPhase.TOSS
         ms < reactMs -> FeedPhase.MUNCH
@@ -80,15 +80,57 @@ internal data class FeedTimeline(val landMs: Long, val reactMs: Long, val doneMs
         else -> FeedPhase.DONE
     }
 
-    /** Whether OK or a tap carries on Home [ms] in: only once the reaction is up, so nothing skips it. */
-    fun carriesOn(ms: Long): Boolean = ms >= reactMs
+    /** Whether OK or a tap carries on Home [ms] in: only once the reaction has been up a moment, so nothing skips it. */
+    fun carriesOn(ms: Long): Boolean = ms >= carryOnMs
 }
 
-/** The feed show's timeline for a killer whose munching (all [MUNCHES] of its feed animation) takes [munchMs]. */
-internal fun feedTimeline(munchMs: Long): FeedTimeline {
+/**
+ * The feed show's timeline for a killer whose munching (all [MUNCHES] of its feed animation) takes [munchMs], and
+ * whose reaction may be carried on from [carryOnAfterMs] into it (see [ReactionCue.carryOnAfterMs]).
+ */
+internal fun feedTimeline(munchMs: Long, carryOnAfterMs: Long): FeedTimeline {
     val land = FOOD_FALL_MS + LAND_SETTLE_MS
     val react = land + munchMs
-    return FeedTimeline(land, react, react + REACTION_HOLD_MS)
+    return FeedTimeline(land, react, react + carryOnAfterMs, react + REACTION_HOLD_MS)
+}
+
+/** Once LEVEL UP! is up, it stays this long before OK or a tap may carry on past it. */
+internal const val LEVEL_UP_READ_MS = 500L
+
+/**
+ * How a reaction plays, as it starts (times in ms into it): its [sound], the killer's [anims], the favorite's
+ * [hearts], when LEVEL UP! shows ([levelUpAtMs], null without a level-up) and whether it plays its sound
+ * ([levelUpSound]), and when OK or a tap may carry on ([carryOnAfterMs]).
+ */
+internal data class ReactionCue(
+    val sound: String?,
+    val anims: List<Anim>,
+    val hearts: Boolean,
+    val levelUpAtMs: Long?,
+    val levelUpSound: Boolean,
+    val carryOnAfterMs: Long,
+)
+
+/**
+ * How [fed]'s reaction plays. Fresh, it plays in full, and OK or a tap counts only after [OK_GUARD_MS] (presses mashed
+ * through the munch can't skip it the frame it shows), or after a level-up's LEVEL UP! has been up
+ * [LEVEL_UP_READ_MS]. A [replay] (the kitchen came back, its Activity made again, on a meal already eaten) is shown
+ * finished and silent: the line, the gains and LEVEL UP! at once, with no sound, no hearts and no pose, and OK after
+ * the guard as ever.
+ */
+internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
+    val levelUp = fed.levelsGained > 0
+    if (replay) {
+        return ReactionCue(null, emptyList(), false, if (levelUp) 0L else null, levelUpSound = false, carryOnAfterMs = OK_GUARD_MS)
+    }
+    return ReactionCue(
+        sound = reactionSound(fed.reaction),
+        anims = reactionAnims(fed.reaction),
+        hearts = hasHearts(fed.reaction),
+        levelUpAtMs = if (levelUp) LEVEL_UP_AFTER_MS else null,
+        levelUpSound = levelUp,
+        carryOnAfterMs = if (levelUp) maxOf(OK_GUARD_MS, LEVEL_UP_AFTER_MS + LEVEL_UP_READ_MS) else OK_GUARD_MS,
+    )
 }
 
 /**
@@ -113,8 +155,21 @@ internal fun reactionSound(reaction: Reaction): String? = when (reaction) {
 /** Whether the reaction throws up a burst of hearts: only for the killer's favorite. */
 internal fun hasHearts(reaction: Reaction): Boolean = reaction == Reaction.FAVORITE
 
-/** The meal's gains, read out over the board: its XP. */
-internal fun gainsLine(fed: FedShow): String = "+${fed.xp} XP"
+/** One line of a meal's gains: its [text] ("+6 STRENGTH"), and whether it is a [loss] ("-15 MOOD"). */
+internal data class Gain(val text: String, val loss: Boolean)
+
+/**
+ * What [fed] gave, read out over the board: its XP, then the strength, fun and mood it moved (as clamped, rounded to
+ * whole points), each only when it is not 0, so no line ever reads "+0". A botch shows the mood it cost; a meal that
+ * moved nothing shows nothing.
+ */
+internal fun gainsOf(fed: FedShow): List<Gain> = buildList {
+    if (fed.xp > 0) add(Gain("+${fed.xp} XP", loss = false))
+    for ((amount, name) in listOf(fed.strength to "STRENGTH", fed.funLevel to "FUN", fed.mood to "MOOD")) {
+        val n = amount.roundToInt()
+        if (n != 0) add(Gain(if (n > 0) "+$n $name" else "-${-n} $name", loss = n < 0))
+    }
+}
 
 /** "LEVEL UP!" when the meal carried the killer past a level, else null. */
 internal fun levelUpLine(fed: FedShow): String? = if (fed.levelsGained > 0) "LEVEL UP!" else null
@@ -132,10 +187,13 @@ internal fun SpriteManifest.lengthMs(anim: Anim): Long = spec(anim).durationsMs.
 internal class FeedStage {
     var meal by mutableStateOf<Meal?>(null)
     var line by mutableStateOf<String?>(null)
-    var gains by mutableStateOf<String?>(null)
+    var gains by mutableStateOf<List<Gain>?>(null)
     var levelUp by mutableStateOf<String?>(null)
     var hearts by mutableStateOf(false)
     var carryOn by mutableStateOf(false)
+
+    /** Whether the show is playing, so its clock runs (only then: it asks for frames). */
+    var playing by mutableStateOf(false)
 }
 
 /** A meal on its way to being eaten: its picture and its crumbs' colors, and when it has landed ([landed]). */
@@ -149,12 +207,14 @@ internal class Meal(val image: ImageBitmap, val crumbs: List<Color>) {
  * - the meal's picture is read (and its crumbs' colors from it), then it is tossed from the board to the killer's feet
  *   with the `food_drop` whistle (the kitchen draws it from [FeedStage.meal], see [FoodDrop]);
  * - as it lands the killer munches it, [MUNCHES] times its feed animation, while it loses its bites;
- * - then the reaction: its pose ([reactionAnims]) and sound ([reactionSound]), the line over its head, the gains over
- *   the board, the favorite's hearts, and a level-up's words and sound a beat later;
- * - and [REACTION_HOLD_MS] later (all as [feedTimeline] has it), the kitchen carries on Home by itself, unless OK or a tap did first. Not while the
- *   app is [away]: then it waits until the player is back.
+ * - then the reaction, as [reactionCue] has it: its pose and sound, the line over its head, the gains over the board
+ *   ([gainsOf]), the favorite's hearts, and a level-up's words and sound a beat later; OK or a tap carries on once
+ *   [FeedStage.carryOn] says so;
+ * - and [REACTION_HOLD_MS] later, the kitchen carries on Home by itself.
  *
- * [atReaction] starts at the reaction (the kitchen came back to a meal already eaten, so there is nothing to toss).
+ * Every wait is on [clock], the show's own, which stops while the app is away (and for the beat after it comes back),
+ * so nothing plays off screen and it never carries on behind the player's back. [replay] starts at the reaction,
+ * shown finished and silent (the kitchen came back to a meal already eaten: it played once already).
  */
 internal suspend fun playFeedShow(
     fed: FedShow,
@@ -163,41 +223,57 @@ internal suspend fun playFeedShow(
     stage: FeedStage,
     actor: TrainingActor,
     sounds: SoundSink,
-    away: () -> Boolean,
-    atReaction: Boolean,
+    clock: GameClock,
+    replay: Boolean,
     onDone: () -> Unit,
 ) {
     val munch = manifest.feedAnim()
-    val timeline = feedTimeline(MUNCHES * manifest.lengthMs(munch))
-    if (!atReaction) {
-        val meal = withContext(Dispatchers.IO) {
-            val image = loader.pantryItem(fed.item)
-            Meal(image, crumbColorsOf(image))
-        }
-        stage.meal = meal
-        sounds.sfx("food_drop")
-        // Landed (or, should the kitchen never draw it, as long as a landing takes and a moment more).
-        withTimeoutOrNull(timeline.landMs + LANDING_SLACK_MS) { meal.landed.await() }
-        actOut(actor, List(MUNCHES) { munch }, manifest)
-    }
-    stage.line = fed.line
-    stage.gains = gainsLine(fed)
-    stage.carryOn = true
-    reactionSound(fed.reaction)?.let(sounds::sfx)
-    if (hasHearts(fed.reaction)) stage.hearts = true
-    coroutineScope {
-        launch { actOut(actor, reactionAnims(fed.reaction), manifest) }
-        levelUpLine(fed)?.let { words ->
-            launch {
-                delay(LEVEL_UP_AFTER_MS)
-                stage.levelUp = words
-                sounds.sfx("levelup")
+    val cue = reactionCue(fed, replay)
+    val timeline = feedTimeline(MUNCHES * manifest.lengthMs(munch), cue.carryOnAfterMs)
+    stage.playing = true
+    try {
+        if (!replay) {
+            val meal = withContext(Dispatchers.IO) {
+                val image = loader.pantryItem(fed.item)
+                Meal(image, crumbColorsOf(image))
             }
+            stage.meal = meal
+            sounds.sfx("food_drop")
+            // Landed (or, should the kitchen never draw it, as long as a landing takes and a moment more).
+            coroutineScope {
+                val giveUp = launch {
+                    clock.waitMs(timeline.landMs + LANDING_SLACK_MS)
+                    meal.landed.complete(Unit)
+                }
+                meal.landed.await()
+                giveUp.cancel()
+            }
+            actOut(actor, List(MUNCHES) { munch }, manifest, clock)
         }
-        delay(timeline.doneMs - timeline.reactMs)
+        stage.line = fed.line
+        stage.gains = gainsOf(fed)
+        cue.sound?.let(sounds::sfx)
+        if (cue.hearts) stage.hearts = true
+        coroutineScope {
+            launch { actOut(actor, cue.anims, manifest, clock) }
+            launch {
+                clock.waitMs(timeline.carryOnMs - timeline.reactMs)
+                stage.carryOn = true
+            }
+            val words = levelUpLine(fed)
+            val at = cue.levelUpAtMs
+            if (words != null && at != null) {
+                launch {
+                    clock.waitMs(at)
+                    stage.levelUp = words
+                    if (cue.levelUpSound) sounds.sfx("levelup")
+                }
+            }
+            clock.waitMs(timeline.doneMs - timeline.reactMs)
+        }
+    } finally {
+        stage.playing = false
     }
-    // Never carry on behind the player's back: away, wait until they are back.
-    snapshotFlow { away() }.first { !it }
     onDone()
 }
 
@@ -208,17 +284,17 @@ private const val LANDING_SLACK_MS = 1_000L
  * Plays [anims] on [actor] one after another, each for its length in [manifest]; all but the last hold their last
  * frame until the next starts, so the killer never drops to idle for a frame between them.
  */
-private suspend fun actOut(actor: TrainingActor, anims: List<Anim>, manifest: SpriteManifest) {
+private suspend fun actOut(actor: TrainingActor, anims: List<Anim>, manifest: SpriteManifest, clock: GameClock) {
     for ((i, anim) in anims.withIndex()) {
         actor.act(anim, hold = i < anims.lastIndex)
-        delay(manifest.lengthMs(anim))
+        clock.waitMs(manifest.lengthMs(anim))
     }
 }
 
 /**
  * The meal of [stage] beside the killer standing at [killerX] (px; a body [bodyHalf] wide each side), tossed from
  * [from] on the board onto the kitchen floor at [floorY], [sizePx] across (the size it had on the board), through the
- * kitchen's [filter], munched over [munchMs]. Gone once its last crumbs have landed.
+ * kitchen's [filter], munched over [munchMs] of the show's [clock]. Gone once its last crumbs have landed.
  */
 @Composable
 internal fun MealView(
@@ -232,6 +308,7 @@ internal fun MealView(
     munchMs: Long,
     filter: ColorFilter?,
     from: Offset,
+    clock: GameClock,
 ) {
     val meal = stage.meal ?: return
     key(meal) {
@@ -247,19 +324,26 @@ internal fun MealView(
             munchMs = munchMs,
             filter = filter,
             from = from,
+            wait = clock::waitMs,
             onLanded = { meal.landed.complete(Unit) },
             onDone = { if (stage.meal === meal) stage.meal = null },
         )
     }
 }
 
+/** A loss in the gains reads in a pale blood red, under the gold of what was gained. */
+private val LossRed = Color(0xFFFF8F8F)
+
 /**
- * The meal's gains over the board, centred on [centerX] at [y] (px): its XP in gold, popping up, and a level-up's
- * "LEVEL UP!" under it when that comes.
+ * The meal's gains over the board, centred on [centerX] at [y] (px): what it gave ([gainsOf]), the first line big and
+ * the rest under it, gold for a gain and red for a loss, popping up together; and a level-up's "LEVEL UP!" under them
+ * when that comes. Nothing at all for a meal that gave nothing.
  */
 @Composable
 internal fun GainsReadout(stage: FeedStage, centerX: Float, y: Float) {
     val gains = stage.gains ?: return
+    val levelUp = stage.levelUp
+    if (gains.isEmpty() && levelUp == null) return
     val pop = remember { Animatable(0.5f) }
     LaunchedEffect(Unit) { pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 420f)) }
     Column(
@@ -272,8 +356,14 @@ internal fun GainsReadout(stage: FeedStage, centerX: Float, y: Float) {
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        GlowText(gains, displayStyle(38.sp, color = TrainingGold, tracking = 0.04f, lineHeight = 40.sp))
-        stage.levelUp?.let { words ->
+        for ((i, gain) in gains.withIndex()) {
+            val size = if (i == 0) 34 else 26
+            GlowText(
+                gain.text,
+                displayStyle(size.sp, color = if (gain.loss) LossRed else TrainingGold, tracking = 0.04f, lineHeight = (size + 2).sp),
+            )
+        }
+        levelUp?.let { words ->
             val up = remember { Animatable(0.4f) }
             LaunchedEffect(Unit) { up.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = 380f)) }
             GlowText(

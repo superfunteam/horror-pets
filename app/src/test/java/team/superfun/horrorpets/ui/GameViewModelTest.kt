@@ -1115,7 +1115,7 @@ class GameViewModelTest {
             assertEquals("the inputs, in the order they were placed", order.map { SHELF[it] }, cook.inputs)
             assertEquals(0, cook.at)
             assertEquals(emptyList<Int>(), rig.visit.board)
-            assertEquals(listOf("cook_grill", "pantry_poof"), rig.ui.sfx)
+            assertEquals(listOf("cook_grill"), rig.ui.sfx)
             assertEquals("cooking feeds no one", before, rig.jason)
             assertFalse(rig.ui.busy)
             assertNull(rig.ui.petAnim)
@@ -1145,13 +1145,13 @@ class GameViewModelTest {
     }
 
     @Test
-    fun aMixPlaysOnlyThePoof() {
+    fun aMixPlaysNoSoundOfItsOwn() {
         val rig = pantryRig()
         rig.openPantry()
         rig.pick(4, 2) // Flour + Egg: two foods, no way to cook
         rig.vm.onPantryCook(rig.visit.session)
         assertEquals(BATTER, rig.visit.cook!!.result)
-        assertEquals(listOf("pantry_poof"), rig.ui.sfx)
+        assertEquals("the poof is the screen's, as it shows it", emptyList<String>(), rig.ui.sfx)
     }
 
     @Test
@@ -1161,7 +1161,7 @@ class GameViewModelTest {
             rig.openPantry()
             rig.pick(2, 1) // the way to cook doesn't have to be placed first
             rig.vm.onPantryCook(rig.visit.session)
-            assertEquals("${method.id} + Egg", listOf("cook_${method.id}", "pantry_poof"), rig.ui.sfx)
+            assertEquals("${method.id} + Egg", listOf("cook_${method.id}"), rig.ui.sfx)
         }
 
         // A way to cook on a finished dish still has the way's sound, though what comes out is Burnt to a Crisp.
@@ -1170,7 +1170,7 @@ class GameViewModelTest {
         burnt.pick(5, 1)
         burnt.vm.onPantryCook(burnt.visit.session)
         assertEquals(BURNT_TO_A_CRISP, burnt.visit.cook!!.result)
-        assertEquals(listOf("cook_grill", "pantry_poof"), burnt.ui.sfx)
+        assertEquals(listOf("cook_grill"), burnt.ui.sfx)
     }
 
     @Test
@@ -1180,7 +1180,7 @@ class GameViewModelTest {
         rig.pick(3, 0) // Campfire, then Grill
         rig.vm.onPantryCook(rig.visit.session)
         assertEquals(KITCHEN_FIRE, rig.visit.cook!!.result)
-        assertEquals(listOf("cook_campfire", "pantry_poof"), rig.ui.sfx)
+        assertEquals(listOf("cook_campfire"), rig.ui.sfx)
     }
 
     @Test
@@ -1197,7 +1197,7 @@ class GameViewModelTest {
         rig.vm.onPantryCook(session)
         assertEquals(cooked, rig.ui)
         assertEquals("the inputs are used up once", listOf(FRIED_EGG, RAW_STEAK, CAMPFIRE, FLOUR, CHEESE), rig.shelf)
-        assertEquals(listOf("cook_grill", "pantry_poof"), rig.ui.sfx)
+        assertEquals(listOf("cook_grill"), rig.ui.sfx)
         rig.settle()
         assertEquals(saves, rig.store.saves.size)
     }
@@ -1279,6 +1279,11 @@ class GameViewModelTest {
         assertEquals(paid.line, fed.line)
         assertEquals(10, fed.xp)
         assertEquals(0, fed.levelsGained)
+        assertEquals("what it gave, as paid: a loved snack's strength doubled", 6.0, fed.strength, 1e-9)
+        assertEquals(0.0, fed.funLevel, 1e-9)
+        assertEquals("and the mood a loved dish lifts", 10.0, fed.mood, 1e-9)
+        assertEquals(paid.strengthGained, fed.strength, 0.0)
+        assertEquals(paid.moodGained, fed.mood, 0.0)
         assertEquals(emptyList<Int>(), rig.visit.board)
         assertTrue("the kitchen plays the eating sounds", rig.ui.sfx.isEmpty())
         assertFalse(rig.ui.busy)

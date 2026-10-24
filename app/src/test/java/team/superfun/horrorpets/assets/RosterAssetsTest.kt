@@ -5,7 +5,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
@@ -144,13 +143,14 @@ class RosterAssetsTest {
         for (sfx in listOf("food_drop", "bite", "eat_happy", "eat_gross", "favorite_fanfare", "levelup")) {
             assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
         }
-        assertFalse("sprites-final/food is retired", file("sprites-final/food").exists())
+        val food = file("sprites-final/food").listFiles().orEmpty().filter { it.extension == "webp" }
+        assertTrue("the snack drop's art is retired: $food", food.isEmpty())
     }
 
     @Test
     fun theSoundsAPantryCookQueuesAreShipped() {
-        // The view model plays cook_<way to cook> and the poof for a cook, the squelch for one it refuses, and the
-        // buzz for a killer too full to eat.
+        // The view model plays cook_<way to cook> for a cook (the screen the poof, as it shows it), the squelch for one
+        // it refuses, and the buzz for a killer too full to eat.
         val ways = PantryItem.entries.filter { it.kind == ItemKind.METHOD }.map { "cook_${it.id}" }
         for (sfx in ways + listOf("pantry_poof", "pantry_squelch", "refuse")) {
             assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)

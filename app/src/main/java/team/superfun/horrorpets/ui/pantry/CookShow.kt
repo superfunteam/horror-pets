@@ -14,6 +14,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -30,22 +31,28 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.ui.CookShow
+import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.theme.Amber
 
 /**
  * A cook on show, as the player put it: "the two items kind of converge into one spot and then show a little poof
  * animation, and then show the new item, and then put it back in the pantry". The times are in ms from the cook (the
- * view model plays the way to cook's sound and the poof's as it cooks, so the converge is kept short).
+ * view model plays the way to cook's sound as it cooks; the poof's plays with the poof).
  */
 internal object CookTimeline {
     /** The two inputs slide from their places on the board into its middle. */
     const val CONVERGE_MS = 280L
 
-    /** The puff of smoke where they met, from the end of the converge. */
+    /** The puff of smoke where they met, from the end of the converge... */
     const val POOF_MS = 420L
+
+    /** ...with its sound, which the screen plays as it shows it (the view model plays only the way to cook's). */
+    const val POOF_SOUND_MS = CONVERGE_MS
 
     /** The dish pops up inside the smoke... */
     const val REVEAL_AT = 360L
@@ -215,13 +222,19 @@ internal class CookStage(
  * The cook show for [cook]: its inputs slide in from the board's places ([from], see [convergeFrom]) to its middle,
  * meet in a poof, the dish pops up there with its name, then flies off to its slot on the shelf, where the shelf takes
  * over (its slot is hidden till then). Its own clock runs once, for [CookTimeline.TOTAL_MS], then it calls [onDone]
- * and nothing more draws. The dish's picture is asked for from the start, so it is decoded by the time it shows.
+ * and nothing more draws; `pantry_poof` plays as the poof shows. The dish's picture is asked for from the start, so
+ * it is decoded by the time it shows.
  */
 @Composable
 internal fun CookShowView(loader: AssetLoader, cook: CookShow, from: List<Int>, heart: PantryItem?, stage: CookStage, onDone: () -> Unit) {
     val clock = remember { Animatable(0f) }
     val done by rememberUpdatedState(onDone)
+    val sounds = LocalSoundSink.current
     LaunchedEffect(Unit) {
+        launch {
+            snapshotFlow { clock.value >= CookTimeline.POOF_SOUND_MS }.first { it }
+            sounds.sfx("pantry_poof")
+        }
         clock.animateTo(CookTimeline.TOTAL_MS.toFloat(), tween(CookTimeline.TOTAL_MS.toInt(), easing = LinearEasing))
         done()
     }

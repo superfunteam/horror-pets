@@ -139,8 +139,9 @@ tools/.venv/bin/python -I -m pytest tools/tests -q
 tools/.venv/bin/python -I tools/synth_audio.py                          # original music and sfx, no key needed
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
-OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_food.py --n 2   # then pick in finalize_food.py
-tools/.venv/bin/python -I tools/finalize_food.py
+# tools/generate_food.py and tools/finalize_food.py made Home's old snack drop, which the pantry retired: the game no
+# longer ships sprites-final/food/, so don't run them. They stay because the other generators share their toy-art
+# style, model and key handling (generate_potion.py) and their trimming constants (the finalize_*.py scripts).
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_hand.py --n 2  # the Play glove; then finalize_hand.py
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_potion.py --n 3  # the fight's potion; then --pick K
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_player_voice.py

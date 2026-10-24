@@ -33,8 +33,10 @@ enum class Reaction {
 
 /**
  * What feeding did: the [pet] after being paid, how it took it ([reaction] and the [line] it says), the XP the meal
- * paid and the levels that carried it past. [firstFavorite] is true only the first time this killer is fed its
- * favorite, which is when the game remembers it ([PetState.favoriteFound]).
+ * paid and the levels that carried it past, and how far it actually moved [PetState.strength], [PetState.funLevel]
+ * and [PetState.moodBonus] once clamped ([strengthGained], [funGained], [moodGained]: 0 where nothing moved, negative
+ * for a loss). [firstFavorite] is true only the first time this killer is fed its favorite, which is when the game
+ * remembers it ([PetState.favoriteFound]).
  */
 data class FeedOutcome(
     val pet: PetState,
@@ -43,6 +45,9 @@ data class FeedOutcome(
     val xpGained: Int,
     val levelsGained: Int,
     val firstFavorite: Boolean,
+    val strengthGained: Double,
+    val funGained: Double,
+    val moodGained: Double,
 )
 
 /** What one item pays before it is applied: the hunger change, the XP, the flavor stat and the mood bonus. */
@@ -84,6 +89,9 @@ fun feed(pet: PetState, item: PantryItem): FeedOutcome {
         xpGained = p.xp,
         levelsGained = paid.levelsGained,
         firstFavorite = favorite && !pet.favoriteFound,
+        strengthGained = fed.strength - pet.strength,
+        funGained = fed.funLevel - pet.funLevel,
+        moodGained = fed.moodBonus - pet.moodBonus,
     )
 }
 

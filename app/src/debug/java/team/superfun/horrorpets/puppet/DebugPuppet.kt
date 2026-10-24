@@ -61,7 +61,7 @@ private const val TAG = "Puppet"
 /** Launch commands wait this long after the save has loaded, so the launch's own save of it cannot overwrite them. */
 private const val LAUNCH_SETTLE_MS = 1_000L
 
-/** How long a command waits for the action playing (a turn, a feed) to end before it gives up. */
+/** How long a command waits for the action playing (a turn, a play) to end before it gives up. */
 private const val IDLE_WAIT_MS = 30_000L
 
 /** How long `wait home` waits. */

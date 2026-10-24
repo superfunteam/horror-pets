@@ -39,7 +39,6 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.placeAt
@@ -185,7 +184,8 @@ private class Crumb(val vx: Float, val vy: Float, val radius: Float, val color: 
  * When the crumbs have landed it calls [onDone].
  *
  * [image] is drawn with its longer side [sizePx], through the scene's [filter] like the pets, its bottom on
- * [floorY] beside the pet at [petX] (see [foodLanding]).
+ * [floorY] beside the pet at [petX] (see [foodLanding]). Its timed waits go through [wait] (the pantry's show clock,
+ * which stops while the app is away, so no bite crunches off screen); its motion is frame-driven and stops with it.
  */
 @Composable
 internal fun FoodDrop(
@@ -200,6 +200,7 @@ internal fun FoodDrop(
     munchMs: Long,
     filter: ColorFilter?,
     from: Offset?,
+    wait: suspend (ms: Long) -> Unit,
     onLanded: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -228,12 +229,12 @@ internal fun FoodDrop(
             squash.snapTo(1f)
             squash.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 500f))
         }
-        delay(LAND_SETTLE_MS)
+        wait(LAND_SETTLE_MS)
         landed()
         var t = 0L
         val times = biteTimesMs(munchMs)
         for ((i, at) in times.withIndex()) {
-            delay(at - t)
+            wait(at - t)
             t = at
             sounds.sfx("bite")
             val last = i == times.lastIndex
@@ -250,7 +251,7 @@ internal fun FoodDrop(
                 }
             }
         }
-        delay(CRUMB_MS.toLong())
+        wait(CRUMB_MS.toLong())
         done()
     }
 
