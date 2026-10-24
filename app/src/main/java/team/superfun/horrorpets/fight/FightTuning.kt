@@ -100,4 +100,8 @@ object FightTuning {
     const val HIT_STOP_HEAVY_MS = 110L
     const val KO_SLOW = 0.3f
     const val KO_SLOW_MS = 900L
+
+    // A fight turns intense (its music hardens, to the end) once either fighter is under NEARLY_DONE_SHARE of its
+    // max HP.
+    const val NEARLY_DONE_SHARE = 0.3
 }

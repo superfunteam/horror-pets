@@ -303,6 +303,35 @@ class PvpFlowTest {
     }
 
     @Test
+    fun aForfeitKeepsAnIntenseFightIntense() {
+        val host = jasonApp()
+        val guest = freddyApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        // As in twoPlayersFightTheSameFightEachFromTheirOwnSide, until Freddy is nearly done.
+        var turns = 0
+        while (!host.fight.intense) {
+            host.vm.onMove(Move.STRIKE)
+            guest.vm.onMove(Move.HEAVY)
+            pumpBoth(host, guest)
+            pumpBoth(host, guest)
+            host.finishAnim()
+            guest.finishAnim()
+            check(++turns < 30) { "the fight never got close" }
+        }
+        assertNull("the fight is still on", host.fight.fight.winner)
+        assertTrue(guest.fight.intense)
+
+        guest.vm.onMove(Move.RUN)
+        assertTrue(guest.fight.fight.playerRan)
+        assertTrue("the runner's forfeit plays out intense", guest.fight.intense)
+        pumpBoth(host, guest)
+        assertEquals("the host sees them run off", Move.RUN, host.fight.cpuMove)
+        assertTrue("and so does the one left standing", host.fight.intense)
+    }
+
+    @Test
     fun runningForfeitsAndTheOtherPlayerWins() {
         val host = jasonApp()
         val guest = freddyApp()

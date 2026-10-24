@@ -30,8 +30,8 @@ import kotlin.math.abs
  *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS].
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
  *   over [CROSSFADE_MS] using a second player; a null track fades the music out. A track that keeps its place (the
- *   fight music hardening, see [keepsPlace]) comes in where the old one is, beat on beat, and crossfades over
- *   [INTENSE_CROSSFADE_MS].
+ *   fight music hardening, or easing back, see [keepsPlace]) comes in where the old one is, beat on beat, and
+ *   crossfades over [INTENSE_CROSSFADE_MS].
  * - A special's riff ([riff]) loops on a third player over the music, which ducks under it (see [duckLevel]). It
  *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS]. It ducks too, to
  *   [DUCK_LEVEL], while the announcer speaks over it.
@@ -212,6 +212,11 @@ class GameAudio(context: Context) : SoundSink {
             startTicking()
             return@onMain
         }
+        if (outgoing?.track == track) {
+            // Back to the track a join just called off was coming in over: it plays on, and the other one stops.
+            startTicking()
+            return@onMain
+        }
         val incoming = quieterSlot()
         if (keepPlace && outgoing?.track != null && outgoing !== incoming) {
             // The outgoing slot stays the active one, at full, until the incoming one comes in.
@@ -239,6 +244,7 @@ class GameAudio(context: Context) : SoundSink {
         pendingSfx.clear()
         recentStreams.forEach(pool::stop)
         recentStreams.clear()
+        slots().forEach { it.pauseJoin() }
         riffOn = false
         riffSlot?.apply {
             target = 0f
@@ -259,7 +265,10 @@ class GameAudio(context: Context) : SoundSink {
         if (released || !paused) return@onMain
         paused = false
         Log.d(TAG, "resume")
-        slots().forEach { if (it.track != null) it.player.playWhenReady = true }
+        slots().forEach {
+            if (it.track != null) it.player.playWhenReady = true
+            it.resumeJoin()
+        }
     }
 
     /** Frees the players and the sound pool. Safe to call more than once; every later call does nothing. */
@@ -532,6 +541,12 @@ class GameAudio(context: Context) : SoundSink {
 
         /** How many times [checkStep] has had to nudge this one toward [joining]. */
         private var nudges = 0
+
+        /** How many looks in a row (with the game in front) have found this one or [joining] not playing. */
+        private var stalls = 0
+
+        /** Since when (uptime ms) this one and [joining] have both played at normal speed; 0 while either has not. */
+        private var steadySince = 0L
         private val stepCheck = Runnable { checkStep() }
         private val nudgeEnd = Runnable { endNudge() }
 
@@ -556,6 +571,8 @@ class GameAudio(context: Context) : SoundSink {
             target = 0f
             joining = other
             nudges = 0
+            stalls = 0
+            steadySince = 0L
             val at = other.player.currentPosition
             player.setMediaItem(MediaItem.fromUri("asset:///audio/music/$newTrack.ogg"))
             player.seekTo(at)
@@ -563,53 +580,92 @@ class GameAudio(context: Context) : SoundSink {
             player.playWhenReady = !paused
             applyVolume()
             Log.d(TAG, "music slot $label playing $newTrack from ${at}ms, silent till in step with slot ${other.label}")
-            main.postDelayed(stepCheck, STEP_SETTLE_MS)
+            lookAgainIn(STEP_POLL_MS)
         }
 
         /** Calls off a [joinInStep] that has not come in yet. */
         fun cancelJoin() {
             if (joining == null) return
             joining = null
+            holdSteps()
+        }
+
+        /** The game went to the background: a join waits, with no looks or nudges, until [resumeJoin]. */
+        fun pauseJoin() {
+            if (joining != null) holdSteps()
+        }
+
+        /** The game is back: a join held by [pauseJoin] starts looking again. */
+        fun resumeJoin() {
+            if (joining == null) return
+            stalls = 0
+            lookAgainIn(STEP_POLL_MS)
+        }
+
+        /** Runs [checkStep] in [ms], in place of any look already due, so there is only ever one. */
+        private fun lookAgainIn(ms: Long) {
+            main.removeCallbacks(stepCheck)
+            main.postDelayed(stepCheck, ms)
+        }
+
+        private fun holdSteps() {
             main.removeCallbacks(stepCheck)
             main.removeCallbacks(nudgeEnd)
             player.setPlaybackSpeed(1f)
+            steadySince = 0L
         }
 
         /**
-         * How far this slot is behind [joining] in their tracks, once both have played steadily for [STEP_SETTLE_MS]:
-         * in step (or after [MAX_NUDGES] nudges), it comes in; else it plays faster (or slower) for about [NUDGE_MS],
-         * by as much as makes up the gap. A speed change reaches the speaker late, but its end does too, so the two
-         * cancel out; what is left (the main thread running the nudge's end a little late) shrinks with the gap.
-         * While either is not playing (the game is in the background, or this one is still preparing) it waits.
+         * Once this slot and [joining] have both played steadily, at normal speed, for [STEP_SETTLE_MS], how far this
+         * one is behind (see [loopLag]): in step (or after [MAX_NUDGES] nudges), it comes in; else it is nudged (see
+         * [nudgeFor]). A speed change reaches the speaker late, but its end does too, so the two cancel out; what is
+         * left (the main thread running the nudge's end a little late) shrinks with the gap. Until both play it looks
+         * again every [STEP_POLL_MS], and after [MAX_STALLS] looks gives up: the track playing plays on. With the game
+         * in the background it does not look at all ([resumeJoin] starts it again).
          */
         private fun checkStep() {
             val other = joining ?: return
+            if (paused) return
             if (!player.isPlaying || !other.player.isPlaying) {
-                main.postDelayed(stepCheck, STEP_SETTLE_MS)
+                steadySince = 0L
+                if (++stalls >= MAX_STALLS) {
+                    giveUp(other)
+                } else {
+                    lookAgainIn(STEP_POLL_MS)
+                }
                 return
             }
-            val lag = lagBehind(other)
+            stalls = 0
+            val now = SystemClock.uptimeMillis()
+            if (steadySince == 0L) steadySince = now
+            val steadyFor = now - steadySince
+            if (steadyFor < STEP_SETTLE_MS) {
+                lookAgainIn(STEP_SETTLE_MS - steadyFor)
+                return
+            }
+            val lag = loopLag(other.player.currentPosition, player.currentPosition, other.player.duration)
             if (abs(lag) <= IN_STEP_MS || nudges++ >= MAX_NUDGES) {
                 comeIn(other, lag)
                 return
             }
-            val nudge = (abs(lag).toFloat() / NUDGE_MS).coerceIn(MIN_NUDGE, MAX_NUDGE)
-            player.setPlaybackSpeed(if (lag > 0) 1f + nudge else 1f - nudge)
-            main.postDelayed(nudgeEnd, (abs(lag) / nudge).toLong())
+            val nudge = nudgeFor(lag)
+            player.setPlaybackSpeed(nudge.speed)
+            main.postDelayed(nudgeEnd, nudge.durationMs)
         }
 
+        /** A nudge is over: back to normal speed, which counts as steady from now (see [checkStep]). */
         private fun endNudge() {
             player.setPlaybackSpeed(1f)
-            main.postDelayed(stepCheck, STEP_SETTLE_MS)
+            steadySince = SystemClock.uptimeMillis()
+            lookAgainIn(STEP_SETTLE_MS)
         }
 
-        /** How many ms this slot's track is behind [other]'s (negative: ahead), the shorter way around the loop. */
-        private fun lagBehind(other: MusicSlot): Long {
-            val gap = other.player.currentPosition - player.currentPosition
-            val length = other.player.duration
-            if (length <= 0) return gap
-            val wrapped = gap.mod(length)
-            return if (wrapped > length / 2) wrapped - length else wrapped
+        /** One of the two never came to play: [other]'s track stays the music, and this one stops. */
+        private fun giveUp(other: MusicSlot) {
+            Log.w(TAG, "music slot $label gave up coming in with slot ${other.label}: not playing")
+            cancelJoin()
+            currentTrack = other.track
+            startTicking()
         }
 
         private fun comeIn(other: MusicSlot, lag: Long) {
@@ -664,12 +720,11 @@ class GameAudio(context: Context) : SoundSink {
         const val CUT_FADE_STEPS = 4
         const val CROSSFADE_MS = 600f
         const val INTENSE_CROSSFADE_MS = 1500f
+        const val STEP_POLL_MS = 100L
         const val STEP_SETTLE_MS = 600L // longer than a speed change takes to reach the speaker (some 350 ms)
         const val IN_STEP_MS = 20L
-        const val NUDGE_MS = 400f
-        const val MIN_NUDGE = 0.05f
-        const val MAX_NUDGE = 0.5f
         const val MAX_NUDGES = 4
+        const val MAX_STALLS = 30 // 3 s of looks
         const val DUCK_DOWN_MS = 120f
         const val DUCK_UP_MS = 400f
         const val RIFF_TRACK = "special_riff"

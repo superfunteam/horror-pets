@@ -37,11 +37,10 @@ internal fun impactSchedule(landMs: Long, stopMs: Long): ImpactSchedule =
     ImpactSchedule(soundAtMs = landMs, stopMs = stopMs, blowAtMs = landMs + stopMs)
 
 /**
- * Whether either fighter in [s] is nearly done: down to strictly under [NEARLY_DONE_SHARE] of its max HP. The first
- * turn that leaves one there turns the fight intense (`Screen.Fight.intense`), and the music hardens.
+ * Whether either fighter in [s] is nearly done: down to strictly under [FightTuning.NEARLY_DONE_SHARE] of its max HP.
+ * The first turn that leaves one there turns the fight intense (`Screen.Fight.intense`), and the music hardens.
  */
-internal fun nearlyDone(s: FightState): Boolean =
-    s.player.hp < s.player.maxHp * NEARLY_DONE_SHARE || s.cpu.hp < s.cpu.maxHp * NEARLY_DONE_SHARE
-
-/** The share of its max HP under which a fighter is nearly done (see [nearlyDone]). */
-private const val NEARLY_DONE_SHARE = 0.3
+internal fun nearlyDone(s: FightState): Boolean {
+    val share = FightTuning.NEARLY_DONE_SHARE
+    return s.player.hp < s.player.maxHp * share || s.cpu.hp < s.cpu.maxHp * share
+}

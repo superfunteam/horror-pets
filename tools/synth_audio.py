@@ -528,8 +528,8 @@ def music_fight() -> np.ndarray:
 def music_fight_intense() -> np.ndarray:
     """The fight music hardened, for when a fighter is nearly done. Same tempo, length, bass line and stabs as
     `music_fight`, so the app can crossfade into it from the same place without the beat skipping; on top, a kick on
-    every beat, a clap on the snare, a saw lead on the off-beats, louder stabs, a riser into every 16 bars and the
-    toms every 8."""
+    every beat, a clap on the snare, a saw lead on the off-beats, louder stabs and a riser into every 16 bars. The
+    toms fill every 4 bars, as in `music_fight`."""
     rng = rng_for("fight_intense")
     bpm = 120
     beat = 60 / bpm
@@ -546,7 +546,7 @@ def music_fight_intense() -> np.ndarray:
             place(mix, drum_clap(rng), t, 0.35)
         for h in (0, 0.5):
             place(mix, drum_hat(rng), t + h * beat, 0.18)
-        if b % 32 == 31:  # the last beat of every 8 bars
+        if b % 16 == 15:
             for k, hz in enumerate((140, 110, 85)):
                 place(mix, drum_tom(hz), t + k * beat / 3, 0.5)
         hz = note_hz(FIGHT_BASS[b % 8])
