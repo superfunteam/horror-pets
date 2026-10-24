@@ -50,7 +50,7 @@ class Cut:
 
 class Standoff:
     """[left] and [right] idling on [right]'s [stage] before a fight, drawn as the game draws them (its stage art,
-    sprites and spots), to stand in for footage under the title: the game shows a tell from a fight's first frame,
+    sprites and spots), to stand in for footage under the title: the game draws a fight from its first frame,
     and nothing should happen until the title is gone."""
 
     def __init__(self, left: str, right: str, stage: str):

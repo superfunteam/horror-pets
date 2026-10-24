@@ -43,7 +43,12 @@ nothing else.
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
 - **VS card:** every fight opens on a Street Fighter Alpha-style VS card: anime speed streaks in each killer's
   colors, each name in its own film's lettering, and the VS logo of the killer you're facing.
-- **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all of its health back, in green (+34). Win XP, level up.
+- **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and
+  specials, called by a shouting arena announcer who reacts to the big moments. You pick a move, the CPU picks its
+  own, and both resolve. Every hit lands with a blink of hit-stop, the knockout blow plays in slow motion with the
+  arena drained of colour, a special turns the arena red under its own riff, and the music hardens when either
+  fighter is nearly done. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all
+  of its health back, in green (+34). On a phone, the hits buzz. Win XP, level up.
 - **Fight a friend:** PvP Battle, the last pick in FIGHT's opponent carousel, opens a room with a 4-digit code for a
   friend to type in, on a phone or a TV. On two phones it's simpler still: touch them back to back on Home and the
   fight starts, with no codes (both need NFC on and the same version of the game).

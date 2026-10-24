@@ -1,7 +1,10 @@
 # Feel and depth: meal perks, the Gauntlet, a living Home, fights that hit, and sound everywhere
 
-**Date:** 2026-10-24. **Status:** approved in chat, two calls still open (see "Open questions"). Implemented in
-phases, each shipped as a release.
+**Date:** 2026-10-24. **Status:** approved in chat; the tell is removed (open question 1 answered). Implemented in
+phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with
+the riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore)
+in the fights-that-hit plan. Tuned by eye: the intense join matches the plain track by speed (a plain seek landed
+120–170 ms late) and the switch back after a fight keeps its place too; the intense track's tom fills every 4 bars.
 
 ## Intent
 
