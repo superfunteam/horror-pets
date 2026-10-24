@@ -35,7 +35,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,23 +108,34 @@ fun StatCard(pet: PetState, width: Dp, modifier: Modifier = Modifier) {
                 .height(1.dp)
                 .background(Brush.horizontalGradient(listOf(Amber.copy(alpha = 0.55f), Color.Transparent))),
         )
+        // The labels' column is as wide as the widest label as drawn, at the font scale in use, so none is cut off
+        // (STRENGTH lost its H) and the gauges still start in line.
+        val density = LocalDensity.current
+        val measurer = rememberTextMeasurer()
+        val labelWidth = remember(measurer, density) {
+            val widest = StatIcon.entries.maxOf { measurer.measure(it.label.uppercase(), LabelStyle, maxLines = 1).size.width }
+            with(density) { widest.toDp() }
+        }
         val hunger = pet.hunger
         StatRow(
             icon = StatIcon.HUNGER,
-            label = "Hunger",
             value = hunger,
             level = when {
                 hunger >= Tuning.STARVING_AT -> BarLevel.CRITICAL
                 hunger >= Tuning.HUNGRY_AT -> BarLevel.WARN
                 else -> BarLevel.OK
             },
+            labelWidth = labelWidth,
         )
-        StatRow(StatIcon.FUN, "Fun", pet.funLevel, lowIsWarn(pet.funLevel))
-        StatRow(StatIcon.STRENGTH, "Strength", pet.strength, lowIsWarn(pet.strength))
+        StatRow(StatIcon.FUN, pet.funLevel, lowIsWarn(pet.funLevel), labelWidth)
+        StatRow(StatIcon.STRENGTH, pet.strength, lowIsWarn(pet.strength), labelWidth)
         val moodValue = mood(pet).toDouble()
-        StatRow(StatIcon.MOOD, "Mood", moodValue, lowIsWarn(moodValue))
+        StatRow(StatIcon.MOOD, moodValue, lowIsWarn(moodValue), labelWidth)
     }
 }
+
+/** A stat's label: small, bold and spaced out. */
+private val LabelStyle = displayStyle(12.sp, FontWeight.Bold, color = TextLo, tracking = 0.12f)
 
 private fun lowIsWarn(v: Double): BarLevel = if (v <= LOW_AT) BarLevel.WARN else BarLevel.OK
 
@@ -166,12 +179,21 @@ private fun StatusTagBox(tag: StatusTag) {
     }
 }
 
-/** The four stats' icons, drawn in the gold of the window's edge. */
-private enum class StatIcon { HUNGER, FUN, STRENGTH, MOOD }
+/** The four stats, each with its [label] and its icon, drawn in the gold of the window's edge. */
+private enum class StatIcon(val label: String) {
+    HUNGER("Hunger"),
+    FUN("Fun"),
+    STRENGTH("Strength"),
+    MOOD("Mood"),
+}
 
-/** One stat: its icon and label, a [SEGMENTS]-segment gauge that fills to [value] (animated), and the number. */
+/**
+ * One stat: its icon and label (in a column [labelWidth] wide), a [SEGMENTS]-segment gauge that fills to [value]
+ * (animated), and the number.
+ */
 @Composable
-private fun StatRow(icon: StatIcon, label: String, value: Double, level: BarLevel) {
+private fun StatRow(icon: StatIcon, value: Double, level: BarLevel, labelWidth: Dp) {
+    val label = icon.label
     val fraction by animateFloatAsState(
         targetValue = (value / Tuning.STAT_MAX).toFloat().coerceIn(0f, 1f),
         animationSpec = tween(BAR_ANIM_MS),
@@ -195,12 +217,8 @@ private fun StatRow(icon: StatIcon, label: String, value: Double, level: BarLeve
     Row(Modifier.fillMaxWidth().height(27.dp), verticalAlignment = Alignment.CenterVertically) {
         Canvas(Modifier.size(16.dp)) { drawStatIcon(icon, Amber) }
         Spacer(Modifier.width(6.dp))
-        BasicText(
-            label.uppercase(),
-            style = displayStyle(12.sp, FontWeight.Bold, color = TextLo, tracking = 0.12f),
-            maxLines = 1,
-            modifier = Modifier.width(60.dp),
-        )
+        BasicText(label.uppercase(), style = LabelStyle, maxLines = 1, modifier = Modifier.width(labelWidth))
+        Spacer(Modifier.width(6.dp))
         Canvas(Modifier.weight(1f).height(11.dp)) {
             val gap = 1.6.dp.toPx()
             val segW = (size.width - gap * (SEGMENTS - 1) - size.height * SLANT) / SEGMENTS
