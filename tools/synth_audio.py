@@ -614,6 +614,44 @@ def music_jaws() -> np.ndarray:
     return widen(loopify(mix, L, F), 13)
 
 
+SPECIAL_RIFF = ["E2", "E2", "G2", "E2", "A2", "E2", "Bb2", "A2"]  # one bar of eighths, E minor like the fight
+
+
+def music_special_riff() -> np.ndarray:
+    """A special's riff: 4 bars at 120 BPM that loop over the ducked fight music while a special plays."""
+    rng = rng_for("special_riff")
+    bpm = 120
+    beat = 60 / bpm
+    bar = 4 * beat
+    L = 4 * bar  # 8 s
+    F = 0.5
+    n = int((L + F) * SR)
+    mix = np.zeros(n)
+    tt = t_axis(L + F)
+    # a saturated saw bass riff in eighths
+    eighth = beat / 2
+    for k in range(int((L + F) / eighth) + 1):  # +1: the next bar's first notes play into the crossfade tail
+        hz = note_hz(SPECIAL_RIFF[k % 8])
+        m = int(eighth * 0.92 * SR)
+        raw = saw(hz, m) + saw(hz * 1.006, m)
+        note = lowpass(np.tanh(3.5 * raw), 1300) * env_adsr(m, 0.003, 0.08, 0.6, 0.03)
+        place(mix, note, k * eighth, 0.25)
+    # a tom roll down on every fourth beat
+    for b in range(int((L + F) / beat) + 1):
+        if b % 4 == 3:
+            for k, hz in enumerate((180, 150, 120, 95)):
+                place(mix, drum_tom(hz), b * beat + k * beat / 4, 0.45)
+    # hats on sixteenths
+    for k in range(int((L + F) / (beat / 4)) + 1):
+        place(mix, drum_hat(rng), k * beat / 4, 0.2 if k % 2 == 0 else 0.13)
+    # a siren: a sine sweeping 400 -> 900 Hz over each bar, faded at the ends so the drop back down is silent
+    phase = (tt % bar) / bar
+    siren = sine(400 + 500 * phase, n) * np.clip(phase / 0.1, 0, 1) * np.clip((1 - phase) / 0.08, 0, 1)
+    mix += siren * 0.06
+    mix = reverb(rng, mix, 0.8, 0.12)
+    return widen(loopify(mix, L, F), 7)
+
+
 # ---------------------------------------------------------------- sfx
 
 def swoosh(rng: np.random.Generator, dur: float, lo: float, hi: float, down: bool = True) -> np.ndarray:
@@ -922,7 +960,7 @@ def write_wav(x: np.ndarray, dest: Path) -> None:
 
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
          "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "leatherface": music_leatherface, "fight": music_fight, "switcher": music_switcher,
-         "jaws": music_jaws}  # new tracks go at the end
+         "jaws": music_jaws, "special_riff": music_special_riff}  # new tracks go at the end
 
 
 def main() -> int:

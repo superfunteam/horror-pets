@@ -14,4 +14,10 @@ interface SoundSink {
      * Lines already under way are left alone. See [VoiceQueue.skipTo]. A sink with no announcer ignores it.
      */
     fun skipVoiceTo(lines: List<String>) = Unit
+
+    /**
+     * Starts ([on]) or ends a special's riff, `audio/music/special_riff.ogg`: a loop over the music, which ducks under
+     * it while it plays. Ending it fades it out and brings the music back. A sink with no music ignores it.
+     */
+    fun riff(on: Boolean) = Unit
 }

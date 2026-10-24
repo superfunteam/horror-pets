@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -250,8 +251,9 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    danced special, or the attack's own animation, as Jaws's Barrel Breach and Ultra Thrash have: see [swingAnim])
  *    and hops back. At the impact the defender flashes white
  *    and shakes, the damage number floats up and the HP bar drains with it; a crit is a big Amber number
- *    with CRITICAL! and a screen shake, a HEAVY flashes the screen, a SPECIAL darkens the arena and plays its
- *    pet's effect ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
+ *    with CRITICAL! and a screen shake, a HEAVY flashes the screen, a SPECIAL darkens the arena and turns it red
+ *    under its own riff (the music ducking under it until a second after the blow) and plays its pet's effect
+ *    ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
  *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]), and now and
  *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); a special
  *    whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
@@ -417,6 +419,10 @@ fun FightScreen(
         finished(request.token)
         if (screen.fight.winner == null && entry != null && !askRun) focusMenu(lastMove)
     }
+    // A special's riff ends with its turn; one the screen leaves mid-turn would otherwise loop on over what comes next.
+    DisposableEffect(sink) {
+        onDispose { sink.riff(false) }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { stage.screenTop = it.positionInRoot().y }) {
         val w = constraints.maxWidth.toFloat()
@@ -455,14 +461,16 @@ fun FightScreen(
         ) {
             SceneBackdrop(loader = loader, scene = arena) { floorY ->
                 SideEffect { stage.floorY = floorY }
-                // The arena dims while a special plays, so its effect owns the screen, and greys while the
-                // knockout blow crawls.
+                // The arena dims and turns red while a special plays, so its effect owns the screen, and greys
+                // while the knockout blow crawls.
                 Spacer(
                     Modifier
                         .fillMaxSize()
                         .drawBehind {
                             val d = stage.darken.value
                             if (d > 0f) drawRect(Color.Black, alpha = d)
+                            val r = stage.red.value
+                            if (r > 0f) drawRect(Blood, alpha = r)
                             val g = stage.koGrey.value
                             if (g > 0f) drawRect(KoGrey, alpha = g * 0.4f)
                         },
@@ -880,6 +888,9 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     val flash = Animatable(0f)
     var flashColor by mutableStateOf(Color.White)
     val darken = Animatable(0f)
+
+    /** A special's red over the dark (0..1): it comes up with [darken] at the wind-up, and lifts with it a little slower. */
+    val red = Animatable(0f)
     val ko = Animatable(0f)
 
     /** 0 while K.O. holds the centre, 1 once it has lifted above the fighters' heads. */
@@ -919,6 +930,15 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     var screenTop = 0f
 
     fun rig(side: Side): FighterRig = if (side == Side.PLAYER) player else cpu
+
+    /** The specials holding the riff: one can outlast its own effect (see [RIFF_AFTER_BLOW_MS]) into the next. */
+    private var riffHolds = 0
+
+    /** A special takes ([on]) or lets go of [sink]'s riff, which plays while any special holds it. */
+    fun holdRiff(sink: SoundSink, on: Boolean) {
+        riffHolds = if (on) riffHolds + 1 else maxOf(0, riffHolds - 1)
+        sink.riff(riffHolds > 0)
+    }
 
     private val cellH: Float get() = height * FIGHTER_HEIGHT
     val floor: Float get() = if (floorY > 0f) floorY else height * 0.75f
@@ -1074,7 +1094,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
             // The same fighter must be back on its mark first, and a special's effect must have played
             // out; otherwise the other fighter may set off as the last one lands.
             if (tailSide == beat.attacker || special != null) tail?.join() else if (tail?.isActive == true) delay(140)
-            tail = lunge(this, beat, riders, guarding, winner, loader, sounds, play)
+            tail = lunge(this, beat, riders, guarding, winner, loader, sounds, play, sink)
             tailSide = beat.attacker
         } else if (beat is Beat.Drink) {
             tail?.join()
@@ -1143,6 +1163,7 @@ private suspend fun FightStage.lunge(
     loader: AssetLoader,
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
+    sink: SoundSink,
 ): Job {
     val a = rig(beat.attacker)
     val d = rig(beat.attacker.other())
@@ -1179,14 +1200,17 @@ private suspend fun FightStage.lunge(
     // The impact is timed from the swing's first frame on screen, not from asking for it, and counted in frames of
     // fight time alongside the sprite's own: the blow lands on the frame that shows the snap, so a stop freezes that.
     withTimeoutOrNull(SWING_START_WAIT_MS) { swingPose.started.await() }
+    // A special's wind-up: the arena darkens and turns red, and its riff comes in over the ducking music.
     if (special) scope.launch {
         delay(max(0L, impact - 220L))
+        holdRiff(sink, on = true)
+        launch { red.animateTo(0.45f, tween(220)) }
         darken.animateTo(0.5f + 0.08f * a.kit.special.tier, tween(220))
     }
     pass(impact)
     val stop = hitStopFor(event)
     val ko = koBlow(event, d.hpTarget.toInt(), attacker = a.side, winner = winner)
-    val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play, stopMs = stop, ko = ko)
+    val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play, sink, stopMs = stop, ko = ko)
     // A blow at the impact stops the clock now, and the winning one then crawls; a special's later blow does both
     // as it lands (see impactOf).
     if (landsAtMs(a, event) == 0L) {
@@ -1233,6 +1257,7 @@ private fun FightStage.impactOf(
     guarding: MutableSet<Side>,
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
+    sink: SoundSink,
     stopMs: Long,
     ko: Boolean,
 ): Job? {
@@ -1335,6 +1360,8 @@ private fun FightStage.impactOf(
                     specialT.animateTo(1f, tween(specialMs(fx.style), easing = LinearEasing))
                     special = null
                     specialT.snapTo(0f)
+                    // The red lifts with the dark, a little slower, without holding up the next beat.
+                    scope.launch { red.animateTo(0f, tween(400)) }
                     darken.animateTo(0f, tween(260))
                     // A later blow's stop and knockout belong to the special: the turn moves on after them.
                     landing?.join()
@@ -1344,6 +1371,8 @@ private fun FightStage.impactOf(
                     delay(schedule.blowAtMs + SPECIAL_MS / 3L)
                     hurt(scope, d, strength = 0.4f)
                 }
+                // The riff rides on past the blow, then fades as the music comes back.
+                afterImpact(scope, schedule.blowAtMs + RIFF_AFTER_BLOW_MS) { holdRiff(sink, on = false) }
             }
         }
 
@@ -1403,6 +1432,9 @@ private inline fun afterImpact(scope: CoroutineScope, ms: Long, crossinline bloc
 
 /** A drain's +HP follows its special's blow by this much, so the two numbers read one after the other. */
 private const val DRAIN_AFTER_MS = 420L
+
+/** A special's riff lets go this long after its blow lands. */
+private const val RIFF_AFTER_BLOW_MS = 1_000L
 
 /** [beat]'s side bleeds at the end of the turn: a smaller red number with BLEED, a shudder, and its bar drains. */
 private suspend fun FightStage.bleed(scope: CoroutineScope, beat: Beat.Bleed, sounds: TurnSounds, play: (FightSounds) -> Unit) {

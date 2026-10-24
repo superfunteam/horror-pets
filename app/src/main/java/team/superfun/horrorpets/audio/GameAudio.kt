@@ -29,6 +29,8 @@ import java.util.concurrent.Executors
  *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS].
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
  *   over [CROSSFADE_MS] using a second player; a null track fades the music out.
+ * - A special's riff ([riff]) loops on a third player over the music, which ducks under it (see [duckLevel]). It
+ *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS].
  *
  * Every call is logged under the `GameAudio` tag. Unknown names are logged and ignored, never thrown.
  * All playback calls belong on the main thread (a call from another thread is posted there); only
@@ -76,7 +78,7 @@ class GameAudio(context: Context) : SoundSink {
     private val voiceDone = Runnable {
         voices.finished()
         voiceStream = 0
-        if (voices.idle) duckMusic(false) else pumpVoice()
+        if (voices.idle) duckMusic() else pumpVoice()
     }
 
     // ---- music (ExoPlayer) ----
@@ -86,6 +88,11 @@ class GameAudio(context: Context) : SoundSink {
     private var slotB: MusicSlot? = null
     private var activeSlot: MusicSlot? = null
     private var currentTrack: String? = null
+
+    // A special's riff: a slot of its own, never one of the pair the music crossfades between. Created on first use.
+    private var riffSlot: MusicSlot? = null
+    private var riffOn = false
+
     private var duck = 1f
     private var duckTarget = 1f
     private var tickRunning = false
@@ -142,8 +149,30 @@ class GameAudio(context: Context) : SoundSink {
         }
         val gone = dropped - voices.queued.size
         Log.d(TAG, "voice skip to ${lines.joinToString(" > ")}: cut ${if (cut) cutting else "nothing"}, dropped $gone")
-        if (voices.idle) duckMusic(false)
+        if (voices.idle) duckMusic()
         pumpVoice()
+    }
+
+    override fun riff(on: Boolean) = onMain {
+        Log.d(TAG, "riff ${if (on) "on" else "off"}")
+        if (released || on == riffOn) return@onMain
+        if (on && paused) {
+            Log.d(TAG, "riff dropped: paused")
+            return@onMain
+        }
+        riffOn = on
+        val slot = riffSlot ?: MusicSlot("R", ducked = false).also { riffSlot = it }
+        if (on) {
+            // It comes up as fast as the music goes down under it. One still fading out picks up where it is.
+            slot.fadeMs = RIFF_DUCK_DOWN_MS
+            if (slot.track == null) slot.start(RIFF_TRACK) else slot.target = 1f
+            Log.d(TAG, "riff slot R playing $RIFF_TRACK")
+        } else {
+            slot.fadeMs = RIFF_FADE_MS
+            slot.target = 0f
+            Log.d(TAG, "riff slot R fading out over ${RIFF_FADE_MS.toInt()}ms")
+        }
+        duckMusic()
     }
 
     // ================================================================ music and lifecycle
@@ -181,8 +210,14 @@ class GameAudio(context: Context) : SoundSink {
         pendingSfx.clear()
         recentStreams.forEach(pool::stop)
         recentStreams.clear()
+        riffOn = false
+        riffSlot?.apply {
+            target = 0f
+            level = 0f
+            stop()
+        }
         duck = 1f
-        duckTarget = 1f
+        duckTarget = duckLevel(voice = !voices.idle, riff = riffOn)
         slots().forEach {
             it.player.playWhenReady = false
             it.applyVolume()
@@ -325,7 +360,7 @@ class GameAudio(context: Context) : SoundSink {
                     voices.start()
                     voiceStream = stream
                     Log.d(TAG, "voice playing $name (${clip.durationMs}ms)")
-                    duckMusic(true)
+                    duckMusic()
                     main.postDelayed(voiceDone, clip.durationMs + VOICE_GAP_MS)
                 }
             }
@@ -362,14 +397,15 @@ class GameAudio(context: Context) : SoundSink {
 
     // ================================================================ music fades (main thread)
 
-    private fun duckMusic(on: Boolean) {
-        val target = if (on) DUCK_LEVEL else 1f
-        if (target != duckTarget) Log.d(TAG, if (on) "music ducked" else "music restored")
+    /** Points the music's duck at what sounds over it now, the announcer and the riff (see [duckLevel]). */
+    private fun duckMusic() {
+        val target = duckLevel(voice = !voices.idle, riff = riffOn)
+        if (target != duckTarget) Log.d(TAG, if (target < 1f) "music ducked to $target" else "music restored")
         duckTarget = target
         startTicking()
     }
 
-    private fun slots(): List<MusicSlot> = listOfNotNull(slotA, slotB)
+    private fun slots(): List<MusicSlot> = listOfNotNull(slotA, slotB, riffSlot)
 
     /** The slot that takes a new track: an idle one, else the quieter of the two (the newest of overlapping fades). */
     private fun quieterSlot(): MusicSlot {
@@ -390,11 +426,15 @@ class GameAudio(context: Context) : SoundSink {
         val now = SystemClock.uptimeMillis()
         val dt = (now - lastTickAt).coerceAtLeast(1L).toFloat()
         lastTickAt = now
-        val duckMs = if (duckTarget < duck) DUCK_DOWN_MS else DUCK_UP_MS
+        val duckMs = when {
+            duckTarget >= duck -> DUCK_UP_MS
+            riffOn -> RIFF_DUCK_DOWN_MS
+            else -> DUCK_DOWN_MS
+        }
         duck = approach(duck, duckTarget, dt / duckMs)
         var settled = duck == duckTarget
         for (slot in slots()) {
-            slot.level = approach(slot.level, slot.target, dt / CROSSFADE_MS)
+            slot.level = approach(slot.level, slot.target, dt / slot.fadeMs)
             if (slot.target == 0f && slot.level == 0f) slot.stop()
             slot.applyVolume()
             if (slot.level != slot.target) settled = false
@@ -409,8 +449,11 @@ class GameAudio(context: Context) : SoundSink {
     private fun approach(current: Float, target: Float, step: Float): Float =
         if (current < target) minOf(current + step, target) else maxOf(current - step, target)
 
-    /** One of the two music players, with the fade level it is currently at. */
-    private inner class MusicSlot(private val label: String) {
+    /**
+     * A music player, with the fade level it is currently at: one of the two the music crossfades between, or the
+     * riff's. Only the music ([ducked]) ducks under the announcer and the riff.
+     */
+    private inner class MusicSlot(private val label: String, private val ducked: Boolean = true) {
         val player: ExoPlayer = ExoPlayer.Builder(appContext)
             // Focus handling stays off: two players asking for it would take it from each other.
             .setAudioAttributes(
@@ -436,9 +479,12 @@ class GameAudio(context: Context) : SoundSink {
         var track: String? = null
             private set
 
-        /** 0 = silent, 1 = full; moves toward [target] over [CROSSFADE_MS]. */
+        /** 0 = silent, 1 = full; moves toward [target] over [fadeMs]. */
         var level = 0f
         var target = 0f
+
+        /** How long a fade all the way between silent and full takes: [CROSSFADE_MS] for the music. */
+        var fadeMs = CROSSFADE_MS
 
         fun start(newTrack: String) {
             track = newTrack
@@ -457,7 +503,7 @@ class GameAudio(context: Context) : SoundSink {
         }
 
         fun applyVolume() {
-            player.volume = MUSIC_VOLUME * level * duck
+            player.volume = MUSIC_VOLUME * level * (if (ducked) duck else 1f)
         }
     }
 
@@ -484,12 +530,14 @@ class GameAudio(context: Context) : SoundSink {
         const val FALLBACK_BYTES_PER_SECOND = 88_200L // 44.1 kHz, mono, 16-bit
 
         const val MUSIC_VOLUME = 0.5f
-        const val DUCK_LEVEL = 0.3f
         const val CUT_FADE_MS = 80L
         const val CUT_FADE_STEPS = 4
         const val CROSSFADE_MS = 600f
         const val DUCK_DOWN_MS = 120f
         const val DUCK_UP_MS = 400f
+        const val RIFF_TRACK = "special_riff"
+        const val RIFF_DUCK_DOWN_MS = 150f
+        const val RIFF_FADE_MS = 600f
         const val FRAME_MS = 30L
     }
 }
