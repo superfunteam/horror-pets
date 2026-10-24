@@ -57,6 +57,7 @@ import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.nextPlayGag
 import team.superfun.horrorpets.model.attackById
+import team.superfun.horrorpets.model.challengerDue
 import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.model.pendingAttacks
 import team.superfun.horrorpets.pvp.PvpException
@@ -119,6 +120,9 @@ class GameViewModel(
 
     /** The next FEED's [Screen.Pantry.session]. */
     private var nextPantrySession = 1L
+
+    /** The next challenger entrance's [Screen.Challenger.session]. */
+    private var nextChallengerSession = 1L
 
     /**
      * Debug builds only: the game the next TRAIN opens, when it is on offer (see the puppet's `train <game>`). Any
@@ -503,6 +507,10 @@ class GameViewModel(
     /**
      * Opens the opponent switcher, or refuses when the selected pet is too hungry to fight (first) or, being a new
      * player's, has not yet trained at both solo games (see [mustTrainBeforeFighting]).
+     *
+     * A FIGHT that is not refused while a secret killer is due (see [challengerDue]: every other killer is in the
+     * stable) is his instead: he is revealed and saved at once, so his entrance plays only this once whatever happens
+     * next, and [Screen.Challenger] plays it. [onChallengerDone] then takes the player to his VS card.
      */
     fun onFightPressed() {
         val s = _state.value
@@ -515,21 +523,33 @@ class GameViewModel(
             refuse(s, RefuseReason.NEEDS_TRAINING)
             return
         }
+        val challenger = s.game.challengerDue()
+        if (challenger != null) {
+            val game = s.game.copy(revealed = s.game.revealed + challenger.name)
+            val entrance = Screen.Challenger(challenger, session = nextChallengerSession++)
+            _state.value = s.copy(game = game, screen = entrance, refuse = null)
+            persist(game)
+            return
+        }
         _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT), refuse = null)
+    }
+
+    /**
+     * Challenger [session]'s entrance is over (it ended, or OK or Back skipped it): on to the VS card against him, as
+     * picking him in the opponent switcher would. Ignored from any session but the one on screen, so an end reported
+     * twice (OK on the frame it ended by itself) goes there once.
+     */
+    fun onChallengerDone(session: Long) {
+        val s = _state.value
+        val challenger = (s.screen as? Screen.Challenger)?.takeIf { it.session == session } ?: return
+        _state.value = s.versusAgainst(challenger.pet) ?: return
     }
 
     fun onSwitcherPick(p: PetId) {
         val s = _state.value
         val switcher = s.screen as? Screen.Switcher ?: return
         when (switcher.mode) {
-            SwitcherMode.OPPONENT -> {
-                val player = s.game.selected ?: return
-                if (p == player) return
-                _state.value = s.copy(
-                    screen = Screen.Versus(p),
-                    voice = s.voice + listOf(player.soundName(), "versus", p.soundName()),
-                )
-            }
+            SwitcherMode.OPPONENT -> _state.value = s.versusAgainst(p) ?: return
 
             SwitcherMode.ONBOARD -> {
                 // The starter is the whole stable to begin with: the others are unlocked by beating them.
@@ -1049,6 +1069,16 @@ class GameViewModel(
     }
 
     private fun UiState.goHome(): UiState = copy(screen = Screen.Home, refuse = null, stableOpen = false).routeHome()
+
+    /**
+     * The VS card against [opponent], with the announcer's "<player> versus <opponent>" queued as it opens; null
+     * without a selected pet, or when [opponent] is that pet (it can not fight itself).
+     */
+    private fun UiState.versusAgainst(opponent: PetId): UiState? {
+        val player = game.selected ?: return null
+        if (opponent == player) return null
+        return copy(screen = Screen.Versus(opponent), voice = voice + listOf(player.soundName(), "versus", opponent.soundName()))
+    }
 
     // ---- attacks: learning and equipping -------------------------------------------------------
 

@@ -104,6 +104,16 @@ sealed interface Screen {
 
     data object Home : Screen
 
+    /**
+     * "HERE COMES A NEW CHALLENGER!": the secret killer [pet] bursts in, on the FIGHT that finds every other killer in
+     * the stable (see `GameState.challengerDue`). He is revealed, and saved so, as it starts, so it plays once. It ends
+     * by itself, or OK (or Back) skips it, with `onChallengerDone(session)`: on to the VS card against him.
+     *
+     * [session] tells one entrance from another (a new number each time), as a training game's does, so that the end
+     * of one can never act on any other screen.
+     */
+    data class Challenger(val pet: PetId, val session: Long) : Screen
+
     /** The VS card before a fight with [opponent]: the CPU's, or, in [pvp], the other player's killer. */
     data class Versus(val opponent: PetId, val pvp: Boolean = false) : Screen
 

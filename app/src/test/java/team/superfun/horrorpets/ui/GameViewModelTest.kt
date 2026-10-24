@@ -59,7 +59,10 @@ import team.superfun.horrorpets.model.PantryItem.STEAK
 import team.superfun.horrorpets.model.PantryItem.SUN
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.model.Starters
 import team.superfun.horrorpets.model.TrainingGame
+import team.superfun.horrorpets.model.challengerDue
+import team.superfun.horrorpets.model.isVisible
 import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.ui.switcher.lineup
 
@@ -2604,6 +2607,188 @@ class GameViewModelTest {
         rig.vm.onWalk(1)
         rig.vm.onFightPressed()
         assertEquals(before, rig.ui)
+    }
+
+    // ---- the secret killer: here comes a new challenger -------------------------------------------
+
+    /**
+     * The seven killers anyone can unlock and nobody else, the secret one not revealed: a stable that has beaten
+     * everyone, as an old save that had them all before he existed. [jason] is the one selected; the default is strong
+     * enough to win [winningScript]'s fight.
+     */
+    private fun everyoneButTheSecret(jason: PetState = jason(strength = 100.0)) = GameState(
+        pets = Starters.associateWith { if (it == PetId.JASON) jason else PetState(it, trainedGames = TRAINED) },
+        selected = PetId.JASON,
+        lastSeenMs = T0,
+    )
+
+    /** FIGHT on Home, which has to open the challenger's entrance: its screen. */
+    private fun Rig.toChallenger(): Screen.Challenger {
+        vm.onFightPressed()
+        return ui.screen as? Screen.Challenger ?: error("expected the challenger's entrance, got ${ui.screen}")
+    }
+
+    /** Plays out a fight with [move] every turn, however long it takes, the CPU on real dice. */
+    private fun Rig.fightOut(move: Move) {
+        var turns = 0
+        while (ui.screen is Screen.Fight) {
+            vm.onMove(move)
+            finishAnim()
+            check(++turns < 200) { "the fight never ended" }
+        }
+    }
+
+    @Test
+    fun anOldSaveWithEveryoneGetsTheChallenger() {
+        // A 0.7.0 save: all seven, and no `revealed`, a field it did not have.
+        val trained = TRAINED.joinToString(",") { "\"$it\"" }
+        val pets = Starters.joinToString(",") { """"${it.name}":{"id":"${it.name}","trainedGames":[$trained]}""" }
+        val v070 = """{"version":2,"selected":"JASON","lastSeenMs":$T0,"pets":{$pets}}"""
+        val rig = Rig(SaveCodec.decode(v070)).started()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(Starters.toSet(), rig.game.pets.keys)
+        assertTrue(rig.game.revealed.isEmpty())
+
+        val challenger = rig.toChallenger()
+        assertEquals(PetId.JAWS, challenger.pet)
+        assertNull(rig.ui.refuse)
+        assertFalse("the entrance is a screen, not an action: nothing waits on an animation", rig.ui.busy)
+        assertTrue("the entrance plays its own sounds, on its own timeline", rig.ui.sfx.isEmpty() && rig.ui.voice.isEmpty())
+
+        // FIGHT again (a mashed key reaching the view model late) does nothing: Home is not up.
+        rig.vm.onFightPressed()
+        assertEquals(challenger, rig.ui.screen)
+    }
+
+    @Test
+    fun theRevealIsSavedWhenTheEntranceStarts() {
+        val rig = Rig(everyoneButTheSecret()).started()
+        rig.settle()
+        val saves = rig.store.saves.size
+
+        val challenger = rig.toChallenger()
+        assertEquals(setOf("JAWS"), rig.game.revealed)
+        rig.settle()
+        assertEquals("saved once, as the entrance starts", saves + 1, rig.store.saves.size)
+        assertEquals(setOf("JAWS"), rig.store.last.revealed)
+        assertEquals(Starters.toSet(), rig.store.last.pets.keys)
+        assertEquals("still on the entrance: the save does not wait for it to end", challenger, rig.ui.screen)
+
+        // He is in every list from now on, still to beat, and no FIGHT plays the entrance again.
+        assertTrue(rig.game.isVisible(PetId.JAWS))
+        assertFalse(rig.game.isUnlocked(PetId.JAWS))
+        assertNull(rig.game.challengerDue())
+    }
+
+    @Test
+    fun doneGoesToTheVsCardAgainstHim() {
+        val rig = Rig(everyoneButTheSecret()).started()
+        val challenger = rig.toChallenger()
+
+        rig.vm.onChallengerDone(challenger.session)
+        assertEquals(Screen.Versus(PetId.JAWS), rig.ui.screen)
+        // As picking him in the switcher would: the announcer's "<player> versus <opponent>".
+        assertEquals(listOf("jason", "versus", "jaws"), rig.ui.voice)
+        assertEquals(PetId.JASON, rig.game.selected)
+        assertFalse(rig.ui.busy)
+
+        rig.vm.onVersusDone()
+        val fight = rig.ui.screen as Screen.Fight
+        assertEquals(PetId.JASON, fight.fight.player.id)
+        assertEquals(PetId.JAWS, fight.fight.cpu.id)
+    }
+
+    @Test
+    fun aStarvingPetDoesNotTriggerTheReveal() {
+        val rig = Rig(everyoneButTheSecret(jason(hunger = 90.0))).started()
+        rig.settle()
+        val saves = rig.store.saves.size
+
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Home, rig.ui.screen)
+        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
+        rig.finishAnim()
+        assertTrue(rig.game.revealed.isEmpty())
+        assertEquals("he is still due, for the FIGHT that is not refused", PetId.JAWS, rig.game.challengerDue())
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+
+        // Nor does a new player who has to train before a first fight.
+        val untrained = Rig(everyoneButTheSecret(PetState(PetId.JASON))).started()
+        untrained.vm.onFightPressed()
+        assertEquals(Screen.Home, untrained.ui.screen)
+        assertEquals(RefuseReason.NEEDS_TRAINING, untrained.ui.refuse)
+        assertTrue(untrained.game.revealed.isEmpty())
+    }
+
+    @Test
+    fun losingLeavesHimAsALockedCard() {
+        // Jason, with no strength at all, strikes every turn against him and loses.
+        val rig = Rig(everyoneButTheSecret(jason(strength = 0.0)), rng = Random(7)).started()
+        rig.vm.onChallengerDone(rig.toChallenger().session)
+        rig.vm.onVersusDone()
+        rig.fightOut(Move.STRIKE)
+        val results = rig.ui.screen as Screen.Results
+        assertFalse(results.won)
+        assertFalse(results.ran)
+        assertFalse(rig.game.isUnlocked(PetId.JAWS))
+        rig.vm.onResultsDone()
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.settle()
+        assertEquals(setOf("JAWS"), rig.store.last.revealed)
+
+        // The next FIGHT opens the switcher, where he waits at the end of the row, locked until he is beaten.
+        rig.vm.onFightPressed()
+        assertEquals(Screen.Switcher(SwitcherMode.OPPONENT), rig.ui.screen)
+        val opponents = lineup(SwitcherMode.OPPONENT, rig.game)
+        assertEquals(PetId.JAWS, opponents.last())
+        assertEquals(7, opponents.size)
+        assertFalse(rig.game.isUnlocked(PetId.JAWS))
+        rig.vm.onSwitcherPick(PetId.JAWS)
+        assertEquals(Screen.Versus(PetId.JAWS), rig.ui.screen)
+    }
+
+    @Test
+    fun beatingHimUnlocksHim() {
+        val rig = Rig(everyoneButTheSecret(), rng = winningScript()).started()
+        rig.vm.onChallengerDone(rig.toChallenger().session)
+        rig.vm.onVersusDone()
+        rig.vm.consumeSounds()
+        rig.playOut()
+
+        val unlocked = rig.ui.screen as Screen.Unlocked
+        assertEquals(PetId.JAWS, unlocked.pet)
+        assertTrue(unlocked.results.won)
+        assertEquals(listOf("you_win", "unlocked"), rig.ui.voice)
+        assertEquals(PetId.entries.toSet(), rig.game.pets.keys)
+        assertEquals(PetState(PetId.JAWS), rig.game.pets.getValue(PetId.JAWS))
+        rig.settle()
+        assertTrue(rig.store.last.isUnlocked(PetId.JAWS))
+        assertNull(rig.game.challengerDue())
+    }
+
+    @Test
+    fun aStaleSessionIsIgnored() {
+        val rig = Rig(everyoneButTheSecret()).started()
+        val challenger = rig.toChallenger()
+
+        rig.vm.onChallengerDone(challenger.session + 1)
+        rig.vm.onChallengerDone(challenger.session - 1)
+        assertEquals(challenger, rig.ui.screen)
+        assertTrue(rig.ui.voice.isEmpty())
+
+        rig.vm.onChallengerDone(challenger.session)
+        assertEquals(Screen.Versus(PetId.JAWS), rig.ui.screen)
+        val after = rig.ui
+        // The entrance's end reported again (OK on the frame it ended by itself) changes nothing on the VS card,
+        rig.vm.onChallengerDone(challenger.session)
+        assertEquals(after, rig.ui)
+        // nor anywhere else.
+        rig.vm.onVersusBack()
+        rig.vm.onSwitcherBack()
+        assertEquals(Screen.Home, rig.ui.screen)
+        rig.vm.onChallengerDone(challenger.session)
+        assertEquals(Screen.Home, rig.ui.screen)
     }
 
     // ---- sounds and toast --------------------------------------------------------------------

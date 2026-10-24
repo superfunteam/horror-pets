@@ -354,9 +354,12 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
         )
 
-        /** The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. */
+        /**
+         * The music track for what is on screen, or null for silence. Names are the files in `audio/music/`. The
+         * challenger's entrance cuts the music for its bass hit and announcer; the fight music comes in on his VS card.
+         */
         fun musicTrackFor(state: UiState): String? = when (state.screen) {
-            Screen.Loading, is Screen.FakeDeath -> null
+            Screen.Loading, is Screen.FakeDeath, is Screen.Challenger -> null
             Screen.Title, is Screen.Switcher, is Screen.PvpLobby -> "switcher"
             Screen.Home, is Screen.Learn, Screen.Moves, is Screen.Training, is Screen.Pantry -> state.game.selected?.name?.lowercase()
             is Screen.Versus, is Screen.Fight, is Screen.Unlocked, is Screen.Results -> "fight"

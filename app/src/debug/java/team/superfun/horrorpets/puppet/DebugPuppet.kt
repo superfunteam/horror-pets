@@ -79,6 +79,12 @@ private const val CARD_HOLD_MS = 2_500L
  */
 private const val MEAL_HOLD_MS = 9_000L
 
+/**
+ * Autoplay leaves a challenger's entrance this long before carrying on to his VS card: the entrance does that by itself
+ * once it has played (under 4 s), so this only matters when nothing is drawing it.
+ */
+private const val ENTRANCE_HOLD_MS = 6_000L
+
 /** How long the fight screen gets to take a pick (its cursor holds a moment first) before the game gets it directly. */
 private const val PICK_TAKE_MS = 1_500L
 
@@ -414,7 +420,10 @@ private class Session(
         /** The fight's menu is up for [fight]'s turn. */
         data class Menu(val fight: FightState) : Cue
 
-        /** A card that waits for Continue: results (a fight's or a training game's), an unlock or a learn screen, or a pantry's reaction. */
+        /**
+         * A card that waits for Continue: results (a fight's or a training game's), an unlock or a learn screen, or a
+         * pantry's reaction; or a challenger's entrance, which carries on by itself unless nothing is drawing it.
+         */
         data class Card(val screen: Screen) : Cue
     }
 
@@ -427,6 +436,7 @@ private class Session(
             is Screen.Training -> if (screen.result != null) Cue.Card(screen) else null
             // The pantry is cooked and fed by hand (or with `cook` and `serve`); only the reaction after the meal waits for Continue.
             is Screen.Pantry -> if (screen.fed != null) Cue.Card(screen) else null
+            is Screen.Challenger -> Cue.Card(screen)
             else -> null
         }
     }
@@ -446,12 +456,19 @@ private class Session(
                         pick(choice.move)
                     }
                     is Cue.Card -> {
-                        delay(if (cue.screen is Screen.Pantry) MEAL_HOLD_MS else CARD_HOLD_MS)
+                        delay(
+                            when (cue.screen) {
+                                is Screen.Pantry -> MEAL_HOLD_MS
+                                is Screen.Challenger -> ENTRANCE_HOLD_MS
+                                else -> CARD_HOLD_MS
+                            },
+                        )
                         when (val card = cue.screen) {
                             is Screen.Results -> vm.onResultsDone()
                             is Screen.Unlocked -> vm.onUnlockedDone()
                             is Screen.Training -> vm.onTrainingDone(card.session)
                             is Screen.Pantry -> vm.onPantryDone(card.session)
+                            is Screen.Challenger -> vm.onChallengerDone(card.session)
                             is Screen.Learn -> {
                                 Log.i(TAG, "Autoplay: learns ${attackById(card.attack)?.name ?: card.attack}")
                                 vm.onLearn(learn = true)
@@ -518,6 +535,8 @@ private class Session(
                 Screen.Title -> vm.onStart()
                 is Screen.Switcher -> if (screen.mode == SwitcherMode.ONBOARD) return NO_PET else vm.onSwitcherBack()
                 is Screen.FakeDeath -> vm.onFakeDeathDone()
+                // He is revealed and saved already: on to his VS card, and back out of it like any other.
+                is Screen.Challenger -> vm.onChallengerDone(screen.session)
                 is Screen.Versus -> vm.onVersusBack()
                 is Screen.PvpLobby -> vm.onLobbyBack()
                 is Screen.Learn -> vm.onLearnLater()
@@ -624,6 +643,7 @@ private fun describe(s: UiState): String = when (val screen = s.screen) {
     is Screen.Switcher -> if (screen.mode == SwitcherMode.ONBOARD) "starter pick" else "opponent pick"
     is Screen.FakeDeath -> "fake death of ${screen.pet.displayName}"
     Screen.Home -> if (s.stableOpen) "Home, stable open" else "Home"
+    is Screen.Challenger -> "challenger entrance: ${screen.pet.displayName}"
     is Screen.Versus -> "VS card vs ${screen.opponent.displayName}${if (screen.pvp) " (PvP)" else ""}"
     is Screen.PvpLobby -> "PvP lobby"
     is Screen.Learn -> "learn screen for ${attackById(screen.attack)?.name ?: screen.attack}"

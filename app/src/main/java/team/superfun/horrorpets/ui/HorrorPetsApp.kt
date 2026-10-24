@@ -1,6 +1,8 @@
 package team.superfun.horrorpets.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,6 +34,7 @@ import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.fakedeath.FakeDeathScreen
+import team.superfun.horrorpets.ui.fight.ChallengerScreen
 import team.superfun.horrorpets.ui.fight.UnlockedScreen
 import team.superfun.horrorpets.ui.title.TitleScreen
 import team.superfun.horrorpets.ui.fight.FightScreen
@@ -121,7 +124,14 @@ fun HorrorPetsApp(
         AnimatedContent(
             targetState = state.screen,
             contentKey = { it::class },
-            transitionSpec = { fadeIn(tween(SCREEN_FADE_MS)) togetherWith fadeOut(tween(SCREEN_FADE_MS)) },
+            transitionSpec = {
+                // The challenger's entrance cuts to black on its first note, with no fade.
+                if (targetState is Screen.Challenger) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    fadeIn(tween(SCREEN_FADE_MS)) togetherWith fadeOut(tween(SCREEN_FADE_MS))
+                }
+            },
             modifier = Modifier.fillMaxSize().background(Ink),
             label = "screen",
         ) { screen ->
@@ -172,6 +182,14 @@ fun HorrorPetsApp(
                     onAnimFinished = vm::onAnimFinished,
                     onToastDone = vm::consumeToast,
                     onExit = exitFromHome,
+                    focusEntry = focusEntry,
+                )
+
+                is Screen.Challenger -> ChallengerScreen(
+                    pet = screen.pet,
+                    session = screen.session,
+                    loader = loader,
+                    onDone = vm::onChallengerDone,
                     focusEntry = focusEntry,
                 )
 
