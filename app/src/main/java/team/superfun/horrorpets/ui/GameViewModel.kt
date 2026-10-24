@@ -428,10 +428,14 @@ class GameViewModel(
     }
 
     /**
-     * OK on pantry [session]'s reaction: Home, where a level-up's new attack is offered as after any level-up.
-     * Leaves the same way [onPantryBack] does, at any point of the visit.
+     * OK on pantry [session]'s reaction: Home, where a level-up's new attack is offered as after any level-up. Does
+     * nothing until the killer has eaten ([Screen.Pantry.fed]), so a FEED pressed twice can never skip its reaction;
+     * Back ([onPantryBack]) leaves at any point of the visit.
      */
-    fun onPantryDone(session: Long) = leavePantry(session)
+    fun onPantryDone(session: Long) {
+        if (pantrySession(_state.value, session)?.fed == null) return
+        leavePantry(session)
+    }
 
     /** Back in pantry [session]: Home with the shelf as it was (what was on the board goes back), nothing paid. */
     fun onPantryBack(session: Long) = leavePantry(session)

@@ -76,8 +76,8 @@ import team.superfun.horrorpets.ui.theme.BloodGlow
 /** A shelf item stands in a box this big (its picture fitted inside, standing on the plank). */
 internal val ShelfItemSize = 64.dp
 
-/** The focused item grows this much inside its cursor. */
-private const val FOCUS_SCALE = 1.12f
+/** The focused item grows this much inside its cursor (and a cooked dish landing there lands that big). */
+internal const val FOCUS_SCALE = 1.12f
 
 /** The remote's cursor: a gold-edged frame round the focused item, standing on the plank, at most this big. */
 private val CursorSize = 80.dp
@@ -108,10 +108,12 @@ private const val ON_BOARD_DIM = 1f
  * run of them in its slots (a long shelf slides left and right under them as the window moves, and a finger can drag
  * it). Items on the [board] stand dimmed in their place; the [heart] dish wears its heart. [focus] is the remote's
  * focus (in a gold cursor, a little bigger, with its name on a tag under the plank), or null when the remote is not on
- * the shelf (it is on the buttons, or a finger is in charge).
+ * the shelf (it is on the buttons, or a finger is in charge). The [hidden] slot stands empty (a cooked dish is still
+ * on its way to it).
  *
  * A tap on an item calls [onTap] with its index on [shelf] as it is drawn now; a drag that ends calls [onScrolled]
- * with the window's first slot as it settles. Gold arrows on the plank's ends say the shelf goes on past them.
+ * with the window's first slot as it settles. Neither happens while [enabled] says no (read as a finger comes down):
+ * the kitchen's input is held. Gold arrows on the plank's ends say the shelf goes on past them.
  */
 @Composable
 internal fun Shelf(
@@ -121,6 +123,8 @@ internal fun Shelf(
     heart: PantryItem?,
     window: ShelfWindow,
     focus: Int?,
+    hidden: Int?,
+    enabled: () -> Boolean,
     onTap: (index: Int) -> Unit,
     onScrolled: (first: Int) -> Unit,
     modifier: Modifier,
@@ -132,6 +136,7 @@ internal fun Shelf(
     val latestWindow by rememberUpdatedState(window)
     val latestOnTap by rememberUpdatedState(onTap)
     val latestOnScrolled by rememberUpdatedState(onScrolled)
+    val latestEnabled by rememberUpdatedState(enabled)
 
     // A shelf shorter than its slots stands in the middle of the plank; it slides over as it grows or shrinks.
     val lead = animateFloatAsState(shelfLead(shelf.size, window.slots), spring(dampingRatio = 0.9f, stiffness = 500f), label = "shelfLead")
@@ -149,11 +154,14 @@ internal fun Shelf(
             heart = heart,
             window = window,
             focus = focus,
+            hidden = hidden,
             scroll = { scroll.value - lead.value },
             scrolledTo = { floor(scroll.value - lead.value).toInt() },
             gestures = Modifier.pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    // Held (coming in, a cook on show, away): this finger does nothing, all the way to its lift.
+                    if (!latestEnabled()) return@awaitEachGesture
                     val pitch = size.width.toFloat() / latestWindow.slots
                     val start = scroll.value
                     val tracker = VelocityTracker()
@@ -215,6 +223,7 @@ private fun ShelfBody(
     heart: PantryItem?,
     window: ShelfWindow,
     focus: Int?,
+    hidden: Int?,
     scroll: () -> Float,
     scrolledTo: () -> Int,
     gestures: Modifier,
@@ -257,6 +266,7 @@ private fun ShelfBody(
                         onBoard = index in board,
                         heart = item == heart,
                         focused = index == focus,
+                        hidden = index == hidden,
                         x = { pitch -> (index - scroll() + 0.5f) * pitch },
                         slots = window.slots,
                         standPx = standPx,
@@ -264,7 +274,7 @@ private fun ShelfBody(
                 }
             }
         }
-        if (focus != null && focus in shelf.indices) {
+        if (focus != null && focus in shelf.indices && focus != hidden) {
             NameTag(
                 title = shelf[focus].title,
                 centerX = { pitch -> (focus - scroll() + 0.5f) * pitch },
@@ -283,6 +293,7 @@ private fun ShelfSlot(
     onBoard: Boolean,
     heart: Boolean,
     focused: Boolean,
+    hidden: Boolean,
     x: (pitch: Float) -> Float,
     slots: Int,
     standPx: Float,
@@ -303,7 +314,7 @@ private fun ShelfSlot(
         },
     ) {
         Spacer(Modifier.fillMaxSize().drawBehind { drawCursor(lit) })
-        ItemArt(
+        if (!hidden) ItemArt(
             loader,
             item,
             Modifier
@@ -329,7 +340,7 @@ private val CursorEdge = Color(0xFFFFE08A)
  * The remote's cursor round a shelf item, [lit] (0..1) of the way in: a chamfered frame like the game's windows
  * (top-right and bottom-left corners cut), dark glass inside so the item stands out, a gold edge and a gold halo.
  */
-private fun DrawScope.drawCursor(lit: Float) {
+internal fun DrawScope.drawCursor(lit: Float) {
     if (lit <= 0f) return
     val cut = CursorCut.toPx()
     val stroke = 2.dp.toPx()

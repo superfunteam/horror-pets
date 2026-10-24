@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import java.util.EnumMap
 import java.util.concurrent.ConcurrentHashMap
 import team.superfun.horrorpets.game.Tuning
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 
@@ -23,8 +22,8 @@ const val CUTTING_BOARD_ART = "sprites/pantry/board.webp"
 const val KITCHEN_SCENE = "scenes/pantry/kitchen.json"
 
 /**
- * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the food a
- * feed drops and the player's glove (`sprites/food/...`, `sprites/hand/...`), the pantry's items
+ * Loads the bundled game art: sprite manifests and strips (`sprites/<pet>/...`), small props such as the player's
+ * glove (`sprites/hand/...`), the pantry's items
  * (`sprites/pantry/...`) and scene backdrops (`scenes/...`, the pantry's kitchen among them). Bitmaps are decoded as
  * ARGB_8888 without density scaling.
  *
@@ -127,9 +126,6 @@ class AssetLoader(context: Context) {
 
     /** The cutting board ([CUTTING_BOARD_ART]), 768 px wide and angled a little, on a transparent background. */
     fun cuttingBoard(): ImageBitmap = prop(CUTTING_BOARD_ART)
-
-    /** The picture of [food], to drop in when a pet is fed. */
-    fun food(food: Food): ImageBitmap = prop("sprites/food/${food.file}")
 
     /** [pet]'s head (`sprites/<pet>/head.webp`, cut by tools/make_heads.py), for the stable badge and menus. */
     fun head(pet: PetId): ImageBitmap = prop("sprites/${pet.dir}/head.webp")

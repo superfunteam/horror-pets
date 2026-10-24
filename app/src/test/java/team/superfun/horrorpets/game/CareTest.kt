@@ -19,28 +19,9 @@ class CareTest {
 
     private fun done(r: CareResult): CareResult.Done = r as CareResult.Done
 
-    @Test
-    fun feedLowersHunger() {
-        val r = done(perform(CareAction.FEED, pet(hunger = 60.0)))
-        assertEquals(25.0, r.pet.hunger, 1e-9)
-        assertEquals(0, r.levelsGained)
-    }
-
-    @Test
-    fun feedGivesNoXpAndChangesNothingElse() {
-        val p = pet(hunger = 60.0, xp = 17)
-        val r = done(perform(CareAction.FEED, p))
-        assertEquals(p.copy(hunger = 25.0), r.pet)
-    }
-
-    @Test
-    fun feedRefusesWhenFull() {
-        assertEquals(CareResult.Refused(RefuseReason.TOO_FULL), perform(CareAction.FEED, pet(hunger = 9.0)))
-    }
-
-    @Test
-    fun feedAllowedAtRefuseBoundary() {
-        assertTrue(perform(CareAction.FEED, pet(hunger = 10.0)) is CareResult.Done)
+    @Test(expected = IllegalArgumentException::class)
+    fun feedIsNotPerformedHereButInThePantry() {
+        perform(CareAction.FEED, pet(hunger = 60.0))
     }
 
     @Test
@@ -97,8 +78,6 @@ class CareTest {
 
     @Test
     fun statsClamp() {
-        // Feed below zero.
-        assertEquals(0.0, done(perform(CareAction.FEED, pet(hunger = 20.0))).pet.hunger, 0.0)
         // Play past 100 on fun and hunger.
         val played = done(perform(CareAction.PLAY, pet(hunger = 98.0, fn = 90.0))).pet
         assertEquals(100.0, played.funLevel, 0.0)

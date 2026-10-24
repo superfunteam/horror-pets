@@ -73,6 +73,12 @@ private const val MENU_LOOK_MS = 800L
 /** Autoplay leaves a results, unlock or learn card up this long before continuing. */
 private const val CARD_HOLD_MS = 2_500L
 
+/**
+ * Autoplay leaves a pantry's meal this long before carrying on: its toss, munch and reaction play out first, and the
+ * kitchen carries on Home by itself a few seconds into the reaction, so this only matters when nothing is drawing it.
+ */
+private const val MEAL_HOLD_MS = 9_000L
+
 /** How long the fight screen gets to take a pick (its cursor holds a moment first) before the game gets it directly. */
 private const val PICK_TAKE_MS = 1_500L
 
@@ -305,7 +311,7 @@ private class Session(
                 when {
                     after.refuse != null -> Outcome.Refused("${pet.id.displayName} turned it down: ${after.refuse}")
                     !after.busy -> Outcome.Refused("Home did not take it")
-                    else -> Outcome.Done("${pet.id.displayName}: ${careChange(command.action, before, pet)}")
+                    else -> Outcome.Done("${pet.id.displayName}: ${playChange(before, pet)}")
                 }
             }
 
@@ -321,6 +327,7 @@ private class Session(
             }
 
             is PuppetCommand.Stock -> {
+                if (state().screen == Screen.Loading) return Outcome.Refused("the save is still loading: nothing was added")
                 val before = state().game.pantry.size
                 vm.debugStock(command.items)
                 val added = state().game.pantry.size - before
@@ -335,7 +342,7 @@ private class Session(
                 pantryRefusal()?.let { return Outcome.Refused(it) }
                 val wanted = listOf(command.a, command.b)
                 val places = placesOnShelf(wanted)
-                places.indexOf(null).takeIf { it >= 0 }?.let { return Outcome.Refused("${wanted[it].id} is not on the shelf") }
+                places.indexOf(null).takeIf { it >= 0 }?.let { return Outcome.Refused(notEnoughOnShelf(wanted, wanted[it])) }
                 val session = (state().screen as Screen.Pantry).session
                 val before = (state().screen as Screen.Pantry).cook?.token
                 putOnBoard(places.filterNotNull())
@@ -439,7 +446,7 @@ private class Session(
                         pick(choice.move)
                     }
                     is Cue.Card -> {
-                        delay(CARD_HOLD_MS)
+                        delay(if (cue.screen is Screen.Pantry) MEAL_HOLD_MS else CARD_HOLD_MS)
                         when (val card = cue.screen) {
                             is Screen.Results -> vm.onResultsDone()
                             is Screen.Unlocked -> vm.onUnlockedDone()
@@ -573,6 +580,16 @@ private class Session(
         return wanted.map { item -> shelf.indices.firstOrNull { it !in taken && shelf[it] == item }?.also { taken += it } }
     }
 
+    /**
+     * Why [wanted] can not all be found on the shelf, [missing] being the first that is short: it is not there at all,
+     * or (the same item twice, as `cook grill grill`) there is only one.
+     */
+    private fun notEnoughOnShelf(wanted: List<PantryItem>, missing: PantryItem): String {
+        val need = wanted.count { it == missing }
+        val have = state().game.pantryItems().count { it == missing }
+        return if (have == 0) "${missing.id} is not on the shelf" else "that cooks $need ${missing.id}, and the shelf has $have"
+    }
+
     /** Puts exactly [places] on the pantry's board, in that order, through its picks: whatever stood there comes off first. */
     private fun putOnBoard(places: List<Int>) {
         val pantry = state().screen as? Screen.Pantry ?: return
@@ -589,16 +606,10 @@ private class Session(
     /** ", now on <screen>" when [s] is not Home, as when the active pet has a learn screen or its fake death due. */
     private fun screenNote(s: UiState): String = if (s.screen == Screen.Home) "" else ", now on ${describe(s)}"
 
-    /** What a care action changed, by the stat it is for. */
-    private fun careChange(action: CareAction, before: PetState, after: PetState): String {
-        fun change(name: String, a: Double, b: Double) = "$name ${a.toInt()} -> ${b.toInt()}"
-        val stat = when (action) {
-            CareAction.FEED -> change("hunger", before.hunger, after.hunger)
-            CareAction.PLAY -> change("fun", before.funLevel, after.funLevel)
-            CareAction.TRAIN -> change("strength", before.strength, after.strength)
-        }
-        return "${action.name.lowercase()}, $stat" + if (after.level > before.level) ", now level ${after.level}" else ""
-    }
+    /** What a play changed: the pet's fun (FEED opens the pantry and TRAIN a game, which report their own). */
+    private fun playChange(before: PetState, after: PetState): String =
+        "play, fun ${before.funLevel.toInt()} -> ${after.funLevel.toInt()}" +
+            if (after.level > before.level) ", now level ${after.level}" else ""
 
     private companion object {
         /** More than any trip Home takes: a learn screen for each attack a big level jump unlocks, then the rest. */

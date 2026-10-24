@@ -4,8 +4,11 @@ import team.superfun.horrorpets.model.PetState
 
 enum class CareAction { FEED, PLAY, TRAIN }
 
-/** Why a care action or a fight was turned away: [NEEDS_TRAINING] is a new killer's first fight (see `mustTrainBeforeFighting`). */
-enum class RefuseReason { TOO_FULL, TOO_HUNGRY, NEEDS_TRAINING }
+/**
+ * Why a care action or a fight was turned away: [NEEDS_TRAINING] is a new killer's first fight (see
+ * `mustTrainBeforeFighting`). A killer too full to eat is the pantry's to turn away (see `Screen.Pantry.tooFull`).
+ */
+enum class RefuseReason { TOO_HUNGRY, NEEDS_TRAINING }
 
 sealed interface CareResult {
     data class Done(val pet: PetState, val levelsGained: Int) : CareResult
@@ -13,18 +16,14 @@ sealed interface CareResult {
 }
 
 /**
- * Applies a care action. Hunger is a need meter (0 = full, 100 = starving), so feeding lowers it
- * while playing and training raise it. Every stat is clamped to 0..100 and moodBonus to -30..30.
- * A pet that is already full will not eat, and a starving pet will not train.
+ * Applies a care action. Hunger is a need meter (0 = full, 100 = starving), so playing and training raise it. Every
+ * stat is clamped to 0..100 and moodBonus to -30..30. A starving pet will not train.
+ *
+ * FEED is not performed here: it opens the pantry, where what the pet eats decides what it pays (see `feed`). Passing
+ * it throws [IllegalArgumentException].
  */
 fun perform(action: CareAction, p: PetState): CareResult = when (action) {
-    CareAction.FEED -> {
-        if (p.hunger < Tuning.FEED_REFUSE_BELOW) {
-            CareResult.Refused(RefuseReason.TOO_FULL)
-        } else {
-            reward(p.copy(hunger = clampStat(p.hunger + Tuning.FEED_HUNGER)), Tuning.XP_FEED)
-        }
-    }
+    CareAction.FEED -> throw IllegalArgumentException("FEED opens the pantry: see team.superfun.horrorpets.game.pantry.feed")
 
     CareAction.PLAY -> reward(
         p.copy(

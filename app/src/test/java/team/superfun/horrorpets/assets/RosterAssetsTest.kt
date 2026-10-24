@@ -5,10 +5,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.ItemKind
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
@@ -138,12 +138,13 @@ class RosterAssetsTest {
     }
 
     @Test
-    fun everyFoodHasItsArtAndSounds() {
-        for (food in Food.entries) {
-            val path = "sprites-final/food/${food.file}"
-            assertTrue(path, file(path).isFile)
+    fun theSoundsAFeedPlaysAreShipped() {
+        // The kitchen plays the meal's toss and bites, the reaction's happy or gross beat (or the favorite's fanfare)
+        // and a level-up; the old snack drop's art is gone.
+        for (sfx in listOf("food_drop", "bite", "eat_happy", "eat_gross", "favorite_fanfare", "levelup")) {
+            assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
         }
-        for (sfx in listOf("food_drop", "bite")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+        assertFalse("sprites-final/food is retired", file("sprites-final/food").exists())
     }
 
     @Test

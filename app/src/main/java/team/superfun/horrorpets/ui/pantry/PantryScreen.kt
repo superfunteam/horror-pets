@@ -1,58 +1,70 @@
 package team.superfun.horrorpets.ui.pantry
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.assets.bodyScale
+import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.training.TrainingKey
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.BOARD_PLACES
 import team.superfun.horrorpets.ui.Screen
+import team.superfun.horrorpets.ui.common.BUBBLE_ABOVE_FEET
+import team.superfun.horrorpets.ui.common.BUBBLE_MS
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SlabHeight
+import team.superfun.horrorpets.ui.common.SpeechBubble
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
@@ -62,8 +74,8 @@ import team.superfun.horrorpets.ui.common.isTouchInput
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.rememberOkReady
 import team.superfun.horrorpets.ui.common.safeInset
+import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.home.HOME_PET_HEIGHT
-import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.theme.TextLo
 import team.superfun.horrorpets.ui.training.GlowText
@@ -76,33 +88,49 @@ import team.superfun.horrorpets.ui.training.HelpItem
 import team.superfun.horrorpets.ui.training.HelpStrip
 import team.superfun.horrorpets.ui.training.TrainingActor
 import team.superfun.horrorpets.ui.training.TrainingGold
+import team.superfun.horrorpets.ui.training.reachesGame
+import team.superfun.horrorpets.ui.training.rememberAwayPause
 import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
-import team.superfun.horrorpets.ui.training.trainingKeys
+import team.superfun.horrorpets.ui.training.trainingKeyOf
 
-/** How long a refusal ("That will not cook.") stays up. */
+/** How long a refused cook's "That will not cook." stays up, over the shaking board. */
 private const val NOTE_MS = 1_500L
+
+/** What the help strip says once the reaction is up. */
+private val CarryOnHelp = listOf(HelpItem(listOf(TrainingKey.OK), "Carry on"))
+private const val CARRY_ON_TOUCH = "Tap to carry on"
+
+/** How far the board swings in a refused cook's shake. */
+private val ShakeReach = 12.dp
+
+/** The shelf and the buttons fade to this while the killer eats: the kitchen's work is done. */
+private const val SERVED_ALPHA = 0.35f
 
 /**
  * FEED: the pantry, in its horror kitchen. [pet] stands on the kitchen floor at the left; in the middle is the cutting
  * board with its two places and COOK and FEED under it, and along the bottom the shelf: everything in [shelf], a
  * carousel that slides left and right. The help strip under it says what the keys (or a finger) do right now.
  *
- * - On a TV: Left and Right move along the shelf, Down goes to COOK and FEED (and Up back), OK puts the focused item on
- *   the board or takes it off again, or presses the button. A held OK places nothing twice; a held direction keeps
- *   moving.
+ * - On a TV the remote moves over three rows, as they stand: the shelf at the bottom, COOK and FEED over it, and the
+ *   board's items at the top. Left and Right move along a row, Up and Down between rows (a held one moves one row). OK
+ *   puts the focused shelf item on the board or takes it off again, takes the focused board item off, or presses the
+ *   button. A held OK places nothing twice; a held Left or Right keeps moving, ticking only on the press.
  * - Under a finger: a tap on an item puts it on the board (or takes it off), a tap on the board takes it off, a drag
  *   slides the shelf, and the buttons take taps.
  * - COOK acts with two items on the board, FEED with one ([Screen.Pantry.board]); either is dim otherwise, and a
  *   press on it buzzes. Back leaves at any time.
  *
- * The remote's focus is this screen's own, not Compose focus: the screen holds the one focus target and moves its
- * focus between the shelf and the buttons itself, so it can follow the shelf as it changes (a cook's new dish takes
- * the focus, see [focusAfter]). Its key sounds are its own too (see `Screen.ownsKeySounds`).
+ * A cook is shown (see [CookShowView]): the two items meet in the board's middle, poof, the dish pops up with its
+ * name and flies to its slot. A refused cook shakes the board. Once the killer has been fed, its meal is tossed to its
+ * feet and munched, and it reacts (see [playFeedShow]); OK or a tap then carries on Home, or it does by itself after a
+ * few seconds. A killer too full to eat fails and says so. All of it plays from the view model's tokens and shows,
+ * never from the shelf, and nothing runs once it has played but the killer's idle.
  *
- * Once [pet] has eaten, the reaction covers the screen until OK, a tap or any key carries on Home. Everything it
- * reports names [Screen.Pantry.session]. [focusEntry] is as on the other screens: input waits for it, and for the
- * moment after it that `rememberOkReady` gives every screen.
+ * The remote's focus is this screen's own, not Compose focus (see [KitchenCursor]), and so are its key sounds (see
+ * `Screen.ownsKeySounds`). Input is held (see [kitchenInputHeld]) while the screen comes in or goes out, while the app
+ * is away and for a moment after, through a cook's show, and once the killer has eaten (the reaction has the keys).
+ * Everything it reports names [Screen.Pantry.session].
  */
 @Composable
 fun PantryScreen(
@@ -144,38 +172,88 @@ private fun PantryVisit(
     val rootFocus = remember { FocusRequester() }
     RequestFocusOnEntry(rootFocus, focusEntry)
     val okReady = rememberOkReady(focusEntry)
+    val away = rememberAwayPause()
     val fed = screen.fed
     val kitchen = remember(loader) { loader.kitchenScene() }
+    val manifest = remember(loader, pet.id) { loader.manifest(pet.id) }
     val actor = remember { TrainingActor() }
     val heart = favoriteHeart(pet)
 
-    // The remote's place, kept on the shelf as it changes; and where each board item sits.
+    // Warm what the killer may play here, so a meal's munch and its reaction start on time.
+    LaunchedEffect(loader, pet.id) {
+        withContext(Dispatchers.IO) {
+            for (anim in listOf(manifest.feedAnim(), Anim.JUMP, Anim.FAIL, Anim.LOOK_A)) loader.strip(pet.id, anim)
+        }
+    }
+
+    // The remote's place, kept on the shelf (and the board) as they change; and where each board item sits.
     val cursor = remember { KitchenCursor() }
-    SideEffect { cursor.follow(shelf, screen) }
     val lastPlaces = remember { arrayOf<List<Int?>>(emptyList()) }
     val places = remember(screen.board) { boardPlaces(lastPlaces[0], screen.board).also { lastPlaces[0] = it } }
+    SideEffect { cursor.follow(shelf, screen, places) }
+    // What stood in each of the board's places when it last held anything: where a cook's two inputs and a meal set
+    // off from, as the board is already empty when their show starts.
+    val lastOnBoard = remember { arrayOf<List<PantryItem?>>(emptyList()) }
+    SideEffect { if (screen.board.isNotEmpty()) lastOnBoard[0] = places.map { it?.let(shelf::getOrNull) } }
 
     // Read when a key or a tap comes in, so it acts on the shelf and board as they are drawn now.
     val latestShelf by rememberUpdatedState(shelf)
     val latestScreen by rememberUpdatedState(screen)
+    val latestPlaces by rememberUpdatedState(places)
 
-    // Input waits while the screen is coming in or going out, and once the killer has eaten (its reaction has the keys).
-    val held = focusEntry == null || fed != null
+    // The cook on show, from its token: one already made when the visit started is not shown again.
+    val cook = screen.cook
+    var shownCook by remember { mutableStateOf(cook?.token) }
+    val cooking = cook != null && cook.token != shownCook
+    val cookFrom = remember(cook?.token) { cook?.let { convergeFrom(it.inputs, lastOnBoard[0]) } ?: emptyList() }
 
-    // A refusal says so for a moment; the screen's tokens change on each one.
+    // A refused cook: the board shakes, and says why for a moment. Tokens there when the visit started are old news.
+    val seenRefusal = remember { screen.refusedCook }
+    val shake = remember { Animatable(SHAKE_MS.toFloat()) }
     var note by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(screen.refusedCook) {
-        if (screen.refusedCook == 0L) return@LaunchedEffect
+        if (screen.refusedCook == 0L || screen.refusedCook == seenRefusal) return@LaunchedEffect
         note = "That will not cook."
-        delay(NOTE_MS)
+        shake.snapTo(0f)
+        shake.animateTo(SHAKE_MS.toFloat(), tween(SHAKE_MS.toInt(), easing = LinearEasing))
+        delay(max(0L, NOTE_MS - SHAKE_MS))
         note = null
     }
+
+    // Too full to eat: the killer fails, and says so.
+    val seenTooFull = remember { screen.tooFull }
+    var tooFull by remember { mutableStateOf<Said?>(null) }
     LaunchedEffect(screen.tooFull) {
-        if (screen.tooFull == 0L) return@LaunchedEffect
-        note = "${pet.id.displayName} is too full to eat."
-        delay(NOTE_MS)
-        note = null
+        if (screen.tooFull == 0L || screen.tooFull == seenTooFull) return@LaunchedEffect
+        actor.act(Anim.FAIL)
+        val said = Said(TOO_FULL_LINE)
+        tooFull = said
+        delay(BUBBLE_MS)
+        if (tooFull === said) tooFull = null
     }
+
+    // Fed: the meal, the munch and the reaction, then Home. A visit that started with the meal eaten (the Activity
+    // came back on it) goes straight to the reaction.
+    val feedStage = remember { FeedStage() }
+    val fedAtStart = remember { fed != null }
+    val latestOnDone by rememberUpdatedState(onDone)
+    LaunchedEffect(fed) {
+        if (fed == null) return@LaunchedEffect
+        playFeedShow(fed, loader, manifest, feedStage, actor, sounds, away = { away.paused }, atReaction = fedAtStart) {
+            latestOnDone(session)
+        }
+    }
+    // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now).
+    val carryOn = { if (feedStage.carryOn && !away.paused) latestOnDone(session) }
+
+    val held = kitchenInputHeld(
+        entered = focusEntry != null,
+        okReady = okReady.value,
+        away = away.paused,
+        cooking = cooking,
+        fed = fed != null,
+    )
+    val latestHeld by rememberUpdatedState(held)
 
     /** OK or a tap on shelf item [index]: on the board, or off it again; a full board buzzes. */
     fun pick(index: Int) {
@@ -189,58 +267,22 @@ private fun PantryVisit(
         }
     }
 
-    /** OK or a tap on [button]: it acts, or buzzes while it can't. */
+    /** OK or a tap on [button]: it acts (the view model and the shows make its sounds), or buzzes while it can't. */
     fun press(button: KitchenButton) {
         val board = latestScreen.board
         when (button) {
             KitchenButton.COOK -> if (board.size == BOARD_PLACES) onCook(session) else sounds.sfx("refuse")
-            KitchenButton.FEED -> if (board.size == 1) {
-                sounds.sfx("ui_select")
-                onFeed(session)
-            } else {
-                sounds.sfx("refuse")
-            }
+            KitchenButton.FEED -> if (board.size == 1) onFeed(session) else sounds.sfx("refuse")
         }
     }
 
-    fun onKey(key: TrainingKey) {
-        val size = latestShelf.size
-        val moved = when (cursor.row) {
-            KitchenRow.SHELF -> when (key) {
-                TrainingKey.LEFT, TrainingKey.RIGHT -> {
-                    val next = (cursor.focus + if (key == TrainingKey.LEFT) -1 else 1).coerceIn(0, max(0, size - 1))
-                    (next != cursor.focus).also { cursor.focus = next }
-                }
-                TrainingKey.DOWN -> {
-                    cursor.row = KitchenRow.BUTTONS
-                    cursor.button = when (latestScreen.board.size) {
-                        BOARD_PLACES -> KitchenButton.COOK
-                        1 -> KitchenButton.FEED
-                        else -> cursor.button
-                    }
-                    true
-                }
-                TrainingKey.UP -> false
-                TrainingKey.OK -> {
-                    pick(cursor.focus)
-                    false
-                }
-            }
-            KitchenRow.BUTTONS -> when (key) {
-                TrainingKey.UP -> {
-                    cursor.row = KitchenRow.SHELF
-                    true
-                }
-                TrainingKey.LEFT -> (cursor.button == KitchenButton.FEED).also { cursor.button = KitchenButton.COOK }
-                TrainingKey.RIGHT -> (cursor.button == KitchenButton.COOK).also { cursor.button = KitchenButton.FEED }
-                TrainingKey.DOWN -> false
-                TrainingKey.OK -> {
-                    press(cursor.button)
-                    false
-                }
-            }
+    fun onKey(key: TrainingKey, repeat: Int) {
+        when (val action = cursor.move(key, latestPlaces, latestShelf.size, repeat)) {
+            KitchenAction.None -> Unit
+            KitchenAction.Moved -> if (ticks(action, repeat)) sounds.sfx("ui_move")
+            is KitchenAction.Pick -> pick(action.index)
+            is KitchenAction.Press -> press(action.button)
         }
-        if (moved) sounds.sfx("ui_move")
     }
 
     BoxWithConstraints(
@@ -248,48 +290,53 @@ private fun PantryVisit(
             .fillMaxSize()
             .focusRequester(rootFocus)
             .ignoreOkUnless(okReady)
-            // Once the killer has eaten, any key carries on (Back is the back handler's own).
+            // Once the killer has eaten the reaction has the keys: OK carries on Home once it is up, and nothing else
+            // reaches the kitchen (Back is the back handler's own).
             .onPreviewKeyEvent { event ->
-                val carryOn = fed != null && event.type == KeyEventType.KeyDown && event.key != Key.Back
-                if (carryOn) onDone(session)
-                carryOn
-            }
-            .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held) }
-            .trainingKeys { key, down ->
-                if (down) onKey(key)
+                if (fed == null) return@onPreviewKeyEvent false
+                val key = trainingKeyOf(event.key) ?: return@onPreviewKeyEvent false
+                if (key == TrainingKey.OK && event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) carryOn()
                 true
             }
+            .onPreviewKeyEvent { swallowedWhileHeld(it.key, it.type, held) }
+            .kitchenKeys(::onKey)
             .focusable(),
     ) {
         val safe = safeInset()
         val density = LocalDensity.current
-        val manifest = remember(loader, pet.id) { loader.manifest(pet.id) }
+        fun px(dp: Float): Float = with(density) { dp.dp.toPx() }
         val killerHeight = maxHeight.value * HOME_PET_HEIGHT
+        val killerHalf = killerHeight * manifest.cell[0] / manifest.cell[1] * KILLER_BODY_HALF
         val layout = KitchenLayout.of(
             width = maxWidth.value,
             height = maxHeight.value,
             insetX = safe.horizontal.value,
             insetY = safe.vertical.value,
-            killerHalf = killerHeight * manifest.cell[0] / manifest.cell[1] * KILLER_BODY_HALF,
+            killerHalf = killerHalf,
         )
         val touch = isTouchInput()
         val window = shelfWindow(cursor.focus, shelf.size, layout.slots, cursor.first)
         SideEffect { cursor.first = window.first }
+        val latestWindow by rememberUpdatedState(window)
+        val floorY = remember { mutableFloatStateOf(Float.NaN) }
+        val tint = remember(kitchen) { hexColor(kitchen.tint) }
+        val drawnHeight = px(killerHeight) * manifest.bodyScale
+        val served by animateFloatAsState(if (fed != null) SERVED_ALPHA else 1f, tween(400), label = "kitchenServed")
 
         // The kitchen, and the killer standing on its floor at the left, in its light.
-        SceneBackdrop(loader, kitchen) { floorY ->
-            val tint = remember(kitchen) { hexColor(kitchen.tint) }
+        SceneBackdrop(loader, kitchen) { floor ->
+            SideEffect { floorY.floatValue = floor }
             SpriteView(
                 loader = loader,
                 pet = pet.id,
                 anim = actor.anim,
-                heightPx = with(density) { killerHeight.dp.toPx() },
+                heightPx = px(killerHeight),
                 tint = tint,
                 tintStrength = kitchen.tintStrength,
                 shadowOpacity = kitchen.shadowOpacity,
                 playKey = actor.playKey,
                 onFinished = actor.onFinished,
-                modifier = Modifier.placeAt(x = { with(density) { layout.killerX.dp.toPx() } }, y = { floorY }),
+                modifier = Modifier.placeAt(x = { px(layout.killerX) }, y = { floor }),
             )
         }
 
@@ -303,21 +350,32 @@ private fun PantryVisit(
             )
         }
 
+        val boardLeft = layout.columnCenter - layout.boardWidth / 2f
+        val boardHeight = layout.boardWidth / BOARD_ASPECT
+        val itemPx = px(layout.boardWidth * BOARD_ITEM_SHARE)
+        fun boardPoint(at: Offset) = Offset(px(boardLeft + layout.boardWidth * at.x), px(layout.boardTop + boardHeight * at.y))
+
         Board(
             loader = loader,
             shelf = shelf,
             places = places,
             heart = heart,
             width = layout.boardWidth.dp,
+            focus = cursor.place.takeIf { cursor.row == KitchenRow.BOARD && !touch && fed == null },
+            plus = !cooking && fed == null,
             onTap = ::pick,
-            modifier = Modifier.offset(x = (layout.columnCenter - layout.boardWidth / 2f).dp, y = layout.boardTop.dp),
+            modifier = Modifier
+                .offset(x = boardLeft.dp, y = layout.boardTop.dp)
+                .graphicsLayer { translationX = shakeAt(shake.value.toLong()) * ShakeReach.toPx() },
         )
         KitchenButtons(
             canCook = screen.board.size == BOARD_PLACES,
             canFeed = screen.board.size == 1,
-            focused = cursor.button.takeIf { cursor.row == KitchenRow.BUTTONS && !touch },
+            focused = cursor.button.takeIf { cursor.row == KitchenRow.BUTTONS && !touch && fed == null },
             onPress = ::press,
-            modifier = Modifier.offset(x = (layout.columnCenter - KitchenButtonsWidth / 2f).dp, y = layout.buttonsTop.dp),
+            modifier = Modifier
+                .offset(x = (layout.columnCenter - KitchenButtonsWidth / 2f).dp, y = layout.buttonsTop.dp)
+                .graphicsLayer { alpha = served },
         )
         Shelf(
             loader = loader,
@@ -325,7 +383,9 @@ private fun PantryVisit(
             board = screen.board,
             heart = heart,
             window = window,
-            focus = cursor.focus.takeIf { cursor.row == KitchenRow.SHELF && !touch && shelf.isNotEmpty() },
+            focus = cursor.focus.takeIf { cursor.row == KitchenRow.SHELF && !touch && shelf.isNotEmpty() && fed == null },
+            hidden = cook?.at?.takeIf { cooking },
+            enabled = { !latestHeld },
             onTap = ::pick,
             onScrolled = { first ->
                 cursor.first = first
@@ -333,25 +393,31 @@ private fun PantryVisit(
             },
             modifier = Modifier
                 .offset(x = (layout.columnCenter - layout.columnHalf).dp, y = layout.shelfTop.dp)
-                .size((layout.columnHalf * 2f).dp, ShelfHeight),
+                .size((layout.columnHalf * 2f).dp, ShelfHeight)
+                .graphicsLayer { alpha = served },
         )
-        if (shelf.isEmpty()) {
+        if (shelf.isEmpty() && fed == null) {
             BasicText(
                 "THE SHELF IS EMPTY",
                 style = displayStyle(16.sp, FontWeight.Bold, color = TextLo, tracking = 0.1f, halo = true),
                 modifier = Modifier.placeAt(
-                    x = { with(density) { layout.columnCenter.dp.toPx() } },
+                    x = { px(layout.columnCenter) },
                     y = { with(density) { (layout.shelfTop.dp + ShelfStandY).toPx() } },
                 ),
             )
         }
         HelpStrip(
-            help = kitchenHelp(cursor.row, cursor.button, screen.board, cursor.focus, shelf.size),
-            touchHelp = kitchenTouchHelp(screen.board.size),
-            modifier = Modifier.placeAt(
-                x = { with(density) { layout.columnCenter.dp.toPx() } },
-                y = { with(density) { layout.helpBottom.dp.toPx() } },
-            ),
+            help = when {
+                fed == null -> kitchenHelp(cursor.row, cursor.button, screen.board, cursor.focus, shelf.size)
+                feedStage.carryOn -> CarryOnHelp
+                else -> emptyList()
+            },
+            touchHelp = when {
+                fed == null -> kitchenTouchHelp(screen.board.size)
+                feedStage.carryOn -> CARRY_ON_TOUCH
+                else -> ""
+            },
+            modifier = Modifier.placeAt(x = { px(layout.columnCenter) }, y = { px(layout.helpBottom) }),
         )
         note?.let {
             BasicText(
@@ -359,56 +425,135 @@ private fun PantryVisit(
                 style = displayStyle(16.sp, FontWeight.Bold, color = TextHi, tracking = 0.06f),
                 maxLines = 1,
                 modifier = Modifier
-                    .placeAt(
-                        x = { with(density) { layout.columnCenter.dp.toPx() } },
-                        y = { with(density) { (layout.boardTop + 6f).dp.toPx() } },
-                        pivotY = 0f,
-                    )
+                    .placeAt(x = { px(layout.columnCenter) }, y = { px(layout.boardTop + 6f) }, pivotY = 0f)
                     .gameFrame(topEnd = 7.dp, bottomStart = 7.dp, inner = false)
                     .padding(horizontal = 14.dp, vertical = 5.dp),
             )
         }
 
-        // While held, no touch reaches the kitchen (the reaction over it takes its own).
-        if (held) Spacer(Modifier.fillMaxSize().swallowTouches())
-
-        if (fed != null) {
-            Column(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).clickable { onDone(session) },
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                BasicText(fed.item.title.uppercase(), style = displayStyle(30.sp, tracking = 0.06f))
-                Spacer(Modifier.height(8.dp))
-                BasicText("\"${fed.line}\"", style = displayStyle(22.sp, color = Amber))
-                Spacer(Modifier.height(8.dp))
-                BasicText(
-                    "+${fed.xp} XP" + if (fed.levelsGained > 0) "  ·  LEVEL UP!" else "",
-                    style = displayStyle(18.sp, color = TextHi),
+        // The cook on show, over the board and the shelf.
+        if (cooking && cook != null) {
+            key(cook.token) {
+                val stage = CookStage(
+                    place = { boardPoint(PlaceAt[it.coerceIn(0, PlaceAt.lastIndex)]) },
+                    middle = boardPoint(PlusAt),
+                    item = itemPx,
+                    shown = itemPx * 1.3f,
+                    slot = {
+                        val w = latestWindow
+                        val lead = shelfLead(latestShelf.size, w.slots)
+                        val pitch = layout.columnHalf * 2f / w.slots
+                        val x = layout.columnCenter - layout.columnHalf + (cook.at - w.first + lead + 0.5f) * pitch
+                        val lit = !touch && cursor.row == KitchenRow.SHELF && cursor.focus == cook.at
+                        Offset(px(x), px(layout.shelfTop + ShelfStandY.value)) to px(ShelfItemSize.value * if (lit) FOCUS_SCALE else 1f)
+                    },
                 )
-                Spacer(Modifier.height(16.dp))
-                BasicText(
-                    if (isTouchInput()) "TAP TO CARRY ON" else "PRESS ANY KEY TO CARRY ON",
-                    style = displayStyle(12.sp, FontWeight.Bold, color = TextLo, tracking = 0.14f),
-                )
+                CookShowView(loader, cook, cookFrom, heart, stage) { shownCook = cook.token }
             }
         }
+
+        // The meal, the hearts and the gains: over everything in the kitchen.
+        val floor = floorY.floatValue
+        if (fed != null && !floor.isNaN()) {
+            val place = remember(fed) { lastOnBoard[0].indexOf(fed.item).takeIf { it >= 0 } ?: 0 }
+            val from = boardPoint(PlaceAt[place]).let { Offset(it.x, it.y + itemPx / 2f) }
+            val filter = remember(tint, kitchen.tintStrength) { spriteFilter(tint, kitchen.tintStrength, 0f, 1f, 0f) }
+            MealView(
+                stage = feedStage,
+                killerX = px(layout.killerX),
+                bodyHalf = px(killerHalf) * manifest.bodyScale,
+                screenW = constraints.maxWidth.toFloat(),
+                inset = px(safe.horizontal.value),
+                floorY = floor,
+                sizePx = itemPx,
+                munchMs = MUNCHES * manifest.lengthMs(manifest.feedAnim()),
+                filter = filter,
+                from = from,
+            )
+            if (feedStage.hearts) {
+                HeartBurst(origin = Offset(px(layout.killerX), floor - drawnHeight * 0.62f), height = drawnHeight) {
+                    feedStage.hearts = false
+                }
+            }
+            GainsReadout(feedStage, centerX = px(layout.columnCenter), y = px(layout.boardTop + boardHeight * 0.45f))
+        }
+        if (!floor.isNaN()) {
+            SpeechBubble(
+                text = feedStage.line ?: tooFull?.text,
+                headX = { px(layout.killerX) },
+                bottomY = { floorY.floatValue - drawnHeight * BUBBLE_ABOVE_FEET },
+                minLeft = { px(safe.horizontal.value) },
+                maxRight = constraints.maxWidth - px(safe.horizontal.value),
+            )
+        }
+
+        // While held, no touch reaches the kitchen; once the reaction is up, a tap anywhere carries on Home.
+        if (held) Spacer(Modifier.fillMaxSize().swallowTouches())
+        if (fed != null) Spacer(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { carryOn() } })
     }
 }
 
-/** Which row of the kitchen the remote is on. */
-internal enum class KitchenRow { SHELF, BUTTONS }
+/** One showing of a line over the killer's head; a new one restarts its timer even with the same words. */
+@Immutable
+private class Said(val text: String)
 
 /**
- * Where the remote is in the kitchen: its [row], the [focus] on the shelf (kept while it is on the buttons) and the
- * [button] it is on, and the [first] slot the shelf's window shows. [follow] keeps the focus on the shelf as the shelf
- * changes. Main thread only.
+ * Hands the kitchen its keys while it has focus: [onKey] gets each training key going down with its repeat count (0
+ * for the press itself), all but a held OK's repeats (see [reachesGame]). Keys let go are taken and do nothing.
+ */
+private fun Modifier.kitchenKeys(onKey: (key: TrainingKey, repeat: Int) -> Unit): Modifier = onKeyEvent { event ->
+    val key = trainingKeyOf(event.key) ?: return@onKeyEvent false
+    when (event.type) {
+        KeyEventType.KeyDown -> {
+            val repeat = event.nativeKeyEvent.repeatCount
+            if (reachesGame(key, down = true, repeat = repeat)) onKey(key, repeat)
+            true
+        }
+        KeyEventType.KeyUp -> true
+        else -> false
+    }
+}
+
+/**
+ * Whether the kitchen holds the player's input (keys and touches): until it has been [entered] and its entry guard
+ * is [okReady], while the app is [away] (and the beat after it comes back), while a cook is on show ([cooking]), and
+ * once the killer has been [fed] (its reaction takes OK and taps itself).
+ */
+internal fun kitchenInputHeld(entered: Boolean, okReady: Boolean, away: Boolean, cooking: Boolean, fed: Boolean): Boolean =
+    !entered || !okReady || away || cooking || fed
+
+/** Whether [action], from a key's [repeat] (0 for the press itself), ticks: a move, on the press only. */
+internal fun ticks(action: KitchenAction, repeat: Int): Boolean = action == KitchenAction.Moved && repeat == 0
+
+/** The kitchen's rows for the remote, top to bottom as they stand: the board's items, COOK and FEED, the shelf. */
+internal enum class KitchenRow { BOARD, BUTTONS, SHELF }
+
+/** What a key did in the kitchen (see [KitchenCursor.move]). */
+internal sealed interface KitchenAction {
+    /** Nothing: there was nowhere to go. */
+    data object None : KitchenAction
+
+    /** The focus moved. */
+    data object Moved : KitchenAction
+
+    /** OK on shelf item [index]: onto the board, or off it (from the shelf or from the board). */
+    data class Pick(val index: Int) : KitchenAction
+
+    /** OK on [button]. */
+    data class Press(val button: KitchenButton) : KitchenAction
+}
+
+/**
+ * Where the remote is in the kitchen: its [row], the [focus] on the shelf (kept while it is elsewhere), the [button] it
+ * is on, the board [place] it is on, and the [first] slot the shelf's window shows. [move] answers a key; [follow]
+ * keeps the focus on the shelf and the board as they change. Main thread only.
  */
 @Stable
 internal class KitchenCursor {
     var row by mutableStateOf(KitchenRow.SHELF)
     var button by mutableStateOf(KitchenButton.COOK)
     var focus by mutableIntStateOf(0)
+    var place by mutableIntStateOf(0)
     var first by mutableIntStateOf(0)
 
     private var seenShelf: List<PantryItem>? = null
@@ -417,15 +562,82 @@ internal class KitchenCursor {
     private var seenFed = false
 
     /**
-     * Brings the focus along to [shelf] from the shelf seen last time: a cook's new dish takes it (and the remote goes
-     * back to the shelf, the board being empty now), an item eaten off the board shifts it as [focusAfter] says, and
-     * items stocked onto the end leave it be.
+     * [key] on a shelf of [shelfSize] items with the board's [places] (shelf indices, null for an empty place; see
+     * [boardPlaces]), its [repeat]th repeat (0 for the press). The rows stand as on screen: Up from the shelf goes to
+     * the button that can act, Up from the buttons onto the board's items (the one on the button's side, when both
+     * are there), and Down back again. Left and Right move along a row; a held Up or Down moves one row only. OK picks
+     * the focused shelf item, takes the focused board item off, or presses the button.
      */
-    fun follow(shelf: List<PantryItem>, screen: Screen.Pantry) {
+    fun move(key: TrainingKey, places: List<Int?>, shelfSize: Int, repeat: Int = 0): KitchenAction {
+        if (repeat > 0 && (key == TrainingKey.UP || key == TrainingKey.DOWN)) return KitchenAction.None
+        val filled = places.indices.filter { places[it] != null }
+        return when (row) {
+            KitchenRow.SHELF -> when (key) {
+                TrainingKey.LEFT, TrainingKey.RIGHT -> {
+                    val next = (focus + if (key == TrainingKey.LEFT) -1 else 1).coerceIn(0, max(0, shelfSize - 1))
+                    moved(next != focus).also { focus = next }
+                }
+                TrainingKey.UP -> {
+                    row = KitchenRow.BUTTONS
+                    button = when (filled.size) {
+                        BOARD_PLACES -> KitchenButton.COOK
+                        1 -> KitchenButton.FEED
+                        else -> button
+                    }
+                    KitchenAction.Moved
+                }
+                TrainingKey.DOWN -> KitchenAction.None
+                TrainingKey.OK -> if (shelfSize > 0) KitchenAction.Pick(focus.coerceIn(0, shelfSize - 1)) else KitchenAction.None
+            }
+            KitchenRow.BUTTONS -> when (key) {
+                TrainingKey.DOWN -> {
+                    row = KitchenRow.SHELF
+                    KitchenAction.Moved
+                }
+                TrainingKey.UP -> {
+                    if (filled.isEmpty()) return KitchenAction.None
+                    // The place on the button's side when it holds something, else the one that does.
+                    val side = if (button == KitchenButton.FEED) filled.last() else filled.first()
+                    place = side
+                    row = KitchenRow.BOARD
+                    KitchenAction.Moved
+                }
+                TrainingKey.LEFT -> moved(button == KitchenButton.FEED).also { button = KitchenButton.COOK }
+                TrainingKey.RIGHT -> moved(button == KitchenButton.COOK).also { button = KitchenButton.FEED }
+                TrainingKey.OK -> KitchenAction.Press(button)
+            }
+            KitchenRow.BOARD -> when (key) {
+                TrainingKey.LEFT, TrainingKey.RIGHT -> {
+                    val next = (if (key == TrainingKey.LEFT) filled.lastOrNull { it < place } else filled.firstOrNull { it > place })
+                    if (next == null) KitchenAction.None else KitchenAction.Moved.also { place = next }
+                }
+                TrainingKey.DOWN -> {
+                    row = KitchenRow.BUTTONS
+                    KitchenAction.Moved
+                }
+                TrainingKey.UP -> KitchenAction.None
+                TrainingKey.OK -> places.getOrNull(place)?.let { KitchenAction.Pick(it) } ?: KitchenAction.None
+            }
+        }
+    }
+
+    private fun moved(did: Boolean): KitchenAction = if (did) KitchenAction.Moved else KitchenAction.None
+
+    /**
+     * Brings the remote along to [shelf] (and the board's [places]) from what it saw last time: on the board, an item
+     * taken off moves it to the one left there, or back to the buttons once the board is empty; a cook's new dish
+     * takes the shelf's focus (and the remote goes back to the shelf, the board being empty now), an item eaten off
+     * the board shifts it as [focusAfter] says, and items stocked onto the end leave it be.
+     */
+    fun follow(shelf: List<PantryItem>, screen: Screen.Pantry, places: List<Int?>) {
         val old = seenShelf
         val cook = screen.cook
         val cooked = cook != null && cook.token != seenCook
         val eaten = screen.fed != null && !seenFed
+        if (row == KitchenRow.BOARD && places.getOrNull(place) == null) {
+            val left = places.indices.firstOrNull { places[it] != null }
+            if (left == null) row = KitchenRow.BUTTONS else place = left
+        }
         if (old != null && (old != shelf || cooked)) {
             val removed = if (cooked || eaten) seenBoard else emptyList()
             focus = focusAfter(focus, old.size, shelf.size, removed, cook?.at?.takeIf { cooked })
@@ -505,10 +717,15 @@ internal class KitchenLayout(
 
 /**
  * The help strip on a TV, for the remote on [row] (on [button] there, or [focus] on a shelf of [shelfSize]) with
- * [board] on the board: what the arrows and OK do now.
+ * [board] on the board: what the arrows and OK do now. The rows stand board, buttons, shelf from the top.
  */
-internal fun kitchenHelp(row: KitchenRow, button: KitchenButton, board: List<Int>, focus: Int, shelfSize: Int): List<HelpItem> =
-    when (row) {
+internal fun kitchenHelp(row: KitchenRow, button: KitchenButton, board: List<Int>, focus: Int, shelfSize: Int): List<HelpItem> {
+    val act = when (board.size) {
+        BOARD_PLACES -> "Cook"
+        1 -> "Feed"
+        else -> null
+    }
+    return when (row) {
         KitchenRow.SHELF -> buildList {
             if (shelfSize > 1) add(HelpItem(listOf(TrainingKey.LEFT, TrainingKey.RIGHT), "Shelf"))
             when {
@@ -516,19 +733,23 @@ internal fun kitchenHelp(row: KitchenRow, button: KitchenButton, board: List<Int
                 focus in board -> add(HelpItem(listOf(TrainingKey.OK), "Off the board"))
                 board.size < BOARD_PLACES -> add(HelpItem(listOf(TrainingKey.OK), "On the board"))
             }
-            when (board.size) {
-                BOARD_PLACES -> add(HelpItem(listOf(TrainingKey.DOWN), "Cook"))
-                1 -> add(HelpItem(listOf(TrainingKey.DOWN), "Feed"))
-            }
+            act?.let { add(HelpItem(listOf(TrainingKey.UP), it)) }
         }
         KitchenRow.BUTTONS -> buildList {
-            add(HelpItem(listOf(TrainingKey.UP), "Shelf"))
+            add(HelpItem(listOf(TrainingKey.DOWN), "Shelf"))
+            if (board.isNotEmpty()) add(HelpItem(listOf(TrainingKey.UP), "Board"))
             when {
                 button == KitchenButton.COOK && board.size == BOARD_PLACES -> add(HelpItem(listOf(TrainingKey.OK), "Cook"))
                 button == KitchenButton.FEED && board.size == 1 -> add(HelpItem(listOf(TrainingKey.OK), "Feed"))
             }
         }
+        KitchenRow.BOARD -> buildList {
+            if (board.size > 1) add(HelpItem(listOf(TrainingKey.LEFT, TrainingKey.RIGHT), "Board"))
+            if (board.isNotEmpty()) add(HelpItem(listOf(TrainingKey.OK), "Off the board"))
+            act?.let { add(HelpItem(listOf(TrainingKey.DOWN), it)) }
+        }
     }
+}
 
 /** The help strip under a finger, with [boardSize] items on the board. */
 internal fun kitchenTouchHelp(boardSize: Int): String = when (boardSize) {

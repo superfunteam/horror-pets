@@ -50,8 +50,7 @@ object Tuning {
     const val MAX_LEVEL = 99
     const val SCENE_COUNT = 3
 
-    // Care: feed (refused when hunger is already below FEED_REFUSE_BELOW)
-    const val FEED_HUNGER = -35.0
+    // Care: feed (the pantry turns a meal away when hunger is already below FEED_REFUSE_BELOW)
     const val FEED_REFUSE_BELOW = 10.0
 
     // Care: play
@@ -65,10 +64,9 @@ object Tuning {
     const val TRAIN_FUN = -5.0
     const val TRAIN_REFUSE_AT = 85.0
 
-    // XP awarded per care action
+    // XP awarded per care action (a meal's is the pantry's: see XP_FEED_SNACK and on)
     const val XP_TRAIN = 10
     const val XP_PLAY = 5
-    const val XP_FEED = 0
 
     // Feeding from the pantry (see `feed`): hunger changes (negative is fuller). A snack or meal it hates fills by half.
     const val FEED_RAW_HUNGER = -20.0

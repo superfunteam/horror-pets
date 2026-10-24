@@ -67,16 +67,21 @@ internal const val BOARD_ASPECT = 768f / 563f
  * The board's two places, as fractions of its picture: along the middle of its top face, which leans up to the right,
  * the first a little left of centre and the second a little right. The "+" sits between them.
  */
-private val PlaceAt = listOf(Offset(0.31f, 0.5f), Offset(0.74f, 0.38f))
-private val PlusAt = Offset(0.525f, 0.44f)
+internal val PlaceAt = listOf(Offset(0.31f, 0.5f), Offset(0.74f, 0.38f))
+internal val PlusAt = Offset(0.525f, 0.44f)
 
 /** An item on the board is this share of the board's width across. */
-private const val BOARD_ITEM_SHARE = 0.29f
+internal const val BOARD_ITEM_SHARE = 0.29f
+
+/** The remote's cursor round an item on the board reaches this far past it on every side. */
+private val BoardCursorPad = 10.dp
 
 /**
  * The cutting board, [width] wide: its two places hold the shelf items [places] names (shelf indices, null for an
  * empty place, see [boardPlaces]), each standing over its name. An empty place is a dashed ring burnt into the wood.
- * A tap on an item takes it off again ([onTap] with its shelf index). The [heart] dish wears its heart here too.
+ * A tap on an item takes it off again ([onTap] with its shelf index). The [heart] dish wears its heart here too. The
+ * remote's [focus] (a place, or null when the remote is elsewhere) puts the gold cursor round the item there. The "+"
+ * between the places goes while the board is a stage for something else ([plus] false: a cook, a meal's gains).
  */
 @Composable
 internal fun Board(
@@ -85,6 +90,8 @@ internal fun Board(
     places: List<Int?>,
     heart: PantryItem?,
     width: Dp,
+    focus: Int?,
+    plus: Boolean,
     onTap: (index: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -128,7 +135,7 @@ internal fun Board(
                             style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx())), cap = StrokeCap.Round),
                         )
                     }
-                    drawPlus(Offset(size.width * PlusAt.x, size.height * PlusAt.y), 24.dp.toPx())
+                    if (plus) drawPlus(Offset(size.width * PlusAt.x, size.height * PlusAt.y), 24.dp.toPx())
                 },
         )
         for ((place, at) in PlaceAt.withIndex()) {
@@ -136,6 +143,13 @@ internal fun Board(
             val item = shelf.getOrNull(index) ?: continue
             // Keyed on what stands there, so a new item starts afresh.
             key(place, index, item) {
+                val lit by animateFloatAsState(if (focus == place) 1f else 0f, tween(160), label = "boardLit")
+                Spacer(
+                    Modifier
+                        .offset(width * at.x - itemSize / 2f - BoardCursorPad, height * at.y - itemSize / 2f - BoardCursorPad)
+                        .size(itemSize + BoardCursorPad * 2)
+                        .drawBehind { drawCursor(lit) },
+                )
                 BoardItem(loader, item, item == heart, itemSize, Modifier.offset(width * at.x - itemSize / 2f, height * at.y - itemSize / 2f)) {
                     onTap(index)
                 }
@@ -166,12 +180,12 @@ private fun BoardItem(loader: AssetLoader, item: PantryItem, heart: Boolean, siz
 
 /** An item's name on a small dark tag, centred on [centerX] at [top], wrapping to two lines when it must. */
 @Composable
-private fun ItemName(title: String, maxWidth: Dp, centerX: Dp, top: Dp) {
+internal fun ItemName(title: String, maxWidth: Dp, centerX: Dp, top: Dp, modifier: Modifier = Modifier) {
     BasicText(
         title.uppercase(),
         style = displayStyle(15.sp, FontWeight.Bold, tracking = 0.05f, lineHeight = 16.sp).copy(textAlign = TextAlign.Center),
         maxLines = 2,
-        modifier = Modifier
+        modifier = modifier
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(Constraints(maxWidth = maxWidth.roundToPx()))
                 layout(constraints.maxWidth, constraints.maxHeight) {

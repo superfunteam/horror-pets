@@ -288,10 +288,10 @@ private fun GetReady() {
 
 /**
  * Whether the app is [away] (paused: the TV's Home button, a call, the screen going off) and the "GET READY" [beat]
- * after it comes back; training holds through both ([paused]).
+ * after it comes back; training holds through both ([paused]), and so does the pantry (without the words).
  */
 @Stable
-private class AwayPause {
+internal class AwayPause {
     var away by mutableStateOf(false)
     var beat by mutableStateOf(false)
 
@@ -306,7 +306,7 @@ private class AwayPause {
  * beat.
  */
 @Composable
-private fun rememberAwayPause(): AwayPause {
+internal fun rememberAwayPause(): AwayPause {
     val pause = remember { AwayPause() }
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {

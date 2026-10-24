@@ -1,4 +1,4 @@
-package team.superfun.horrorpets.ui.home
+package team.superfun.horrorpets.ui.pantry
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -32,28 +32,29 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.placeAt
 
-/** How long the food falls from above the screen to the floor: the `food_drop` whistle's plop lands with it. */
+/**
+ * How long the meal takes to land beside the killer, tossed from the board (or dropped from above the screen): the
+ * `food_drop` whistle's plop lands with it.
+ */
 internal const val FOOD_FALL_MS = 600
 
-/**
- * The food's longer side, as a fraction of a full-size pet's height. The same next to half-height Chucky, who
- * gets a meal as big as everyone else's.
- */
-internal const val FOOD_SIZE = 0.36f
-
 /** After the plop, the bounce settles this long before the pet starts munching. */
-private const val LAND_SETTLE_MS = 160L
+internal const val LAND_SETTLE_MS = 160L
+
+/** A toss arcs this much of the way's length above the straight line at its middle. */
+private const val TOSS_ARC = 0.45f
 
 /** How far through the munching each bite lands; the last one gobbles what is left. */
 private val BITE_AT = listOf(0.17f, 0.5f, 0.83f)
@@ -85,14 +86,75 @@ internal fun foodLanding(petX: Float, bodyHalf: Float, foodW: Float, screenW: Fl
     return x to -toward
 }
 
-/** The two colors a food's crumbs fly in. */
-private fun crumbColors(food: Food): List<Color> = when (food) {
-    Food.MEAT -> listOf(Color(0xFF7A2E14), Color(0xFFD27A3A))
-    Food.DRUMSTICK -> listOf(Color(0xFFB4561C), Color(0xFFF0B060))
-    Food.SPINACH -> listOf(Color(0xFF1F6B2A), Color(0xFF5DBB63))
-    Food.CAKE -> listOf(Color(0xFFFFF4E6), Color(0xFFC1121F))
-    Food.POPCORN -> listOf(Color(0xFFFFF6D5), Color(0xFFF2C14E))
-    Food.BRAIN -> listOf(Color(0xFF8BD93F), Color(0xFFD4F58A))
+/**
+ * Where a meal tossed from ([fromX], [fromBottom]) to ([toX], [toBottom]) is ([p], 0..1, of the way): its bottom
+ * centre, moving steadily across and arcing over the top like a thrown thing ([TOSS_ARC] of the way's length above
+ * the straight line at its middle).
+ */
+internal fun tossAt(fromX: Float, fromBottom: Float, toX: Float, toBottom: Float, p: Float): Pair<Float, Float> {
+    val arc = TOSS_ARC * hypot(toX - fromX, toBottom - fromBottom)
+    return (fromX + (toX - fromX) * p) to (fromBottom + (toBottom - fromBottom) * p - arc * 4f * p * (1f - p))
+}
+
+/** Crumbs for a picture with nothing solid to take a color from: toasty brown and crust. */
+internal val CrumbFallback = listOf(Color(0xFF7A4A24), Color(0xFFD9A066))
+
+/** A pixel this opaque or more is part of the food (its soft shadow fringe is not). */
+private const val SOLID_ALPHA = 200
+
+/** A color whose brightest channel is under this (of 255) is ink: the art's outlines and its darkest shading. */
+private const val INK_BELOW = 48
+
+/** The second crumb color is at least this far (in 0..1 RGB) from the first, else it is a shade of it. */
+private const val CRUMBS_APART = 0.25f
+
+/** The two colors [image]'s crumbs fly in, read from its pixels (see the [IntArray] one). Reads the whole picture. */
+internal fun crumbColorsOf(image: ImageBitmap): List<Color> {
+    val pixels = IntArray(image.width * image.height)
+    image.readPixels(pixels)
+    return crumbColorsOf(pixels, step = 2)
+}
+
+/**
+ * The two colors a food's crumbs fly in, from its ARGB [pixels] (every [step]th): the commonest color of its solid
+ * pixels, then the commonest one that is clearly different, or a shade of the first when there is none. Colors are
+ * counted in coarse bins (eight levels a channel) and each bin gives its mean. Ink (outlines, the darkest shading)
+ * only counts when there is nothing else, and a picture with nothing solid gets [CrumbFallback].
+ */
+internal fun crumbColorsOf(pixels: IntArray, step: Int = 1): List<Color> {
+    val count = IntArray(512)
+    val sums = LongArray(512 * 3)
+    var i = 0
+    while (i < pixels.size) {
+        val p = pixels[i]
+        i += step.coerceAtLeast(1)
+        if ((p ushr 24) < SOLID_ALPHA) continue
+        val r = (p shr 16) and 0xFF
+        val g = (p shr 8) and 0xFF
+        val b = p and 0xFF
+        val bin = ((r shr 5) shl 6) or ((g shr 5) shl 3) or (b shr 5)
+        count[bin]++
+        sums[bin * 3] += r.toLong()
+        sums[bin * 3 + 1] += g.toLong()
+        sums[bin * 3 + 2] += b.toLong()
+    }
+    val bins = (0 until 512).filter { count[it] > 0 }.sortedByDescending { count[it] }
+    if (bins.isEmpty()) return CrumbFallback
+    fun mean(bin: Int): IntArray = IntArray(3) { (sums[bin * 3 + it] / count[bin]).toInt() }
+    val colorful = bins.map(::mean).filter { it.max() >= INK_BELOW }
+    val ranked = colorful.ifEmpty { bins.map(::mean) }
+    val first = ranked.first()
+    val second = ranked.drop(1).firstOrNull { apart(it, first) >= CRUMBS_APART } ?: shadeOf(first)
+    return listOf(Color(first[0], first[1], first[2]), Color(second[0], second[1], second[2]))
+}
+
+/** How far apart two RGB colors are, 0..1 (their largest channel difference). */
+private fun apart(a: IntArray, b: IntArray): Float = (0..2).maxOf { abs(a[it] - b[it]) } / 255f
+
+/** A shade of [rgb] for its second crumb: darker for a light color, lighter for a dark one. */
+private fun shadeOf(rgb: IntArray): IntArray {
+    val light = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 > 140
+    return IntArray(3) { if (light) rgb[it] * 62 / 100 else rgb[it] + (255 - rgb[it]) * 45 / 100 }
 }
 
 /** One bite's spray of crumbs, flying out from [origin] (a point on the food, in fractions of its size). */
@@ -113,20 +175,22 @@ private class CrumbBurst(val origin: Offset, big: Boolean, seed: Int, colors: Li
 private class Crumb(val vx: Float, val vy: Float, val radius: Float, val color: Color, val square: Boolean)
 
 /**
- * The food a feed drops in beside the pet, from its fall to its last crumb.
+ * A meal landing beside the killer, from its toss to its last crumb.
  *
- * It falls from above the screen ([FOOD_FALL_MS], landing with the plop of the `food_drop` sound the view model
- * plays), squashes and bounces, and calls [onLanded]: the pet starts munching then, for [munchMs]. At each of
- * [biteTimesMs] the food loses a bite with a `bite` crunch and a puff of crumbs: a bite mark on the side facing
- * the pet, then another, and the last bite gobbles what is left. When the crumbs have landed it calls [onDone].
+ * It is tossed from [from] (its bottom centre, in px: where it stood on the pantry's board) in an arc to the floor,
+ * or with no [from] falls from above the screen, for [FOOD_FALL_MS] (the plop of the `food_drop` sound, played as it
+ * sets off, lands with it); it squashes and bounces, and calls [onLanded]: the pet starts munching then, for
+ * [munchMs]. At each of [biteTimesMs] the food loses a bite with a `bite` crunch and a puff of [crumbs] (two colors,
+ * see [crumbColorsOf]): a bite mark on the side facing the pet, then another, and the last bite gobbles what is left.
+ * When the crumbs have landed it calls [onDone].
  *
  * [image] is drawn with its longer side [sizePx], through the scene's [filter] like the pets, its bottom on
  * [floorY] beside the pet at [petX] (see [foodLanding]).
  */
 @Composable
 internal fun FoodDrop(
-    food: Food,
     image: ImageBitmap,
+    crumbs: List<Color>,
     petX: Float,
     bodyHalf: Float,
     screenW: Float,
@@ -135,6 +199,7 @@ internal fun FoodDrop(
     sizePx: Float,
     munchMs: Long,
     filter: ColorFilter?,
+    from: Offset?,
     onLanded: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -144,7 +209,7 @@ internal fun FoodDrop(
     val h = image.height * scale
     val (x, petSide) = remember(petX, w) { foodLanding(petX, bodyHalf, w, screenW, inset) }
     val spots = remember(image, petSide) { biteSpots(image, petSide) }
-    val colors = remember(food) { crumbColors(food) }
+    val colors = crumbs
 
     val fall = remember { Animatable(0f) }
     // 1 is squashed flat on landing; the spring overshoots into a stretch and settles at 0.
@@ -157,7 +222,8 @@ internal fun FoodDrop(
     val done by rememberUpdatedState(onDone)
 
     LaunchedEffect(Unit) {
-        fall.animateTo(1f, tween(FOOD_FALL_MS, easing = FastOutLinearInEasing))
+        // A toss moves steadily (its arc is the parabola in tossAt); a drop speeds up as it falls.
+        fall.animateTo(1f, tween(FOOD_FALL_MS, easing = if (from == null) FastOutLinearInEasing else LinearEasing))
         launch {
             squash.snapTo(1f)
             squash.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 500f))
@@ -211,10 +277,19 @@ internal fun FoodDrop(
                     .graphicsLayer {
                         val s = squash.value
                         val g = 1f - gone.value
-                        translationY = -(1f - fall.value) * (floorY + h * 1.2f)
+                        val f = fall.value
+                        if (from == null) {
+                            translationY = -(1f - f) * (floorY + h * 1.2f)
+                        } else {
+                            val (tx, ty) = tossAt(from.x, from.y, x, floorY, f)
+                            translationX = tx - x
+                            translationY = ty - floorY
+                        }
                         scaleX = (1f + 0.18f * s) * g
                         scaleY = (1f - 0.22f * s) * g
-                        rotationZ = wobble.value * 7f * petSide
+                        // A tossed meal turns over a little in the air, and lands upright.
+                        val spin = if (from == null) 0f else (1f - f) * 30f * petSide
+                        rotationZ = wobble.value * 7f * petSide + spin
                         transformOrigin = TransformOrigin(0.5f, 1f)
                         // Its own layer, so a bite clears the food and never the scene behind it.
                         compositingStrategy = CompositingStrategy.Offscreen

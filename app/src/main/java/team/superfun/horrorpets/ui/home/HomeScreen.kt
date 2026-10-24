@@ -6,30 +6,24 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,8 +44,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -59,8 +51,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,7 +61,6 @@ import androidx.tv.material3.Text
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -83,21 +72,21 @@ import kotlinx.coroutines.withTimeoutOrNull
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
-import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
-import team.superfun.horrorpets.model.FEED_MUNCHES
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.common.BUBBLE_ABOVE_FEET
+import team.superfun.horrorpets.ui.common.BUBBLE_MS
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
+import team.superfun.horrorpets.ui.common.SpeechBubble
 import team.superfun.horrorpets.ui.common.SpritePose
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.detectWalkSwipes
@@ -145,21 +134,16 @@ private const val VARIETY_SLACK_MS = 2_000L
 /** The pet's body reaches about this share of its drawn cell width either side of its centre. */
 private const val BODY_HALF_OF_CELL = 0.3f
 
-private const val BUBBLE_MS = 2_000L
-
 /** A run-out still waiting for its scene change after this long is abandoned (it never should be). */
 private const val WALK_STUCK_MS = 1_500L
 
 /**
- * Strips decoded ahead of time on Home, with the pet's feed animation and its PLAY: its DANCE when it has one,
- * else JUMP and WAVE (so at most 8 of the loader's 12 slots, with IDLE).
+ * Strips decoded ahead of time on Home, with its PLAY: its DANCE when it has one, else JUMP and WAVE (so at most 7 of
+ * the loader's 12 slots, with IDLE). The feed animation is the pantry's to warm.
  */
 private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.ATTACK, Anim.FAIL)
 
 private const val SCENE_TITLE_MS = 3_200L
-
-/** The refusal bubble's tail sits this far above the feet, as a fraction of the cell height (just over the head). */
-private const val BUBBLE_ABOVE_FEET = 0.91f
 
 /**
  * Home: the selected pet standing in its current scene, with the stat card, scene dots, welcome toast
@@ -238,8 +222,7 @@ fun HomeScreen(
         delay(800)
         val play = if (manifest.has(Anim.DANCE)) listOf(Anim.DANCE) else listOf(Anim.JUMP, Anim.WAVE)
         withContext(Dispatchers.IO) {
-            for (anim in HOME_WARM_ANIMS + play + manifest.feedAnim()) loader.strip(petId, anim)
-            for (food in Food.entries) loader.food(food)
+            for (anim in HOME_WARM_ANIMS + play) loader.strip(petId, anim)
             for (id in state.game.pets.keys) loader.head(id)
             for (art in PLAY_HAND_ART) loader.prop(art)
         }
@@ -261,12 +244,8 @@ fun HomeScreen(
     var cardRightPx by remember { mutableFloatStateOf(0f) }
     var homeLeftPx by remember { mutableFloatStateOf(0f) }
     var showSceneTitle by remember { mutableStateOf(false) }
-    // The food a feed dropped, from the press until its last crumbs land (see FoodDrop), and the request
-    // whose food has landed: that request's munch waits for it.
-    var feeding by remember { mutableStateOf<Feeding?>(null) }
-    var landedToken by remember { mutableStateOf<Long?>(null) }
-    // The same for a play: the glove's gag, from the press until the glove has gone, and the request whose gag
-    // has got to the pet's turn to react. The glove moves the pet through [pose] (pokes, tickles, a shake).
+    // A play's gag: the glove's, from the press until the glove has gone, and the request whose gag has got to the
+    // pet's turn to react. The glove moves the pet through [pose] (pokes, tickles, a shake).
     var playing by remember { mutableStateOf<Playing?>(null) }
     var reactedToken by remember { mutableStateOf<Long?>(null) }
     val pose = remember { SpritePose() }
@@ -275,7 +254,6 @@ fun HomeScreen(
     LaunchedEffect(request?.token) {
         if (request == null) return@LaunchedEffect
         variety = null
-        request.food?.let { feeding = Feeding(it, request.token) }
         request.gag?.let { playing = Playing(it, request.token) }
         if (state.refuse != null) {
             bubble = Bubble(refusalText(state.refuse, lastWasFight))
@@ -364,12 +342,11 @@ fun HomeScreen(
     // run under the request's token from the press until the pet has run into the next scene, so the run
     // never restarts or drops to IDLE at the edge between the request ending and the arrival starting.
     // A stroll is local too: its run plays under its own key and never reports to the view model.
-    // A feed's first munch waits for its food to land, and a play's happy reaction for the glove's gag to get to
-    // it; until then the pet idles where it stands (or, picked up and shaken, flails).
-    val holdingGag = request?.gag != null && reactedToken != request.token
-    val holding = holdingGag || (request?.food != null && landedToken != request.token)
+    // A play's happy reaction waits for the glove's gag to get to it; until then the pet idles where it stands (or,
+    // picked up and shaken, flails).
+    val holding = request?.gag != null && reactedToken != request.token
     val shownAnim = when {
-        holdingGag && request?.gag == PlayGag.SHAKE -> Anim.WAVE
+        holding && request?.gag == PlayGag.SHAKE -> Anim.WAVE
         holding -> Anim.IDLE
         else -> request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
     }
@@ -490,26 +467,6 @@ fun HomeScreen(
                     .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
-            feeding?.let { f ->
-                key(f.token) {
-                    val munchMs = FEED_MUNCHES * manifest.spec(manifest.feedAnim()).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong()
-                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
-                    FoodDrop(
-                        food = f.food,
-                        image = remember(f.food) { loader.food(f.food) },
-                        petX = (homeX.value + walkX.value) * screenW,
-                        bodyHalf = drawnCellW * BODY_HALF_OF_CELL,
-                        screenW = screenW,
-                        inset = insetPx,
-                        floorY = floorY,
-                        sizePx = petHeightPx * FOOD_SIZE,
-                        munchMs = munchMs,
-                        filter = filter,
-                        onLanded = { landedToken = f.token },
-                        onDone = { if (feeding === f) feeding = null },
-                    )
-                }
-            }
             playing?.let { p ->
                 key(p.token) {
                     val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
@@ -530,7 +487,7 @@ fun HomeScreen(
                     )
                 }
             }
-            RefusalBubble(
+            SpeechBubble(
                 text = bubble?.text,
                 headX = { (homeX.value + walkX.value) * screenW },
                 bottomY = { floorY - drawnHeightPx * BUBBLE_ABOVE_FEET },
@@ -603,7 +560,6 @@ fun HomeScreen(
 }
 
 private fun refusalText(reason: RefuseReason, fight: Boolean): String = when (reason) {
-    RefuseReason.TOO_FULL -> "Too full!"
     RefuseReason.TOO_HUNGRY -> if (fight) "Too hungry to fight" else "Too hungry to train"
     RefuseReason.NEEDS_TRAINING -> "Train more first!"
 }
@@ -662,15 +618,8 @@ private suspend fun strollOnce(
 
 private object IdleKey
 
-/**
- * The playback key while a feed's food is still falling or a play's gag is on: the pet idles (or flails), and its
- * own animation starts fresh after.
- */
+/** The playback key while a play's gag is on: the pet idles (or flails), and its own animation starts fresh after. */
 private object HoldKey
-
-/** The food [food] a feed dropped with its first request ([token]), showing until its last crumbs land. */
-@Immutable
-private class Feeding(val food: Food, val token: Long)
 
 /** The [gag] a play started with its first request ([token]), showing until the glove has gone. */
 @Immutable
@@ -685,6 +634,9 @@ private class JobSlot {
         job = null
     }
 }
+
+/** The bubble keeps at least this far right of the stat card. */
+private val BubbleCardGap = 8.dp
 
 /** The scene marker's diamonds: the current scene's is this wide, the others [SceneDot], [SceneDotGap] apart. */
 private val ActiveSceneDot = 9.dp
@@ -752,106 +704,3 @@ private fun SceneDiamond(active: Boolean) {
 
 private val SceneGold = Color(0xFFF5C543)
 
-/** The bubble's tail: where it sits from the bubble's left edge when there is room, and its width. */
-private val BubbleTailInset = 40.dp
-private val BubbleTailWidth = 26.dp
-
-/** Longer refusals wrap onto two lines rather than reach across the screen. */
-private val BubbleMaxWidth = 330.dp
-
-/** The bubble keeps at least this far right of the stat card. */
-private val BubbleCardGap = 8.dp
-
-private const val BUBBLE_POP_FROM = 0.6f
-private const val BUBBLE_SHRINK_TO = 0.85f
-
-/**
- * Bone-white speech bubble whose tail points down at the pet's head ([headX]), popping in when it refuses.
- * Its bottom (the tail's tip) is at [bottomY]. The box hangs right of the head where it can and slides left
- * near the right edge, always between [minLeft] (just right of the stat card) and [maxRight] (the right safe
- * inset); the tail is drawn under the head wherever the box ends up (see [bubbleLeft], [bubbleTailX]). The
- * position is read in layout and draw, and the pop grows from the tail, so nothing jumps as it fades out.
- */
-@Composable
-private fun RefusalBubble(text: String?, headX: () -> Float, bottomY: () -> Float, minLeft: () -> Float, maxRight: Float) {
-    var lastText by remember { mutableStateOf("") }
-    if (text != null) lastText = text
-    val shown = text != null
-    val fade = remember { Animatable(0f) }
-    val pop = remember { Animatable(BUBBLE_POP_FROM) }
-    var present by remember { mutableStateOf(false) }
-    LaunchedEffect(shown) {
-        if (shown) {
-            present = true
-            pop.snapTo(BUBBLE_POP_FROM)
-            launch { fade.animateTo(1f, tween(120)) }
-            pop.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 500f))
-        } else if (present) {
-            launch { pop.animateTo(BUBBLE_SHRINK_TO, tween(220)) }
-            fade.animateTo(0f, tween(220))
-            present = false
-        }
-    }
-    if (!present) return
-
-    val density = LocalDensity.current
-    val preferredTail = with(density) { (BubbleTailInset + BubbleTailWidth / 2).toPx() }
-    val tailEdge = with(density) { (16.dp + BubbleTailWidth / 2).toPx() }
-    val maxWidthPx = with(density) { BubbleMaxWidth.toPx() }
-    val tailPath = remember { Path() }
-    Column(
-        Modifier
-            .layout { measurable, constraints ->
-                // Never wider than the gap it has to fit in (it wraps to a second line instead).
-                val room = (maxRight - minLeft()).coerceAtLeast(0f)
-                val p = measurable.measure(Constraints(maxWidth = min(maxWidthPx, room).roundToInt()))
-                layout(constraints.maxWidth, constraints.maxHeight) {
-                    val left = bubbleLeft(headX(), p.width.toFloat(), preferredTail, minLeft(), maxRight)
-                    p.place(left.roundToInt(), (bottomY() - p.height).roundToInt())
-                }
-            }
-            .graphicsLayer {
-                alpha = fade.value
-                scaleX = pop.value
-                scaleY = pop.value
-                // Pop from the tail, so the bubble grows out of the pet's head.
-                val w = size.width.coerceAtLeast(1f)
-                val left = bubbleLeft(headX(), w, preferredTail, minLeft(), maxRight)
-                transformOrigin = TransformOrigin(bubbleTailX(headX(), left, w, tailEdge) / w, 1f)
-            }
-            .width(IntrinsicSize.Max),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .drawBehind {
-                    softGlow(Color.Black, alpha = 0.6f, cornerRadius = 16.dp.toPx(), spread = 14.dp, offsetY = 4.dp.toPx())
-                }
-                .background(BubbleWhite, RoundedCornerShape(16.dp))
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = lastText.uppercase(),
-                style = displayStyle(28.sp, color = Ink, tracking = 0.05f, lineHeight = 30.sp),
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-            )
-        }
-        Canvas(Modifier.fillMaxWidth().height(14.dp)) {
-            val left = bubbleLeft(headX(), size.width, preferredTail, minLeft(), maxRight)
-            val cx = bubbleTailX(headX(), left, size.width, tailEdge)
-            val half = BubbleTailWidth.toPx() / 2f
-            tailPath.reset()
-            tailPath.moveTo(cx - half, 0f)
-            tailPath.lineTo(cx + half, 0f)
-            tailPath.lineTo(cx, size.height)
-            tailPath.close()
-            drawPath(tailPath, BubbleWhite)
-        }
-        // Room under the tail so it floats just clear of the head.
-        Box(Modifier.height(6.dp))
-    }
-}
-
-private val BubbleWhite = Color(0xFFF4F0EA)

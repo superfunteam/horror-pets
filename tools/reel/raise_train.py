@@ -17,7 +17,7 @@ from .motion import lerp, out_cubic, pulse, ramp
 from .render import H, W, Cue
 
 TITLE = cast.ROOT / "video/art/title-raise.webp"
-FOOD = cast.ROOT / "sprites-final/food/drumstick.webp"
+FOOD = cast.ROOT / "video/art/drumstick.webp"
 GAP = 6
 INK = (14, 8, 18)
 

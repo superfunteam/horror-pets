@@ -1385,6 +1385,27 @@ class GameViewModelTest {
     }
 
     @Test
+    fun doneWaitsForTheMeal() {
+        // Done is the reaction's: before the killer has eaten it does nothing, so a FEED tapped twice (the second tap
+        // landing as the reaction's OK) can never skip the reaction. Back still leaves at any time.
+        val rig = pantryRig(SHELF + STEAK)
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        val before = rig.ui
+        rig.vm.onPantryDone(session)
+        assertEquals("nothing eaten yet: still in the kitchen, the board as it was", before, rig.ui)
+
+        rig.pick(0, 2)
+        rig.vm.onPantryCook(session)
+        val cooked = rig.ui
+        rig.vm.onPantryDone(session)
+        assertEquals("a cook is not a meal", cooked, rig.ui)
+
+        rig.vm.onPantryBack(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
     fun backLeavesWithTheShelfKept() {
         val rig = pantryRig()
         val first = rig.openPantry().session
@@ -2346,7 +2367,6 @@ class GameViewModelTest {
         val first = rig.ui.petAnim!!
         assertEquals(Anim.JUMP, first.anim)
         assertNotNull(first.gag)
-        assertNull(first.food)
         rig.finishAnim()
         assertEquals(Anim.WAVE, rig.ui.petAnim!!.anim)
         assertNull(rig.ui.petAnim!!.gag)
@@ -2367,10 +2387,9 @@ class GameViewModelTest {
     }
 
     @Test
-    fun otherCareDropsNoFood() {
+    fun trainPlaysNoAnimationOnHome() {
         val rig = Rig(gameOf(pets = arrayOf(jason(hunger = 20.0)))).started()
         rig.vm.onCare(CareAction.PLAY)
-        assertNull(rig.ui.petAnim!!.food)
         rig.finishAllAnims()
         rig.vm.onCare(CareAction.TRAIN)
         assertNull("training plays no animation of its own", rig.ui.petAnim)

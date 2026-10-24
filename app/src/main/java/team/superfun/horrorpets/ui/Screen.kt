@@ -7,7 +7,6 @@ import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.pantry.Reaction
-import team.superfun.horrorpets.model.Food
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
@@ -181,14 +180,13 @@ val Screen.ownsKeySounds: Boolean get() = (this is Screen.Training && result == 
 
 /**
  * Ask the UI to play [anim] on the selected pet. The UI calls `onAnimFinished(token)` when it ends.
- * Every request has a fresh [token], even when two in a row play the same [anim] (a feed's munches),
+ * Every request has a fresh [token], even when two in a row play the same [anim] (a refusal's FAIL after another),
  * so the UI must key on the token, not the anim.
  *
  * A play's first request carries the [gag] the player's glove does to the pet first, and [anim] (its happy reaction)
- * waits for that. A request with a [food] has the UI drop it in beside the pet and only then play [anim]; nothing asks
- * for that now that FEED opens the pantry (see [Screen.Pantry]), and Home's food drop is left to be retired.
+ * waits for that.
  */
-data class PetAnimRequest(val anim: Anim, val token: Long, val food: Food? = null, val gag: PlayGag? = null)
+data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = null)
 
 /**
  * Everything the screens render.
