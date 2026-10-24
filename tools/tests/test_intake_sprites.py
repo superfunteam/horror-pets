@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from intake_sprites import IntakeError, align_baselines, ground_row, shift_down  # noqa: E402
+from intake_sprites import IntakeError, align_baselines, ground_row, scale_refs, shift_down  # noqa: E402
 
 
 def cell_with_feet(foot: int, h: int = 40, w: int = 20) -> np.ndarray:
@@ -54,3 +54,42 @@ def test_align_baselines_rejects_large_drift():
     anims = {"idle": anim(30), "wave": anim(10)}
     with pytest.raises(IntakeError):
         align_baselines("pet", anims, [])
+
+
+def test_a_swimmer_stands_on_his_lowest_point_in_every_animation():
+    # Jaws has no feet: his fins flap up and down, so each animation's ground is its lowest fin tip, as in his sheet.
+    flapping = [cell_with_feet(f) for f in (30, 20, 20, 20, 20)]
+    assert ground_row("run-right", flapping) == 20
+    assert ground_row("run-right", flapping, lowest=True) == 30
+    anims = {"idle": anim(30, 29, 30), "run-right": {"cells": flapping}}
+    log: list[str] = []
+    assert align_baselines("pet", anims, log, lowest=True) == 30
+    assert ground_row("run-right", anims["run-right"]["cells"], lowest=True) == 30
+    assert not any("run-right" in line for line in log)  # already on idle's ground: no shift
+
+
+def test_a_ground_offset_lines_up_his_body_not_the_effects_hanging_below_it():
+    # Swooshes hang 6px below him: his own ground is 6px above the animation's lowest pixels.
+    anims = {"idle": anim(30, 30), "thrash": {"cells": [cell_with_feet(32)], "spec": {"groundOffset": 6}}}
+    log: list[str] = []
+    align_baselines("pet", anims, log, lowest=True)
+    assert ground_row("thrash", anims["thrash"]["cells"]) == 36  # his body (26) sits on idle's ground (30)
+    assert any("thrash" in line and "+4px" in line for line in log)
+
+
+def test_scale_refs_scales_a_whole_row_about_its_bottom_centre():
+    def block(x0, y0, x1, y1):
+        img = np.zeros((40, 40, 4), dtype=np.uint8)
+        img[y0:y1, x0:x1] = (90, 90, 90, 255)
+        return img
+
+    def bbox(img):
+        ys, xs = np.nonzero(img[..., 3] > 64)
+        return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+    row = [block(10, 10, 30, 30), block(14, 14, 26, 30)]
+    assert all((a == b).all() for a, b in zip(scale_refs(row, 1.0), row))
+    half = scale_refs(row, 0.5)
+    assert [h.shape for h in half] == [r.shape for r in row]  # same cell size
+    assert bbox(half[0]) == (15, 20, 25, 30)                  # about the row's bottom centre (20, 30): his ground stays
+    assert bbox(half[1]) == (17, 22, 23, 30)                  # the second frame keeps its place in the row

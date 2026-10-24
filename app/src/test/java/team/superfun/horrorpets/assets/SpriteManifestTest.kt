@@ -8,10 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SpriteManifestTest {
-    private val pets = listOf("jason", "freddy", "pinhead", "ghostface", "chucky", "michael", "leatherface")
+    private val pets = listOf("jason", "freddy", "pinhead", "ghostface", "chucky", "michael", "leatherface", "jaws")
 
     /** The pets that shipped before the optional animations: the twelve every pet has, and nothing else. */
-    private val plainPets = pets - "leatherface"
+    private val plainPets = pets - "leatherface" - "jaws"
+
+    private val optionalAnims = listOf(Anim.DANCE, Anim.THRASH, Anim.BARRELS)
 
     @Test
     fun parsesAllTwelveAnims() {
@@ -27,7 +29,7 @@ class SpriteManifestTest {
     @Test
     fun theRequiredAnimKeysMatchTheManifestKeysExactly() {
         assertEquals(12, Anim.required.size)
-        assertEquals(Anim.entries - Anim.DANCE, Anim.required)
+        assertEquals(Anim.entries - optionalAnims, Anim.required)
         for (pet in plainPets) {
             val m = parseManifest(AssetFixtures.manifest(pet))
             assertEquals(pet, Anim.required.map { it.key }.toSet(), m.animations.keys)
@@ -35,10 +37,10 @@ class SpriteManifestTest {
     }
 
     @Test
-    fun danceIsTheOnlyOptionalAnim() {
-        assertEquals(listOf(Anim.DANCE), Anim.entries.filter { it.optional })
-        assertEquals("dance", Anim.DANCE.key)
-        assertEquals(Anim.DANCE, Anim.fromKey("dance"))
+    fun theDanceTheThrashAndTheBarrelsAreTheOptionalAnims() {
+        assertEquals(optionalAnims, Anim.entries.filter { it.optional })
+        assertEquals(listOf("dance", "thrash", "barrels"), optionalAnims.map { it.key })
+        for (anim in optionalAnims) assertEquals(anim, Anim.fromKey(anim.key))
     }
 
     @Test
@@ -62,7 +64,7 @@ class SpriteManifestTest {
         for (pet in plainPets) {
             val m = parseManifest(AssetFixtures.manifest(pet))
             assertEquals(pet, 12, m.animations.size)
-            assertFalse(pet, m.has(Anim.DANCE))
+            for (anim in optionalAnims) assertFalse("$pet ${anim.key}", m.has(anim))
             for (anim in Anim.required) assertTrue("$pet ${anim.key}", m.has(anim))
         }
     }
@@ -79,6 +81,50 @@ class SpriteManifestTest {
         assertEquals(listOf(384, 416), m.cell)
         assertEquals(398, m.baselineY)
         assertEquals(192, m.anchorX)
+    }
+
+    @Test
+    fun aManifestMayShipTheThrashAndTheBarrels() {
+        val m = parseManifest(
+            """{"pet":"x","cell":[384,416],"baselineY":400,"anchorX":192,"feed":"review",
+               "animations":{"idle":{"file":"idle.png","frames":1,"durationsMs":[50],"loop":true},
+               "thrash":{"file":"thrash.png","frames":2,"durationsMs":[90,70],"loop":false},
+               "barrels":{"file":"barrels.png","frames":3,"durationsMs":[120,80,200],"loop":false}}}""",
+        )
+        assertTrue(m.has(Anim.THRASH))
+        assertTrue(m.has(Anim.BARRELS))
+        assertFalse(m.has(Anim.DANCE))
+        assertEquals(AnimSpec("thrash.png", 2, listOf(90, 70), loop = false), m.spec(Anim.THRASH))
+        assertEquals(AnimSpec("barrels.png", 3, listOf(120, 80, 200), loop = false), m.spec(Anim.BARRELS))
+    }
+
+    @Test
+    fun jawsManifestHasFourteenAnimsWithHisThrashAndBarrels() {
+        val m = parseManifest(AssetFixtures.manifest("jaws"))
+        assertEquals("jaws", m.pet)
+        assertEquals(14, m.animations.size)
+        assertEquals((Anim.required + Anim.THRASH + Anim.BARRELS).map { it.key }.toSet(), m.animations.keys)
+        assertFalse(m.has(Anim.DANCE))
+        for (anim in listOf(Anim.THRASH, Anim.BARRELS)) {
+            val spec = m.spec(anim)
+            assertEquals("${anim.key}.png", spec.file)
+            assertEquals(anim.key, 6, spec.frames)
+            assertFalse(anim.key, spec.loop)
+        }
+        assertEquals(listOf(384, 416), m.cell)
+        assertEquals(192, m.anchorX)
+        assertEquals(Anim.REVIEW, m.feedAnim())
+    }
+
+    @Test
+    fun onlyJawsHasTheThrashAndTheBarrels() {
+        for (pet in pets - "jaws") {
+            val m = parseManifest(AssetFixtures.manifest(pet))
+            for (anim in listOf(Anim.THRASH, Anim.BARRELS)) {
+                assertFalse("$pet ${anim.key}", m.has(anim))
+                assertThrows(IllegalStateException::class.java) { m.spec(anim) }
+            }
+        }
     }
 
     @Test
@@ -107,6 +153,7 @@ class SpriteManifestTest {
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("chucky")).feedAnim())
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("michael")).feedAnim())
         assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("leatherface")).feedAnim())
+        assertEquals(Anim.REVIEW, parseManifest(AssetFixtures.manifest("jaws")).feedAnim())
     }
 
     @Test

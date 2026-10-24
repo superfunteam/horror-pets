@@ -5,8 +5,8 @@ import kotlinx.serialization.json.Json
 
 /**
  * The animations a pet can ship. [key] is the manifest key (and the strip file's base name). The twelve
- * [required] ones are in every manifest; an [optional] one ([DANCE], Leatherface's chainsaw dance) only in
- * some, so a caller checks [SpriteManifest.has] before asking for it.
+ * [required] ones are in every manifest; an [optional] one ([DANCE], Leatherface's chainsaw dance; [THRASH] and
+ * [BARRELS], Jaws's) only in some, so a caller checks [SpriteManifest.has] before asking for it.
  */
 enum class Anim(val key: String, val optional: Boolean = false) {
     IDLE("idle"),
@@ -24,6 +24,12 @@ enum class Anim(val key: String, val optional: Boolean = false) {
 
     /** A one-shot dance, played for PLAY on Home and for a danced special (see `SpecialStyle.danced`). */
     DANCE("dance", optional = true),
+
+    /** Jaws's one-shot ultra thrash: chomps wrapped in swooshes and bite marks. */
+    THRASH("thrash", optional = true),
+
+    /** Jaws's one-shot barrel breach: three yellow barrels pop up out of his back and sink again. */
+    BARRELS("barrels", optional = true),
     ;
 
     companion object {

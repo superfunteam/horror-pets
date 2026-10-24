@@ -55,6 +55,17 @@ class RosterAssetsTest {
     }
 
     @Test
+    fun jawsHasEveryStripWithHisThrashAndBarrels() {
+        // Not in the roster yet, so everyPetHasItsSprites doesn't reach him: check his folder by name.
+        val manifest = parseManifest(file("sprites-final/jaws/manifest.json").readText())
+        assertEquals("jaws", manifest.pet)
+        for (anim in Anim.required + Anim.THRASH + Anim.BARRELS) {
+            assertTrue(anim.key, file("sprites-final/jaws/${manifest.spec(anim).file}").isFile)
+        }
+        assertTrue(file("sprites-final/jaws/head.webp").isFile)
+    }
+
+    @Test
     fun everyPetHasItsScenes() {
         val catalog = parseScenes(file("scenes-final/scenes.json").readText())
         for (id in PetId.entries) {

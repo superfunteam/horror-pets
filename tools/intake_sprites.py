@@ -1,5 +1,14 @@
 """Build sprites-final/ from the hi-res generator rows, registered against the 192x208 sheets.
 
+tools/sprite_sources.json lists each pet's reference sheet and, per animation, its row and hi-res candidates.
+A few optional fields cover art that doesn't stand on feet or that was fitted to its cell on its own:
+- a pet's "ground": "lowest" stands every animation on its lowest point (a swimmer's fin tips) rather than on
+  the median foot row;
+- an animation's "refScale" scales its reference row about the row's bottom centre before registering, for a row
+  the sheet fitted at a different size from the rest of the pet;
+- an animation's "groundOffset" is how far (cell px) the pet's own ground sits above the animation's lowest
+  pixels, for effects that hang below him.
+
 Usage: tools/.venv/bin/python -I tools/intake_sprites.py --out sprites-final --qa art-work/sprite-qa
 """
 from __future__ import annotations
@@ -18,6 +27,7 @@ from spritekit import (  # noqa: E402
     fringe_ratio,
     iou_vs_reference,
     key_magenta,
+    _paste,
     register_to_reference,
     resize_rgba,
     split_components,
@@ -41,6 +51,28 @@ def ref_cells(sheet: np.ndarray, row: int | None, frames: int, ref_cell: tuple[i
     w, h = ref_cell
     y = (row or 0) * h
     return [sheet[y:y + h, c * w:(c + 1) * w].copy() for c in range(frames)]
+
+
+def scale_refs(refs: list[np.ndarray], factor: float) -> list[np.ndarray]:
+    """Scale a row of reference cells by `factor` about the bottom centre of the whole row's bbox, keeping each
+    cell's size (whatever a larger factor pushes past the cell is cut).
+
+    The bottom stays where it is, so the row keeps its ground; one shared anchor keeps every frame's place
+    relative to the others (a bob stays a bob).
+    """
+    if factor == 1.0:
+        return refs
+    boxes = [alpha_bbox(r, thresh=64) for r in refs]
+    cx = (min(b[0] for b in boxes) + max(b[2] for b in boxes)) / 2
+    by = max(b[3] for b in boxes)
+    out = []
+    for r in refs:
+        h, w = r.shape[:2]
+        scaled = resize_rgba(r, (max(1, round(w * factor)), max(1, round(h * factor))))
+        cell = np.zeros_like(r)
+        _paste(cell, scaled, round(cx * (1 - factor)), round(by * (1 - factor)))
+        out.append(cell)
+    return out
 
 
 def foot_row(cell: np.ndarray) -> int:
@@ -69,7 +101,7 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
         ref_sheet = load_rgba(ROOT / spec["reference"])
     else:
         ref_sheet = sheet
-    refs = ref_cells(ref_sheet, spec.get("row"), spec["frames"], ref_cell)
+    refs = scale_refs(ref_cells(ref_sheet, spec.get("row"), spec["frames"], ref_cell), spec.get("refScale", 1.0))
 
     whole_row = False  # True when no hi-res candidate worked and every frame is the upscaled reference
     if "derive" in spec:
@@ -120,11 +152,12 @@ def process_anim(pet: str, name: str, spec: dict, sheet: np.ndarray, cell, ref_c
     return {"cells": cells, "ious": ious, "fallback": fallback, "spec": spec}
 
 
-def ground_row(name: str, cells: list[np.ndarray]) -> int:
+def ground_row(name: str, cells: list[np.ndarray], lowest: bool = False) -> int:
     """Row where the feet meet the floor: the lowest point across a jump (it is airborne in most
-    frames), the median foot row for every other animation (robust to a single odd frame)."""
+    frames), the median foot row for every other animation (robust to a single odd frame).
+    With `lowest`, every animation's lowest point (a swimmer with no feet, fins flapping)."""
     rows = [foot_row(c) for c in cells]
-    return max(rows) if name == "jump" else int(round(float(np.median(rows))))
+    return max(rows) if lowest or name == "jump" else int(round(float(np.median(rows))))
 
 
 def shift_down(cell: np.ndarray, dy: int) -> np.ndarray:
@@ -142,11 +175,16 @@ def shift_down(cell: np.ndarray, dy: int) -> np.ndarray:
     return out
 
 
-def align_baselines(pet: str, anims: dict, log: list) -> int:
-    """Shift every animation so its ground row matches idle's; fail if that needs more than MAX_BASELINE_FIX px."""
-    baseline = ground_row("idle", anims["idle"]["cells"])
+def align_baselines(pet: str, anims: dict, log: list, lowest: bool = False) -> int:
+    """Shift every animation so its ground row matches idle's; fail if that needs more than MAX_BASELINE_FIX px.
+
+    An animation's ground is its ground row less its spec's "groundOffset" (effects hanging below the pet)."""
+    def own_ground(name: str, a: dict) -> int:
+        return ground_row(name, a["cells"], lowest) - a.get("spec", {}).get("groundOffset", 0)
+
+    baseline = own_ground("idle", anims["idle"])
     for name, a in anims.items():
-        drift = baseline - ground_row(name, a["cells"])
+        drift = baseline - own_ground(name, a)
         if drift == 0:
             continue
         if abs(drift) > MAX_BASELINE_FIX:
@@ -213,7 +251,10 @@ def main() -> int:
             anims: dict = {}
             for name, spec in pcfg["animations"].items():
                 anims[name] = process_anim(pet, name, spec, sheet, cell, ref_cell, anims, log)
-            baseline = align_baselines(pet, anims, log)
+            ground = pcfg.get("ground", "feet")
+            if ground not in ("feet", "lowest"):
+                raise IntakeError(f"{pet}: unknown ground {ground!r}")
+            baseline = align_baselines(pet, anims, log, lowest=ground == "lowest")
             all_anims.extend(anims.values())
             write_outputs(pet, anims, baseline, pcfg["feed"], cell, ROOT / args.out, ROOT / args.qa,
                           pcfg.get("displayScale", 1.0))
