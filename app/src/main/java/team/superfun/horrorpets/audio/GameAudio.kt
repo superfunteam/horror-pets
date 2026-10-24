@@ -4,9 +4,12 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -35,6 +38,8 @@ import kotlin.math.abs
  * - A special's riff ([riff]) loops on a third player over the music, which ducks under it (see [duckLevel]). It
  *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS]. It ducks too, to
  *   [DUCK_LEVEL], while the announcer speaks over it.
+ * - On a phone an effect with a buzz ([hapticFor]) vibrates as its clip starts. A device with no vibrator (every TV)
+ *   gets none.
  *
  * Every call is logged under the `GameAudio` tag. Unknown names are logged and ignored, never thrown.
  * All playback calls belong on the main thread (a call from another thread is posted there); only
@@ -44,6 +49,9 @@ class GameAudio(context: Context) : SoundSink {
     private val appContext = context.applicationContext
     private val assets: AssetManager = appContext.assets
     private val main = Handler(Looper.getMainLooper())
+
+    /** The phone's vibrator; null on a device without one. */
+    private val vibrator: Vibrator? = vibratorOf(appContext)
 
     @Volatile
     private var released = false
@@ -373,10 +381,27 @@ class GameAudio(context: Context) : SoundSink {
                 ClipState.READY -> {
                     it.remove()
                     // A request that waited a long time for the pool is no longer worth playing late.
-                    if (now - request.at <= PENDING_SFX_MAX_AGE_MS) play(clips.getValue(key), SFX_PRIORITY)
+                    if (now - request.at <= PENDING_SFX_MAX_AGE_MS && play(clips.getValue(key), SFX_PRIORITY) != 0) {
+                        hapticFor(request.name)?.let(::buzz)
+                    }
                 }
             }
         }
+    }
+
+    /** Vibrates [pulses] (ms, a pause between each two) as their sound starts; nothing without a vibrator. */
+    private fun buzz(pulses: LongArray) {
+        val vibrator = vibrator ?: return
+        // A waveform starts with a pause, which here is none.
+        val pattern = longArrayOf(0, *pulses)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
+            }
+        }.onFailure { Log.w(TAG, "buzz failed", it) }
     }
 
     /** Plays queued voice lines one after another. Re-entered when a clip ends, a load finishes or a call adds lines. */

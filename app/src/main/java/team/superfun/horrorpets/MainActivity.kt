@@ -10,8 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.util.Log
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -42,6 +40,7 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.audio.GameAudio
 import team.superfun.horrorpets.audio.keepsPlace
+import team.superfun.horrorpets.audio.vibratorOf
 import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
@@ -170,13 +169,7 @@ class MainActivity : ComponentActivity() {
      * vibration, not touch feedback, which many players switch off.
      */
     private fun buzz() {
-        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
-            getSystemService(VibratorManager::class.java)?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
-        if (vibrator?.hasVibrator() != true) return
+        val vibrator = vibratorOf(this) ?: return
         runCatching {
             if (Build.VERSION.SDK_INT >= 26) {
                 vibrator.vibrate(VibrationEffect.createOneShot(BUZZ_MS, VibrationEffect.DEFAULT_AMPLITUDE))

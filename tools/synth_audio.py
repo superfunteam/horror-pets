@@ -824,6 +824,25 @@ def ko_boom() -> np.ndarray:
     return out
 
 
+def snore() -> np.ndarray:
+    """A sleeper's snore, 4 s and looping: a breath in (brown noise swelling under a 300 Hz lowpass), 0.4 s of quiet,
+    and a breath out (a soft reed buzz: a 70 Hz saw through a 400 Hz lowpass, with a slow 6 Hz tremolo)."""
+    sr = rng_for("snore")  # its own stream, so the sounds before it are untouched
+    length, fade = 4.0, 0.3
+    out = np.zeros(int((length + fade) * SR))  # rendered `fade` longer, for loopify to fold the tail over the head
+    n_in = int(1.4 * SR)
+    t_in = np.arange(n_in) / SR
+    breath_in = lowpass(brown(sr, n_in), 300) * (t_in / 1.4) ** 1.6  # it swells...
+    breath_in[-int(0.08 * SR):] *= np.linspace(1, 0, int(0.08 * SR))  # ...and is caught short
+    n_out = int(1.2 * SR)
+    t_out = np.arange(n_out) / SR
+    tremolo = 0.65 + 0.35 * np.sin(2 * np.pi * 6 * t_out)
+    breath_out = lowpass(saw(70, n_out), 400) * tremolo * env_adsr(n_out, 0.15, 0.25, 0.55, 0.6) * 0.5
+    place(out, breath_in, 0.35)
+    place(out, breath_out, 0.35 + 1.4 + 0.4)  # the breath out starts 0.4 s of quiet after the breath in ends
+    return loopify(out, length, fade)
+
+
 def sfx_all() -> dict[str, np.ndarray]:
     rng = rng_for("sfx")
     s: dict[str, np.ndarray] = {}
@@ -985,6 +1004,8 @@ def sfx_all() -> dict[str, np.ndarray]:
     s["challenger_hit"] = challenger_hit()
     # The knockout's boom (appended last, on its own random stream, so nothing above changes).
     s["ko_boom"] = ko_boom()
+    # A sleeper's snore (appended last, on its own random stream, so nothing above changes).
+    s["snore"] = snore()
     return s
 
 
