@@ -10,9 +10,12 @@ import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.attackFor
 import team.superfun.horrorpets.fight.other
+import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.Slot
 import team.superfun.horrorpets.model.SpecialStyle
+import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.mirrorToFace
 
 /** One step of a fight turn's playback, in the order the fight screen plays them. */
@@ -157,6 +160,22 @@ internal fun ownSwingAnim(event: FightEvent, kit: Kit, ships: (Anim) -> Boolean)
         else -> null
     }
     return attack?.anim?.let(Anim::fromKey)?.takeIf(ships)
+}
+
+/**
+ * What [attack]'s killer swings to land it, as a fight picks it for a hit with it ([swingAnim] and [ownSwingAnim]),
+ * for sprites that ship what [ships] says: its own animation (Jaws's barrels and thrash), its DANCE for a danced
+ * special, otherwise ATTACK. The MOVES and learn cards' preview plays it.
+ */
+internal fun attackSwing(attack: Attack, ships: (Anim) -> Boolean): Anim {
+    val base = Kit.base(attack.pet)
+    val (move, kit) = when (attack.slot) {
+        Slot.LIGHT -> Move.STRIKE to base.copy(light = attack)
+        Slot.HEAVY -> Move.HEAVY to base.copy(heavy = attack)
+        Slot.SPECIAL -> Move.SPECIAL to base.copy(special = attack)
+    }
+    val hit = FightEvent.Hit(Side.PLAYER, move, damage = 0, crit = false)
+    return swingAnim(hit, dancesSpecial(attack.pet.spec.special, ships(Anim.DANCE)), ownSwingAnim(hit, kit, ships))
 }
 
 /**

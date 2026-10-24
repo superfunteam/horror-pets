@@ -101,6 +101,21 @@ class SwingAnimTest {
     }
 
     @Test
+    fun anAttacksSwingIsTheOneAFightPicksForAHitWithIt() {
+        // What the MOVES card's preview plays: the attack's own animation, a danced special's DANCE, else ATTACK.
+        assertEquals(Anim.BARRELS, attackSwing(breach, jaws::has))
+        assertEquals(Anim.THRASH, attackSwing(ultra, jaws::has))
+        assertEquals(Anim.ATTACK, attackSwing(baseAttack(PetId.JAWS, Slot.HEAVY), jaws::has))
+        assertEquals(Anim.ATTACK, attackSwing(baseAttack(PetId.JAWS, Slot.SPECIAL), jaws::has))
+        // Sprites without the strip swing the usual ATTACK, never a missing one.
+        assertEquals(Anim.ATTACK, attackSwing(ultra, freddy::has))
+        val leatherface = parseManifest(AssetFixtures.manifest("leatherface"))
+        for (tier in 0..3) assertEquals(Anim.DANCE, attackSwing(attackById("leatherface_special_$tier")!!, leatherface::has))
+        assertEquals(Anim.ATTACK, attackSwing(baseAttack(PetId.LEATHERFACE, Slot.HEAVY), leatherface::has))
+        assertEquals(Anim.ATTACK, attackSwing(attackById("freddy_special_3")!!, freddy::has))
+    }
+
+    @Test
     fun hisOwnAnimationsLandOnTheirSnapAndPlayToTheirEnd() {
         // Barrels: 200,120,70,260,160,240 (1050 ms). They burst up 320 ms in, and he holds the breach until they
         // have sunk again (730 ms) rather than cutting them off half-sunk.
