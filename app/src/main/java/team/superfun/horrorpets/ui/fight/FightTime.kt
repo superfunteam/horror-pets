@@ -1,9 +1,9 @@
 package team.superfun.horrorpets.ui.fight
 
-import kotlin.math.floor
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.fight.Side
 
 /**
  * How long a blow freezes both fighters as it lands (the fight's clock stops, see `FightStage.timeScale`):
@@ -16,9 +16,13 @@ internal fun hitStopFor(event: FightEvent): Long {
     return if (big) FightTuning.HIT_STOP_HEAVY_MS else FightTuning.HIT_STOP_STRIKE_MS
 }
 
-/** Whether [event] is the blow that empties a bar standing at [defenderHp]: a hit for at least that much. */
-internal fun koBlow(event: FightEvent, defenderHp: Int): Boolean =
-    event is FightEvent.Hit && event.damage >= defenderHp
+/**
+ * Whether [event], [attacker]'s blow on a bar standing at [defenderHp], is the knockout: a hit for at least that
+ * much by the side that wins the fight ([winner]). A bar emptied by a blow that a heal later in the turn undoes (no
+ * winner), or by the loser's blow in a double K.O., is not.
+ */
+internal fun koBlow(event: FightEvent, defenderHp: Int, attacker: Side, winner: Side?): Boolean =
+    winner == attacker && event is FightEvent.Hit && event.damage >= defenderHp
 
 /**
  * When a blow's parts land, in ms after the swing's impact: its sound at [soundAtMs] (the landing, later than the
@@ -30,17 +34,3 @@ internal data class ImpactSchedule(val soundAtMs: Long, val stopMs: Long, val bl
 /** The schedule of a blow that lands [landMs] after the impact and stops the clock for [stopMs] (see [hitStopFor]). */
 internal fun impactSchedule(landMs: Long, stopMs: Long): ImpactSchedule =
     ImpactSchedule(soundAtMs = landMs, stopMs = stopMs, blowAtMs = landMs + stopMs)
-
-/**
- * A clock that runs at a varying speed: each [advance] adds a step of real time scaled by the speed of the moment, so
- * at 0 it holds and at 0.3 it crawls. Fractions of a millisecond carry over, so many short slow steps add up.
- */
-internal class ScaledClock {
-    private var elapsed = 0.0
-
-    /** Moves on [dtMs] of real time at [scale] speed, and returns the scaled time passed so far, in whole ms. */
-    fun advance(dtMs: Long, scale: Float): Long {
-        elapsed += dtMs * scale.toDouble()
-        return floor(elapsed).toLong()
-    }
-}

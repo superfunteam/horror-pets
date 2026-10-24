@@ -40,7 +40,6 @@ import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.frameAt
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.model.PetId
-import team.superfun.horrorpets.ui.fight.ScaledClock
 
 /** Contact-shadow ellipse: width as a fraction of the drawn cell width, height as a fraction of its width. */
 private const val SHADOW_WIDTH_OF_CELL = 0.45f

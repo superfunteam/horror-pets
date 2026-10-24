@@ -93,6 +93,7 @@ import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SIDE_ON_REACH_OF_CELL
+import team.superfun.horrorpets.ui.common.ScaledClock
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
@@ -674,7 +675,7 @@ private fun FightersLayer(
                 jitterPx = jitterPx,
                 front = stage.front == side,
                 timeScale = { stage.timeScale },
-                koGrey = { stage.koGrey.value },
+                koGrey = { max(stage.koGrey.value, stage.rig(side).heldGrey) },
             )
         }
     }
@@ -748,6 +749,12 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
     var dazed by mutableStateOf(start.dazed)
     val status = HudStatus(combo = { combo }, bleed = { bleed }, dazed = { dazed })
 
+    /**
+     * The knockout's grey this fighter keeps once K.O. slams in (0..1): the loser holds what it had, so its colour
+     * never comes back before its own K.O. greying takes over, while the grey lifts off the scene and the winner.
+     */
+    var heldGrey by mutableFloatStateOf(0f)
+
     /** Where the bars are heading, ahead of their animations. */
     var hpTarget = hp
     var meterTarget = meter
@@ -777,8 +784,9 @@ private const val FLASH_STEPS = 6f
 private const val GREY_STEPS = 4f
 
 /**
- * One fighter on the floor. [timeScale] is the fight's clock speed and [koGrey] the knockout's grey (see
- * [FightStage.timeScale] and [FightStage.koGrey]), both read as they change, never in composition.
+ * One fighter on the floor. [timeScale] is the fight's clock speed ([FightStage.timeScale]), read by the sprite every
+ * frame and never in composition. [koGrey] is the knockout's grey on this fighter (see [FighterRig.heldGrey]), read in
+ * composition in quarter steps, as the flash is in its steps.
  */
 @Composable
 private fun FighterView(
@@ -954,8 +962,8 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
 
     /**
      * Waits [ms] of fight time (see [timeScale]): that long at full speed, longer in slow motion, and on hold through a
-     * hit-stop, so a wait timed to a sprite stays in step with it. It counts frames, so it ends on the first one past
-     * [ms].
+     * hit-stop, so a wait timed to a sprite stays in step with it. It counts frames, so it ends on the first frame at
+     * or past [ms].
      */
     suspend fun pass(ms: Long) {
         if (ms <= 0L) return
@@ -968,7 +976,11 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
         } while (passed < ms)
     }
 
-    /** Runs the fight's clock at [scale] for [ms] of real time, then back at full speed (even if cut short). */
+    /**
+     * Runs the fight's clock at [scale] for [ms] of real time, then back at full speed (even if cut short). Two calls
+     * that overlapped would cut each other short, the first to end putting the clock back at full speed; the turn's
+     * playback never overlaps them.
+     */
     suspend fun slowFor(scale: Float, ms: Long) {
         timeScale = scale
         try {
@@ -1173,9 +1185,7 @@ private suspend fun FightStage.lunge(
     }
     pass(impact)
     val stop = hitStopFor(event)
-    // Only the winner's blow crawls: a heal later in the turn may fill an emptied bar again, and in a double K.O. the
-    // loser's blow empties one too.
-    val ko = winner == a.side && koBlow(event, d.hpTarget.toInt())
+    val ko = koBlow(event, d.hpTarget.toInt(), attacker = a.side, winner = winner)
     val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play, stopMs = stop, ko = ko)
     // A blow at the impact stops the clock now, and the winning one then crawls; a special's later blow does both
     // as it lands (see impactOf).
@@ -1573,8 +1583,8 @@ private suspend fun FightStage.knockout(scope: CoroutineScope, play: (FightSound
 }
 
 /**
- * The K.O.: the loser plays FAIL and greys out as K.O. slams in (the knockout's grey lifting, so the winner
- * celebrates in colour), then the winner jumps and waves.
+ * The K.O.: the loser plays FAIL and greys out as K.O. slams in (the knockout's grey lifting off the scene and the
+ * winner, so it celebrates in colour, and staying on the loser), then the winner jumps and waves.
  */
 private suspend fun FightStage.finale(
     scope: CoroutineScope,
@@ -1591,6 +1601,7 @@ private suspend fun FightStage.finale(
     val fall = scope.launch { loser.play(Anim.FAIL, timeoutFor(loader, loser, Anim.FAIL)) }
     scope.launch { loser.ko.animateTo(1f, tween(900)) }
     koShown = true
+    loser.heldGrey = koGrey.value
     scope.launch { koGrey.animateTo(0f, tween(300)) }
     ko.snapTo(0f)
     ko.animateTo(1f, tween(190, easing = FastOutLinearInEasing))
