@@ -51,7 +51,9 @@ better", and dropped the craving box).
   (shared by all killers), saved with the game. *(My call: one pantry, not one per killer — food is the player's.)*
 - **When it opens**, an empty pantry starts with a random handful. Every visit also tops the shelf up so it holds at
   least four raw ingredients, at least one of them a way to cook and at least two of them foods. *(My call, so there's
-  always something to cook until fights and training pay out food.)* Ways to cook come up often in the draw.
+  always something to cook until fights and training pay out food.)* Ways to cook come up often in the draw. The shelf
+  holds 40; when it's full and short of those minimums, the top-up first throws out the oldest botched dishes (never
+  good food) to make room. *(My call, from the final review: otherwise a run of slop could jam the shelf for days.)*
 - **The board** (the stage) has two places. Tap or OK an item on the shelf to put it on the board; tap or OK an item
   on the board to put it back. Under the board: **COOK** (needs two items) and **FEED** (needs exactly one).
 - **COOK**: the two items slide together, poof, the result appears with its name, then it flies back onto the shelf.
