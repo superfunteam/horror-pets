@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -302,12 +303,14 @@ fun FightScreen(
     val arena = remember(loader, cpuId, arenaRoll) { arenaScene(loader, cpuId, arenaRoll) }
     val potionImage = remember(loader) { loader.prop(POTION_ART) }
     val tint = remember(arena) { hexColor(arena.tint) }
+    val lingering = rememberCoroutineScope()
     val stage = remember {
         FightStage(
             screen,
             turnPending = petAnim != null,
             playerLook = fighterLook(loader, playerId),
             cpuLook = fighterLook(loader, cpuId),
+            lingering = lingering,
         )
     }
     val finished by rememberUpdatedState(onAnimFinished)
@@ -415,7 +418,12 @@ fun FightScreen(
     // One turn's playback per marker token, reported once when it has played out.
     LaunchedEffect(petAnim?.token) {
         val request = petAnim ?: return@LaunchedEffect
-        stage.playTurn(screen, loader, sink)
+        try {
+            stage.playTurn(screen, loader, sink)
+        } finally {
+            // Played out or cut short, a turn leaves no special holding the riff.
+            stage.dropRiff(sink)
+        }
         finished(request.token)
         if (screen.fight.winner == null && entry != null && !askRun) focusMenu(lastMove)
     }
@@ -859,9 +867,18 @@ private fun FighterView(
 @Immutable
 private class FighterLook(val body: Float, val dancesSpecial: Boolean, val ships: Set<Anim>)
 
-/** Everything the turn playback animates, remembered for the life of one fight screen. */
+/**
+ * Everything the turn playback animates, remembered for the life of one fight screen. [lingering] is the screen's own
+ * scope, for what may run on past a turn without holding it up: a special's red lifting, its riff letting go.
+ */
 @Stable
-private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook: FighterLook, cpuLook: FighterLook) {
+private class FightStage(
+    screen: Screen.Fight,
+    turnPending: Boolean,
+    playerLook: FighterLook,
+    cpuLook: FighterLook,
+    val lingering: CoroutineScope,
+) {
     val player: FighterRig
     val cpu: FighterRig
 
@@ -889,7 +906,7 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     var flashColor by mutableStateOf(Color.White)
     val darken = Animatable(0f)
 
-    /** A special's red over the dark (0..1): it comes up with [darken] at the wind-up, and lifts with it a little slower. */
+    /** A special's red over the dark (0..1): up with [darken] at the wind-up, then lifting with it a little slower. */
     val red = Animatable(0f)
     val ko = Animatable(0f)
 
@@ -934,10 +951,29 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     /** The specials holding the riff: one can outlast its own effect (see [RIFF_AFTER_BLOW_MS]) into the next. */
     private var riffHolds = 0
 
-    /** A special takes ([on]) or lets go of [sink]'s riff, which plays while any special holds it. */
-    fun holdRiff(sink: SoundSink, on: Boolean) {
-        riffHolds = if (on) riffHolds + 1 else maxOf(0, riffHolds - 1)
-        sink.riff(riffHolds > 0)
+    /** Counts the turns that have dropped the riff ([dropRiff]); a let-go pending from one of them does nothing. */
+    var riffTurn = 0
+        private set
+
+    /** A special takes [sink]'s riff, which plays while any special holds it. */
+    fun holdRiff(sink: SoundSink) {
+        riffHolds++
+        sink.riff(true)
+    }
+
+    /** A special lets go of [sink]'s riff, unless its turn ([riffTurn] as it was then) has dropped it already. */
+    fun letGoOfRiff(sink: SoundSink, turn: Int) {
+        if (turn != riffTurn || riffHolds == 0) return
+        riffHolds--
+        if (riffHolds == 0) sink.riff(false)
+    }
+
+    /** The turn is over, or cut short: every special lets go, and [sink]'s riff stops if any still held it. */
+    fun dropRiff(sink: SoundSink) {
+        riffTurn++
+        if (riffHolds == 0) return
+        riffHolds = 0
+        sink.riff(false)
     }
 
     private val cellH: Float get() = height * FIGHTER_HEIGHT
@@ -1203,7 +1239,7 @@ private suspend fun FightStage.lunge(
     // A special's wind-up: the arena darkens and turns red, and its riff comes in over the ducking music.
     if (special) scope.launch {
         delay(max(0L, impact - 220L))
-        holdRiff(sink, on = true)
+        holdRiff(sink)
         launch { red.animateTo(0.45f, tween(220)) }
         darken.animateTo(0.5f + 0.08f * a.kit.special.tier, tween(220))
     }
@@ -1360,8 +1396,8 @@ private fun FightStage.impactOf(
                     specialT.animateTo(1f, tween(specialMs(fx.style), easing = LinearEasing))
                     special = null
                     specialT.snapTo(0f)
-                    // The red lifts with the dark, a little slower, without holding up the next beat.
-                    scope.launch { red.animateTo(0f, tween(400)) }
+                    // The red lifts with the dark, a little slower, without holding up the turn.
+                    lingering.launch { red.animateTo(0f, tween(400)) }
                     darken.animateTo(0f, tween(260))
                     // A later blow's stop and knockout belong to the special: the turn moves on after them.
                     landing?.join()
@@ -1371,8 +1407,9 @@ private fun FightStage.impactOf(
                     delay(schedule.blowAtMs + SPECIAL_MS / 3L)
                     hurt(scope, d, strength = 0.4f)
                 }
-                // The riff rides on past the blow, then fades as the music comes back.
-                afterImpact(scope, schedule.blowAtMs + RIFF_AFTER_BLOW_MS) { holdRiff(sink, on = false) }
+                // The riff rides on past the blow, then fades as the music comes back (sooner if the turn ends first).
+                val turn = riffTurn
+                afterImpact(lingering, schedule.blowAtMs + RIFF_AFTER_BLOW_MS) { letGoOfRiff(sink, turn) }
             }
         }
 

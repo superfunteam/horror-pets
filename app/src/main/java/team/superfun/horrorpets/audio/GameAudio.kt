@@ -30,7 +30,8 @@ import java.util.concurrent.Executors
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
  *   over [CROSSFADE_MS] using a second player; a null track fades the music out.
  * - A special's riff ([riff]) loops on a third player over the music, which ducks under it (see [duckLevel]). It
- *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS].
+ *   comes up over [RIFF_DUCK_DOWN_MS], as the music goes down, and fades out over [RIFF_FADE_MS]. It ducks too, to
+ *   [DUCK_LEVEL], while the announcer speaks over it.
  *
  * Every call is logged under the `GameAudio` tag. Unknown names are logged and ignored, never thrown.
  * All playback calls belong on the main thread (a call from another thread is posted there); only
@@ -95,6 +96,11 @@ class GameAudio(context: Context) : SoundSink {
 
     private var duck = 1f
     private var duckTarget = 1f
+
+    // The riff's own duck: the music ducks under the riff, the riff only under the announcer.
+    private var voiceDuck = 1f
+    private var voiceDuckTarget = 1f
+
     private var tickRunning = false
     private var lastTickAt = 0L
     private val tick = Runnable { onTick() }
@@ -165,8 +171,13 @@ class GameAudio(context: Context) : SoundSink {
         if (on) {
             // It comes up as fast as the music goes down under it. One still fading out picks up where it is.
             slot.fadeMs = RIFF_DUCK_DOWN_MS
-            if (slot.track == null) slot.start(RIFF_TRACK) else slot.target = 1f
-            Log.d(TAG, "riff slot R playing $RIFF_TRACK")
+            if (slot.track == null) {
+                slot.start(RIFF_TRACK)
+                Log.d(TAG, "riff slot R playing $RIFF_TRACK")
+            } else {
+                slot.target = 1f
+                Log.d(TAG, "riff slot R back up")
+            }
         } else {
             slot.fadeMs = RIFF_FADE_MS
             slot.target = 0f
@@ -218,6 +229,8 @@ class GameAudio(context: Context) : SoundSink {
         }
         duck = 1f
         duckTarget = duckLevel(voice = !voices.idle, riff = riffOn)
+        voiceDuck = 1f
+        voiceDuckTarget = duckLevel(voice = !voices.idle, riff = false)
         slots().forEach {
             it.player.playWhenReady = false
             it.applyVolume()
@@ -397,11 +410,15 @@ class GameAudio(context: Context) : SoundSink {
 
     // ================================================================ music fades (main thread)
 
-    /** Points the music's duck at what sounds over it now, the announcer and the riff (see [duckLevel]). */
+    /**
+     * Points the music's duck at what sounds over it now, the announcer and the riff (see [duckLevel]), and the riff's
+     * at the announcer alone.
+     */
     private fun duckMusic() {
         val target = duckLevel(voice = !voices.idle, riff = riffOn)
         if (target != duckTarget) Log.d(TAG, if (target < 1f) "music ducked to $target" else "music restored")
         duckTarget = target
+        voiceDuckTarget = duckLevel(voice = !voices.idle, riff = false)
         startTicking()
     }
 
@@ -432,7 +449,9 @@ class GameAudio(context: Context) : SoundSink {
             else -> DUCK_DOWN_MS
         }
         duck = approach(duck, duckTarget, dt / duckMs)
-        var settled = duck == duckTarget
+        val voiceDuckMs = if (voiceDuckTarget < voiceDuck) DUCK_DOWN_MS else DUCK_UP_MS
+        voiceDuck = approach(voiceDuck, voiceDuckTarget, dt / voiceDuckMs)
+        var settled = duck == duckTarget && voiceDuck == voiceDuckTarget
         for (slot in slots()) {
             slot.level = approach(slot.level, slot.target, dt / slot.fadeMs)
             if (slot.target == 0f && slot.level == 0f) slot.stop()
@@ -451,7 +470,7 @@ class GameAudio(context: Context) : SoundSink {
 
     /**
      * A music player, with the fade level it is currently at: one of the two the music crossfades between, or the
-     * riff's. Only the music ([ducked]) ducks under the announcer and the riff.
+     * riff's. The music ([ducked]) ducks under the announcer and the riff; the riff under the announcer alone.
      */
     private inner class MusicSlot(private val label: String, private val ducked: Boolean = true) {
         val player: ExoPlayer = ExoPlayer.Builder(appContext)
@@ -503,7 +522,7 @@ class GameAudio(context: Context) : SoundSink {
         }
 
         fun applyVolume() {
-            player.volume = MUSIC_VOLUME * level * (if (ducked) duck else 1f)
+            player.volume = MUSIC_VOLUME * level * (if (ducked) duck else voiceDuck)
         }
     }
 
