@@ -40,7 +40,8 @@ better", and dropped the craving box).
 - A player who just wants to feed can't do it quickly (one item, FEED, done must always work).
 - Gore. The food is chunky, glossy, cute-gross toys, never realistic.
 - A TV remote can't drive it comfortably from the couch.
-- A botched dish that can still be cooked with (the player's rule: nothing cooks with a botch).
+- A botched dish that can still be cooked into anything but more slop (the player's rule: nothing good cooks with a
+  botch; since 0.8.0's first play, two botches may be squashed into one Pile of Slop, see "Changed after 0.8.0").
 
 ## What's decided
 
@@ -54,12 +55,13 @@ better", and dropped the craving box).
   always something to cook until fights and training pay out food.)* Ways to cook come up often in the draw. The shelf
   holds 40; when it's full and short of those minimums, the top-up first throws out the oldest botched dishes (never
   good food) to make room. *(My call, from the final review: otherwise a run of slop could jam the shelf for days.)*
+  *(Since 0.8.0: the top-up also leaves two pairs that cook into real dishes, see "Changed after 0.8.0".)*
 - **The board** (the stage) has two places. Tap or OK an item on the shelf to put it on the board; tap or OK an item
   on the board to put it back. Under the board: **COOK** (needs two items) and **FEED** (needs exactly one).
 - **COOK**: the two items slide together, poof, the result appears with its name, then it flies back onto the shelf.
   Both inputs are used up — a way to cook included. Every cook is saved at once.
 - **No cook limit**: cook as much as the shelf allows. The risk is botching into slop, which feeds badly and cooks
-  into nothing (the mockup's "cooks left" meter was a guess and is dropped).
+  into nothing but more slop (the mockup's "cooks left" meter was a guess and is dropped).
 - **FEED**: the killer eats the item (its feed animation, the dish drops in front of it and gets munched, as today),
   then reacts: a happy jump for something it likes, the FAIL pose for something it doesn't, a big celebration for its
   favorite, each with a speech-bubble line ("Ugh, slop.", "Not bad!", "MY FAVORITE!!"). The payout is applied and
@@ -81,8 +83,9 @@ better", and dropped the craving box).
   - a few named disasters for particular wrong pairs (below);
   - a finished dish (snack or meal) + a way to cook, when that's not a recipe → **Burnt to a Crisp**;
   - two ways to cook together → **Kitchen Fire**.
-- **Botched dishes are dead ends**: COOK refuses any board holding one (a squelch, a shake, nothing used up). They can
-  still be fed (badly).
+- **Botched dishes are dead ends**: COOK refuses a botch with anything but another botch (a squelch, a shake, nothing
+  used up). Two botches make one Pile of Slop (since 0.8.0), only to free a place on the shelf. They can still be fed
+  (badly).
 - Two of the same item on the board follow the same rules (no recipe → slop).
 
 ### Flavors and tastes
@@ -242,6 +245,19 @@ The favorites' paths, four ingredients each:
   cauldron bubble, a sunny shimmer) played on the cook, a happy-eat and a gross-eat beat, a favorite fanfare. Munching
   reuses today's feed sounds; the refuse buzz and the level-up are reused where they fit.
 - **Music**: the pet's own track, as on Home.
+
+### Changed after 0.8.0
+
+From the player's first play ("Most times I got piles of slop"):
+
+- **Slop squashes**: two botched dishes (any two) cook into one Pile of Slop, so two shelf places become one. A botch
+  with anything else is still refused. It shows as any slop cook does and pays nothing.
+- **Two cookable pairs, always**: every top-up (the first handful included) leaves at least two pairs of raw items
+  that each cook into a real dish, sharing nothing. Pairs already there count first; a missing pair gets what it lacks
+  from a random raw recipe, leaning toward a way to cook and a food ("raw steak on the grill"). The cap, the botch
+  eviction and the minimums above still hold; a shelf full of good dishes may fall short.
+- **Labels on the shelf**: every item shows its name on a small label under it (at most two lines, shrunk to fit its
+  slot), not only on the board. The remote's focus lights its label gold.
 
 ### Later (the next project, not this one)
 
