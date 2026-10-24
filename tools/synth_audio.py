@@ -523,6 +523,97 @@ def music_switcher() -> np.ndarray:
     return widen(loopify(mix, L, F), 13)
 
 
+JAWS_CHORDS = [  # (bass root, cello voicing), one per 12 s; six chords make the 72 s loop. No two-note ostinato anywhere.
+    ("D1", ["D2", "A2", "F3"]),        # D minor
+    ("Bb1", ["F2", "Bb2", "Db3"]),     # B-flat minor
+    ("F#1", ["F#2", "A2", "C3"]),      # F-sharp diminished: the tritone leans on you
+    ("A1", ["A2", "C3", "Eb3"]),       # A diminished
+    ("G#1", ["G#2", "B2", "D#3"]),     # G-sharp minor
+    ("A1", ["D2", "F2", "A2"]),        # D minor over its dominant pedal: pulls back to the top of the loop
+]
+
+
+def loop_bump(tt: np.ndarray, centre: float, half: float, length: float) -> np.ndarray:
+    """A smooth 0..1 hill centred on `centre`, measured around the loop so it wraps seamlessly."""
+    d = (tt - centre + length / 2) % length - length / 2
+    return np.where(np.abs(d) < half, np.cos(np.pi * d / (2 * half)) ** 2, 0.0)
+
+
+def bowed_string(rng: np.random.Generator, hz: float, dur: float, attack: float, release: float) -> np.ndarray:
+    """A section of low strings on one note: four detuned players, slow bow swell, a vibrato that blooms late."""
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    vib = 1 + 0.003 * np.clip((t - 1.0) / 2.0, 0, 1) * np.sin(2 * np.pi * rng.uniform(4.6, 5.4) * t + rng.uniform(0, 6.28))
+    out = sum(saw(hz * vib * (1 + d), n, rng.random()) for d in (-0.006, -0.002, 0.003, 0.007)) / 4
+    out += 0.4 * lowpass(noise(rng, n), 1800) * 0.05  # rosin
+    env = np.clip(t / attack, 0, 1) ** 1.6 * np.clip((dur - t) / release, 0, 1)
+    return out * env * (0.88 + 0.12 * np.sin(2 * np.pi * t / rng.uniform(3.5, 5.5) + rng.uniform(0, 6.28)))
+
+
+def jaws_thud(rng: np.random.Generator, hz: float) -> np.ndarray:
+    """One beat of the creeping pulse: a fat low string struck with the wood of the bow."""
+    n = int(0.55 * SR)
+    t = np.arange(n) / SR
+    body = sine(hz * (1 + 0.5 * np.exp(-t / 0.02)), n) * env_exp(n, 0.17, 0.003)
+    string = lowpass(saw(hz, n), 650) * env_exp(n, 0.22, 0.004) * 0.6
+    snap = bandpass(noise(rng, n), 250, 1400) * env_exp(n, 0.012, 0.0005) * 0.3
+    return body + string + snap
+
+
+def music_jaws() -> np.ndarray:
+    rng = rng_for("jaws")
+    L, F = 72.0, 4.0
+    n = int((L + F) * SR)
+    tt = t_axis(L + F)
+    # tension: quiet creep, a long climb, a hard cut, then the sea closes over it and the loop starts again
+    tension = np.interp(tt % L, [0, 14, 56, 60, 68, 72], [0.0, 0.05, 1.0, 0.8, 0.0, 0.0])
+    cello = np.zeros(n)
+    bass = np.zeros(n)
+    for k in range(7):  # the 7th is the first chord again, so the fold-over at the loop point is a real chord change
+        root, voicing = JAWS_CHORDS[k % 6]
+        for name in voicing:
+            place(cello, bowed_string(rng, note_hz(name), 16.0, 3.0, 4.0), k * 12.0, 1 / len(voicing))
+        place(bass, bowed_string(rng, note_hz(root), 17.0, 3.5, 4.5), k * 12.0, 1.0)
+        sub = sine(note_hz(root), int(17.0 * SR)) * np.clip(np.arange(int(17.0 * SR)) / SR / 3.5, 0, 1) \
+            * np.clip((17.0 - np.arange(int(17.0 * SR)) / SR) / 4.5, 0, 1)
+        place(bass, sub, k * 12.0, 0.5)
+    # the cellos get brighter, and start to shiver, as the tension climbs
+    shiver = 4 + 9 * tension
+    trem = 1 + 0.45 * tension * np.sin(2 * np.pi * np.cumsum(shiver) / SR)
+    cello = (lowpass(cello, 420) * (1 - tension) + lowpass(cello, 1700, 3) * tension) * trem * (0.55 + 0.45 * tension)
+    bass = lowpass(bass, 200, 3) * (0.8 + 0.5 * tension)
+    # sub-bass swells breathing under everything
+    swell = 0.35 + 0.65 * np.maximum.reduce([loop_bump(tt, 30, 7, L), loop_bump(tt, 46, 6, L), loop_bump(tt, 64, 9, L)])
+    sub_swell = sine(note_hz("D1"), n) * swell * 0.1
+    # the sea: a low rumble, waves sliding up the shore, and three big swells (the last one swallows the loop point)
+    waves = 0.6 * (0.5 + 0.5 * np.sin(2 * np.pi * tt / (L / 8) - np.pi / 2)) ** 2 \
+        + 0.4 * (0.5 + 0.5 * np.sin(2 * np.pi * tt / (L / 11))) ** 2
+    ocean = highpass(lowpass(brown(rng, n), 380), 45) * (0.35 + 0.4 * waves) * 0.5
+    ocean += bandpass(noise(rng, n), 500, 3200) * waves * 0.05
+    big = loop_bump(tt, 28, 5, L) + loop_bump(tt, 44, 5, L) + 1.5 * loop_bump(tt, 66, 8, L)
+    ocean += (lowpass(noise(rng, n), 260) * 0.2 + bandpass(noise(rng, n), 300, 2600) * 0.18 * big) * big
+    # hull groans: slow, sagging notes from the cellos' lowest register
+    groans = np.zeros(n)
+    for at, hz in ((21.0, 150.0), (37.0, 128.0), (53.0, 140.0)):
+        m = int(5.0 * SR)
+        fr = np.linspace(hz, hz * 0.84, m)
+        g = lowpass(saw(fr, m) + saw(fr * 1.004, m), 700) * env_adsr(m, 1.8, 0.4, 0.7, 2.0)
+        place(groans, g, at, 0.08)
+    # the creeping pulse: one low string note per beat, on the chord's root, speeding up, until the cut
+    pulse = np.zeros(n)
+    t0, t1, ioi0, ioi1 = 3.2, 58.0, 2.4, 0.30
+    t = t0
+    while t < t1:
+        prog = (t - t0) / (t1 - t0)
+        root = note_hz(JAWS_CHORDS[int(t // 12) % 6][0]) * 2
+        place(pulse, jaws_thud(rng, root), t, 0.18 + 0.82 * prog ** 1.4)
+        t += ioi0 * (ioi1 / ioi0) ** prog
+    place(pulse, lowpass(drum_tom(42), 200), t1 + 0.35, 1.6)  # the last beat lands heavy, then nothing but sea
+    mix = 0.3 * cello + 0.14 * bass + sub_swell + ocean + groans + 0.3 * pulse
+    mix = reverb(rng, mix, 3.5, 0.3, 4500)
+    return widen(loopify(mix, L, F), 13)
+
+
 # ---------------------------------------------------------------- sfx
 
 def swoosh(rng: np.random.Generator, dur: float, lo: float, hi: float, down: bool = True) -> np.ndarray:
@@ -548,6 +639,74 @@ def punch(rng: np.random.Generator, weight: float = 1.0) -> np.ndarray:
 def clang(rng: np.random.Generator, base: float = 520, dur: float = 0.6) -> np.ndarray:
     return bell(base, dur, ((1, 1), (2.41, 0.7), (3.87, 0.5), (5.13, 0.4), (7.2, 0.25))) + \
         0.4 * highpass(noise(rng, int(dur * SR)), 2000) * env_exp(int(dur * SR), 0.01)
+
+
+def explosion_crackle(rng: np.random.Generator, dur: float, density: float) -> np.ndarray:
+    """Burning debris: sparse random pops, thinning out over `dur`."""
+    m = int(dur * SR)
+    t = np.arange(m) / SR
+    pops = (rng.random(m) < density * np.exp(-t / (dur * 0.4))) * rng.standard_normal(m) * rng.uniform(0.3, 1.0, m)
+    return bandpass(pops, 1200, 9000) * 6
+
+
+def jaws_special() -> np.ndarray:
+    """A scuba tank spat out (pop, hiss, a whoosh that builds as it flies), then it blows up on impact."""
+    jr = rng_for("special_jaws")  # its own stream, so the sounds before it are untouched
+    hit = 0.78  # where the tank lands
+    out = np.zeros(int(2.4 * SR))
+    pn = int(0.07 * SR)
+    place(out, lowpass(noise(jr, pn), 900) * env_exp(pn, 0.015, 0.001) * 0.7
+          + sine(260 * np.exp(-np.arange(pn) / SR / 0.03) + 90, pn) * env_exp(pn, 0.03, 0.001) * 0.5, 0.0, 0.5)
+    hn = int(0.8 * SR)
+    ht = np.arange(hn) / SR
+    hiss = highpass(noise(jr, hn), 3200) * (1 + 0.35 * np.sin(2 * np.pi * 11 * ht)) * env_exp(hn, 0.4, 0.01)
+    place(out, hiss, 0.02, 0.07)
+    place(out, swoosh(jr, 1.4, 250, 3500, down=False)[: int(hit * SR)], 0.03, 0.35)  # the first half of a swoosh: builds all the way in
+    for k, at in enumerate((0.20, 0.34, 0.47, 0.58, 0.67)):  # the tank tumbles: little clanks on the way
+        place(out, bell(jr.uniform(900, 1500), 0.18, ((1, 1), (2.41, 0.6), (3.87, 0.4))) * 0.5, at, 0.1 + 0.03 * k)
+    n = int(1.6 * SR)
+    t = np.arange(n) / SR
+    boom = sine(32 + 95 * np.exp(-t / 0.1), n) * env_exp(n, 0.5, 0.002)
+    boom += 0.5 * lowpass(noise(jr, n), 260) * env_exp(n, 0.45, 0.002)
+    crack = bandpass(noise(jr, n), 180, 7000) * env_exp(n, 0.06, 0.0005)
+    roar = bandpass(noise(jr, n), 120, 1800) * env_adsr(n, 0.03, 0.25, 0.25, 1.1) * 0.5  # the fireball
+    blast = 1.0 * boom + 0.9 * crack + 0.6 * roar
+    blast += explosion_crackle(jr, 1.6, 0.006) * 0.12
+    place(out, blast, hit, 1.0)
+    for k in range(34):  # debris raining down: bits of metal, then rubble, thinning out
+        at = hit + 0.1 + jr.exponential(0.45)
+        if at > 2.05:
+            continue
+        if k % 3 == 0:
+            piece = bell(jr.uniform(1600, 5200), 0.22, ((1, 1), (2.76, 0.5), (5.4, 0.3))) * 0.5
+            piece += highpass(noise(jr, len(piece)), 4000) * env_exp(len(piece), 0.004) * 0.4
+        else:
+            ln = int(jr.uniform(0.02, 0.07) * SR)
+            piece = bandpass(noise(jr, ln), jr.uniform(150, 600), jr.uniform(900, 2500)) * env_exp(ln, 0.02) * 1.4
+        place(out, piece, at, jr.uniform(0.1, 0.3) * np.exp(-(at - hit) / 0.8))
+    out = reverb(jr, out, 1.4, 0.22, 5000)
+    out = np.tanh(2.2 * out / np.abs(out).max()) / np.tanh(2.2)  # glue: a hot, crushed bang rather than a polite one
+    return lowpass(out, 15000, 4)  # the crushed top would ring past -1 dB when it is resampled to 44.1 kHz
+
+
+def challenger_hit() -> np.ndarray:
+    """\"Here comes a new challenger\": two huge low notes, a short one and a long one a tritone below."""
+    cr = rng_for("challenger_hit")
+    out = np.zeros(int(2.0 * SR))
+
+    def note(hz: float, dur: float, decay: float) -> np.ndarray:
+        n = int(dur * SR)
+        t = np.arange(n) / SR
+        slam = hz * (1 + 0.6 * np.exp(-t / 0.03))
+        low = sine(slam, n) * env_exp(n, decay, 0.002)
+        growl = np.tanh(3.0 * lowpass(saw(slam, n) + saw(slam * 1.006, n), 520)) * env_exp(n, decay * 0.8, 0.003) * 0.6
+        grit = lowpass(signal.square(2 * np.pi * np.cumsum(slam * 2) / SR), 1100) * env_exp(n, decay * 0.35, 0.002) * 0.2
+        thump = bandpass(noise(cr, n), 90, 1400) * env_exp(n, 0.03, 0.0005) * 0.6
+        return (low + growl + grit + thump) * np.clip((dur - t) / 0.05, 0, 1)
+
+    place(out, note(note_hz("Bb1"), 0.42, 0.11), 0.0, 0.8)
+    place(out, note(note_hz("E1"), 1.7, 0.55), 0.36, 1.0)
+    return reverb(cr, out, 1.6, 0.25, 3500)
 
 
 def sfx_all() -> dict[str, np.ndarray]:
@@ -706,6 +865,9 @@ def sfx_all() -> dict[str, np.ndarray]:
         tone = bell(note_hz(nm), 0.45, ((1, 1), (2, 0.3), (3, 0.1), (4.2, 0.04)))
         tone[-int(0.1 * SR):] *= np.linspace(1, 0, int(0.1 * SR))  # a soft tail, not a cut
         s[f"tone_{k + 1}"] = tone
+    # The secret killer's two (appended last, each on its own random stream, so nothing above changes).
+    s["special_jaws"] = jaws_special()
+    s["challenger_hit"] = challenger_hit()
     return s
 
 
@@ -741,7 +903,8 @@ def write_wav(x: np.ndarray, dest: Path) -> None:
 
 
 MUSIC = {"jason": music_jason, "freddy": music_freddy, "pinhead": music_pinhead,
-         "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "leatherface": music_leatherface, "fight": music_fight, "switcher": music_switcher}
+         "ghostface": music_ghostface, "chucky": music_chucky, "michael": music_michael, "leatherface": music_leatherface, "fight": music_fight, "switcher": music_switcher,
+         "jaws": music_jaws}  # new tracks go at the end
 
 
 def main() -> int:
