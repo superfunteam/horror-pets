@@ -188,6 +188,9 @@ private val ON_THE_HEAT: List<Set<PantryItem>> = RAW_RECIPES.filter { pair -> pa
  * one with only a few places left fills them as best it can, a pair that only needs one more item first, and a way
  * to cook before anything when there is none.
  */
+/** Whether [pet] can eat: hunger at or above [Tuning.FEED_REFUSE_BELOW]. The pantry turns a fuller killer away. */
+fun canEat(pet: PetState): Boolean = pet.hunger >= Tuning.FEED_REFUSE_BELOW
+
 fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
     if (pantry.isEmpty()) return startingHandful(rng)
     val shelf = pantry.toMutableList()

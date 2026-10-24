@@ -254,6 +254,7 @@ fun HorrorPetsApp(
                             onCook = vm::onPantryCook,
                             onFeed = vm::onPantryFeed,
                             onDone = vm::onPantryDone,
+                            onMore = vm::onPantryMore,
                             onBack = vm::onPantryBack,
                             focusEntry = focusEntry,
                         )

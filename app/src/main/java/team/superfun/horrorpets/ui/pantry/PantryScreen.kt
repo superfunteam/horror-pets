@@ -94,6 +94,7 @@ import team.superfun.horrorpets.ui.training.rememberGameClock
 import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
 import team.superfun.horrorpets.ui.training.trainingKeyOf
+import team.superfun.horrorpets.game.pantry.canEat
 
 /** How long a refused cook's note stays up, over the shaking board (see [REFUSED_COOK_NOTE]). */
 private const val NOTE_MS = 1_500L
@@ -104,9 +105,11 @@ private const val NOTE_MS = 1_500L
  */
 internal const val REFUSED_COOK_NOTE = "Slop only cooks with slop."
 
-/** What the help strip says once the reaction is up. */
+/** What the help strip says once the reaction is up: on Home, or, while the killer could eat more, to FEED again. */
 private val CarryOnHelp = listOf(HelpItem(listOf(TrainingKey.OK), "Carry on"))
 private const val CARRY_ON_TOUCH = "Tap to carry on"
+private val FeedMoreHelp = listOf(HelpItem(listOf(TrainingKey.OK), "Feed more · Back when done"))
+private const val FEED_MORE_TOUCH = "Tap to feed more · Back when done"
 
 /** How far the board swings in a refused cook's shake. */
 private val ShakeReach = 12.dp
@@ -149,13 +152,14 @@ fun PantryScreen(
     onCook: (Long) -> Unit,
     onFeed: (Long) -> Unit,
     onDone: (Long) -> Unit,
+    onMore: (Long) -> Unit,
     onBack: (Long) -> Unit,
     focusEntry: Any?,
 ) {
     // Each visit starts afresh (focus on the first item), even on a screen that never left: FEED, Back and FEED again
     // within a frame (as the debug puppet can) hands this screen the next session while it still shows.
     key(screen.session) {
-        PantryVisit(screen, pet, shelf, loader, onPick, onCook, onFeed, onDone, onBack, focusEntry)
+        PantryVisit(screen, pet, shelf, loader, onPick, onCook, onFeed, onDone, onMore, onBack, focusEntry)
     }
 }
 
@@ -170,6 +174,7 @@ private fun PantryVisit(
     onCook: (Long) -> Unit,
     onFeed: (Long) -> Unit,
     onDone: (Long) -> Unit,
+    onMore: (Long) -> Unit,
     onBack: (Long) -> Unit,
     focusEntry: Any?,
 ) {
@@ -207,6 +212,9 @@ private fun PantryVisit(
     val latestShelf by rememberUpdatedState(shelf)
     val latestScreen by rememberUpdatedState(screen)
     val latestPlaces by rememberUpdatedState(places)
+    val latestPet by rememberUpdatedState(pet)
+    // Once fed: whether OK feeds again (the killer could eat more, and there is something to eat) rather than go Home.
+    val feedMore = fed != null && canEat(pet) && shelf.isNotEmpty()
 
     // The cook on show, from its token: one already made when the visit started is not shown again.
     val cook = screen.cook
@@ -246,6 +254,7 @@ private fun PantryVisit(
     val showClock = rememberGameClock(paused = away.paused || !feedStage.playing)
     val fedAtStart = remember { fed != null }
     val latestOnDone by rememberUpdatedState(onDone)
+    val latestOnMore by rememberUpdatedState(onMore)
     LaunchedEffect(fed) {
         if (fed == null) return@LaunchedEffect
         playFeedShow(fed, loader, manifest, feedStage, actor, sounds, showClock, replay = fedAtStart) {
@@ -253,12 +262,13 @@ private fun PantryVisit(
         }
     }
     // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now): a
-    // select's tick, as training's results card has, and Home. Once only: a second press in the same frame does nothing.
+    // select's tick, as training's results card has, and Home, or another visit while the killer could eat more. Once
+    // only: a second press in the same frame does nothing.
     val carryOn = {
         if (feedStage.carryOn && !away.paused) {
             feedStage.carryOn = false
             sounds.sfx("ui_select")
-            latestOnDone(session)
+            if (canEat(latestPet) && latestShelf.isNotEmpty()) latestOnMore(session) else latestOnDone(session)
         }
     }
 
@@ -364,6 +374,12 @@ private fun PantryVisit(
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
                 maxLines = 1,
             )
+            // How hungry the killer is (live: it drops as the meal goes down), so the player knows what to feed.
+            BasicText(
+                hungerLine(pet.hunger),
+                style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = hungerColor(pet.hunger), tracking = HUD_STATUS_TRACKING, halo = true),
+                maxLines = 1,
+            )
         }
 
         val boardLeft = layout.columnCenter - layout.boardWidth / 2f
@@ -425,12 +441,12 @@ private fun PantryVisit(
         // Nothing while a show holds the keys; then what carries on, once it may.
         HelpStrip(
             help = when {
-                fed != null -> if (feedStage.carryOn) CarryOnHelp else emptyList()
+                fed != null -> if (!feedStage.carryOn) emptyList() else if (feedMore) FeedMoreHelp else CarryOnHelp
                 cooking -> emptyList()
                 else -> kitchenHelp(cursor.row, cursor.button, screen.board, cursor.focus, shelf.size)
             },
             touchHelp = when {
-                fed != null -> if (feedStage.carryOn) CARRY_ON_TOUCH else ""
+                fed != null -> if (!feedStage.carryOn) "" else if (feedMore) FEED_MORE_TOUCH else CARRY_ON_TOUCH
                 cooking -> ""
                 else -> kitchenTouchHelp(screen.board.size)
             },

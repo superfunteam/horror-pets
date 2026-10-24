@@ -1244,6 +1244,36 @@ class GameViewModelTest {
     }
 
     @Test
+    fun feedMoreIsAnotherVisitWhileTheKillerCouldEatMore() {
+        val rig = pantryRig(pet = jason(hunger = 70.0))
+        val first = rig.openPantry().session
+        rig.vm.onPantryMore(first)
+        assertEquals("not before it has eaten", first, rig.visit.session)
+        rig.pick(1)
+        rig.vm.onPantryFeed(first)
+        val fed = rig.visit.fed!!
+        assertEquals(70.0, fed.hungerBefore, 0.001)
+        assertTrue(fed.hungerAfter < 70.0)
+        rig.vm.onPantryMore(first + 1)
+        assertNotNull("another session's press changes nothing", rig.visit.fed)
+        rig.vm.onPantryMore(first)
+        assertNotEquals(first, rig.visit.session)
+        assertNull("a fresh visit", rig.visit.fed)
+        assertEquals(emptyList<Int>(), rig.visit.board)
+    }
+
+    @Test
+    fun feedMoreGoesHomeOnceTheKillerIsFull() {
+        val rig = pantryRig(pet = jason(hunger = Tuning.FEED_REFUSE_BELOW + 1))
+        val session = rig.openPantry().session
+        rig.pick(1)
+        rig.vm.onPantryFeed(session)
+        assertTrue(rig.jason.hunger < Tuning.FEED_REFUSE_BELOW)
+        rig.vm.onPantryMore(session)
+        assertEquals(Screen.Home, rig.ui.screen)
+    }
+
+    @Test
     fun cookNeedsTwoOnTheBoardAndFeedNeedsOne() {
         val rig = pantryRig()
         val session = rig.openPantry().session

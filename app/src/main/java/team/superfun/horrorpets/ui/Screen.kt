@@ -104,6 +104,9 @@ data class FedShow(
     val strength: Double = 0.0,
     val funLevel: Double = 0.0,
     val mood: Double = 0.0,
+    /** The killer's hunger before and after the meal, for the reaction to read out what it took off. */
+    val hungerBefore: Double = 0.0,
+    val hungerAfter: Double = 0.0,
 )
 
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */

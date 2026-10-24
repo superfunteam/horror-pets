@@ -65,6 +65,7 @@ import team.superfun.horrorpets.pvp.PvpMatch
 import team.superfun.horrorpets.pvp.PvpRelay
 import team.superfun.horrorpets.pvp.Role
 import team.superfun.horrorpets.pvp.resolvePvpTurn
+import team.superfun.horrorpets.game.pantry.canEat
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -444,7 +445,7 @@ class GameViewModel(
         val s = _state.value
         val pantry = pantrySession(s, session)?.takeIf { it.fed == null && it.board.size == 1 } ?: return
         val pet = s.game.selected?.let { s.game.pets[it] } ?: return
-        if (pet.hunger < Tuning.FEED_REFUSE_BELOW) {
+        if (!canEat(pet)) {
             _state.value = s.copy(screen = pantry.copy(tooFull = nextToken++), sfx = s.sfx + "refuse")
             return
         }
@@ -462,9 +463,29 @@ class GameViewModel(
             strength = outcome.strengthGained,
             funLevel = outcome.funGained,
             mood = outcome.moodGained,
+            hungerBefore = pet.hunger,
+            hungerAfter = outcome.pet.hunger,
         )
         _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed))
         persist(game)
+    }
+
+    /**
+     * OK on pantry [session]'s reaction while the killer could eat more (see [canEat], and something is on the shelf):
+     * FEED again without the walk Home and back, as a new visit (the shelf topped up, as FEED does). Where Home would
+     * not be Home (a level-up's new attack to offer first), that comes first instead; a killer that could not eat more
+     * just goes Home, as [onPantryDone]. Ignored until the killer has eaten, and from any session but the one on screen.
+     */
+    fun onPantryMore(session: Long) {
+        val s = _state.value
+        pantrySession(s, session)?.takeIf { it.fed != null } ?: return
+        val pet = s.game.selected?.let { s.game.pets[it] } ?: return
+        val home = s.goHome()
+        if (home.screen != Screen.Home || !canEat(pet) || s.game.pantry.isEmpty()) {
+            _state.value = home
+            return
+        }
+        openPantry(home)
     }
 
     /**

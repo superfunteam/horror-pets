@@ -159,11 +159,14 @@ internal fun hasHearts(reaction: Reaction): Boolean = reaction == Reaction.FAVOR
 internal data class Gain(val text: String, val loss: Boolean)
 
 /**
- * What [fed] gave, read out over the board: its XP, then the strength, fun and mood it moved (as clamped, rounded to
- * whole points), each only when it is not 0, so no line ever reads "+0". A botch shows the mood it cost; a meal that
- * moved nothing shows nothing.
+ * What [fed] gave, read out over the board: the hunger it took off first ("-35 HUNGER", the one line that is good news
+ * with a minus), then its XP, then the strength, fun and mood it moved (as clamped, rounded to whole points), each
+ * only when it is not 0, so no line ever reads "+0". A botch shows the mood it cost; a meal that moved nothing shows
+ * nothing.
  */
 internal fun gainsOf(fed: FedShow): List<Gain> = buildList {
+    val fed_ = (fed.hungerBefore - fed.hungerAfter).roundToInt()
+    if (fed_ > 0) add(Gain("-$fed_ HUNGER", loss = false))
     if (fed.xp > 0) add(Gain("+${fed.xp} XP", loss = false))
     for ((amount, name) in listOf(fed.strength to "STRENGTH", fed.funLevel to "FUN", fed.mood to "MOOD")) {
         val n = amount.roundToInt()

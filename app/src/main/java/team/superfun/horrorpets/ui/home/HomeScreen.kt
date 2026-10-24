@@ -103,6 +103,7 @@ import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.common.systemGestureEdges
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
+import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITES
 
 /** The pet's whole cell is this tall, as a fraction of the screen height (the same on 4:3 and 16:9). */
 const val HOME_PET_HEIGHT = 0.46f
@@ -561,9 +562,10 @@ fun HomeScreen(
     }
 }
 
-private fun refusalText(reason: RefuseReason, fight: Boolean): String = when (reason) {
-    RefuseReason.TOO_HUNGRY -> if (fight) "Too hungry to fight" else "Too hungry to train"
-    RefuseReason.NEEDS_TRAINING -> "Train more first!"
+/** What the killer says when FIGHT or TRAIN is refused: why, and what to do about it. */
+internal fun refusalText(reason: RefuseReason, fight: Boolean): String = when (reason) {
+    RefuseReason.TOO_HUNGRY -> if (fight) "Too hungry to fight. Feed me!" else "Too hungry to train. Feed me!"
+    RefuseReason.NEEDS_TRAINING -> "Train at ${FIGHT_PREREQUISITES.joinToString(" and ") { it.title }} first!"
 }
 
 /** A local (not view-model) animation; each instance is a distinct playback key. */
