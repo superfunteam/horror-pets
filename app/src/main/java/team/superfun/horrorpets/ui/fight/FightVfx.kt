@@ -71,6 +71,18 @@ internal fun specialLandsAtMs(style: SpecialStyle): Long = when (style) {
 internal fun specialSoundAtMs(landMs: Long, hitMs: Long, crit: Boolean): Long =
     if (crit) landMs else (landMs - hitMs).coerceAtLeast(0L)
 
+/** When a special's sound effect ([sfxMs]) and the announcer's line about it ([voiceMs]) play, after the impact. */
+internal data class SpecialSoundTimes(val sfxMs: Long, val voiceMs: Long)
+
+/**
+ * A special's sound times for a blow that lands [landMs] in: its clip as [specialSoundAtMs] has it (so its hit, [hitMs]
+ * into it, lands with the blow), and the announcer's reaction with the blow itself, never while the effect is still
+ * winding up (The Shape's dark closing in, Jaws's tank in the air). For every special that lands at the impact both
+ * are 0, as they always were.
+ */
+internal fun specialSoundTimes(landMs: Long, hitMs: Long, crit: Boolean): SpecialSoundTimes =
+    SpecialSoundTimes(sfxMs = specialSoundAtMs(landMs, hitMs, crit), voiceMs = landMs)
+
 /** How long the shield ring of a block takes to flare out. */
 const val SHIELD_MS = 480
 

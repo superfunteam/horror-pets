@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +32,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,10 +41,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.model.ATTACK_POWER
 import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.Slot
+import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
@@ -49,8 +56,10 @@ import team.superfun.horrorpets.ui.fight.AttackMarks
 import team.superfun.horrorpets.ui.fight.MarkFx
 import team.superfun.horrorpets.ui.fight.SpecialFx
 import team.superfun.horrorpets.ui.fight.SpecialVfx
+import team.superfun.horrorpets.ui.fight.TANK_ART
 import team.superfun.horrorpets.ui.fight.markPlan
-import team.superfun.horrorpets.ui.fight.SPECIAL_MS
+import team.superfun.horrorpets.ui.fight.specialLandsAtMs
+import team.superfun.horrorpets.ui.fight.specialMs
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.theme.TextLo
@@ -128,13 +137,14 @@ private val PowerFill = Brush.horizontalGradient(listOf(Color(0xFFB4700E), Amber
 /**
  * An attack in a framed card: a gold [title] (NOW, NEW, the slot), its name (stepping down to fit the longest), its
  * slot and level, a looping [preview][AttackPreview] of what it does to a target, and its [statLines] against [vs].
- * [lit] brightens the frame. [footer] goes under the stats.
+ * [lit] brightens the frame. [footer] goes under the stats. [loader] supplies any picture the preview throws.
  */
 @Composable
 internal fun AttackCard(
     attack: Attack,
     vs: Attack?,
     title: String,
+    loader: AssetLoader,
     modifier: Modifier = Modifier,
     lit: Boolean = false,
     footer: @Composable ColumnScope.() -> Unit = {},
@@ -154,7 +164,7 @@ internal fun AttackCard(
         )
         Spacer(Modifier.height(8.dp))
         // The preview gives up height first, so on a short screen (a phone's insets) the stats always fit.
-        AttackPreview(attack, Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 34.dp, max = PreviewHeight))
+        AttackPreview(attack, loader, Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 34.dp, max = PreviewHeight))
         Spacer(Modifier.height(8.dp))
         for (line in statLines(attack, vs)) StatRow(line)
         footer()
@@ -176,14 +186,45 @@ internal fun AttackName(name: String, modifier: Modifier = Modifier, max: Float 
 private val PreviewHeight: Dp = 92.dp
 
 /**
+ * One showing of an attack's preview, in ms: its special's effect runs [effectMs] (0 for a STRIKE or HEAVY), its marks
+ * start [marksAtMs] in, as its blow lands in a fight, and it all lasts [lengthMs] before the loop's pause.
+ */
+internal data class PreviewTiming(val effectMs: Int, val marksAtMs: Int, val lengthMs: Int)
+
+/**
+ * [attack]'s preview on the fight's own clock: a special's effect for as long as it runs in a fight ([specialMs]: Jaws's
+ * tank flies, then blows up), and its marks from the moment its blow lands ([specialLandsAtMs]: with the tank's blast,
+ * The Shape's slash), until they have faded.
+ */
+internal fun previewTiming(attack: Attack): PreviewTiming {
+    val plan = markPlan(attack.slot, attack.tier)
+    val style = attack.pet.spec.special
+    val special = attack.slot == Slot.SPECIAL
+    val effect = if (special) specialMs(style) else 0
+    val marksAt = if (special) specialLandsAtMs(style).toInt() else 0
+    return PreviewTiming(effect, marksAt, maxOf(effect, if (plan != null) marksAt + plan.ms else 0))
+}
+
+/** In the preview, a thrown special (Jaws's tank) is thrown from this many of the target's heights to its left, low. */
+private const val PREVIEW_THROW = 1.3f
+private const val PREVIEW_THROW_Y = 0.8f
+
+/**
  * What [attack] does to a target, on a loop, in a dark inset: its marks (see [MarkFx]), and for a special its
- * killer's own effect under them. A starting STRIKE or HEAVY leaves no marks: it just says so.
+ * killer's own effect under them, timed as in a fight (see [previewTiming]). Jaws's tank, its one picture (from
+ * [loader]), is thrown in from the left, where the player's killer stands. A starting STRIKE or HEAVY leaves no marks:
+ * it just says so.
  */
 @Composable
-internal fun AttackPreview(attack: Attack, modifier: Modifier = Modifier) {
+internal fun AttackPreview(attack: Attack, loader: AssetLoader, modifier: Modifier = Modifier) {
     val plan = markPlan(attack.slot, attack.tier)
     val special = attack.slot == Slot.SPECIAL
-    val length = maxOf(plan?.ms ?: 0, if (special) SPECIAL_MS else 0)
+    val timing = remember(attack) { previewTiming(attack) }
+    val length = timing.lengthMs
+    val style = attack.pet.spec.special
+    val tank by produceState<ImageBitmap?>(null, loader, special, style) {
+        if (special && style == SpecialStyle.OXYGEN_TANK) value = withContext(Dispatchers.IO) { loader.prop(TANK_ART) }
+    }
     val loop = rememberInfiniteTransition(label = "preview").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -215,12 +256,14 @@ internal fun AttackPreview(attack: Attack, modifier: Modifier = Modifier) {
         }
         val body = h * 0.9f
         if (special) {
-            val fx = remember(attack, w, h) { SpecialFx(attack.pet.spec.special, w / 2f, h / 2f, body) }
-            SpecialVfx(fx, progress = { (at() / SPECIAL_MS).coerceIn(0f, 1f).let { if (it >= 1f) 0f else it } })
+            val fx = remember(attack, w, h) {
+                SpecialFx(style, w / 2f, h / 2f, body, fromX = w / 2f - body * PREVIEW_THROW, fromY = h * PREVIEW_THROW_Y, throwerH = body)
+            }
+            SpecialVfx(fx, progress = { (at() / timing.effectMs).coerceIn(0f, 1f).let { if (it >= 1f) 0f else it } }, tank = tank)
         }
         if (plan != null) {
             val fx = remember(attack, w, h) { MarkFx(attack.pet, attack.slot, attack.tier, w / 2f, h / 2f, body, seed = attack.tier * 7) }
-            AttackMarks(fx, progress = { (at() / plan.ms).coerceIn(0f, 1f).let { if (it >= 1f) 0f else it } })
+            AttackMarks(fx, progress = { ((at() - timing.marksAtMs) / plan.ms).coerceIn(0f, 1f).let { if (it >= 1f) 0f else it } })
         }
     }
 }

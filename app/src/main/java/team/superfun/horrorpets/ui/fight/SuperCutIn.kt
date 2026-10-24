@@ -24,6 +24,7 @@ import androidx.compose.ui.util.lerp
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.ui.common.displayStyle
+import team.superfun.horrorpets.ui.common.mirrorToFace
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 
@@ -38,13 +39,16 @@ private val NameFill = Brush.verticalGradient(listOf(Color(0xFFFFF0C8), Color(0x
 
 /**
  * The super cut-in, over everything, as [progress] runs 0..1 over [SUPER_MS]: the arena drops to black, a blood-red
- * band slashes across it from the attacker's side, the attacker's head slides in big, its special's name slams down
- * across the band, and it all holds a beat and clears. Everything moves in the layer; nothing recomposes per frame.
+ * band slashes across it from the attacker's side, the attacker's head slides in big (turned to look across, see
+ * [mirrorToFace]), its special's name slams down across the band, and it all holds a beat and clears. Everything
+ * moves in the layer; nothing recomposes per frame.
  */
 @Composable
 internal fun SuperCutIn(fx: SuperFx?, progress: () -> Float, loader: AssetLoader) {
     if (fx == null) return
     val head = remember(loader, fx.pet) { loader.head(fx.pet) }
+    // Jaws's head faces left: coming in from the left, it turns round to look across at the other fighter.
+    val mirror = mirrorToFace(fx.pet, onLeft = fx.fromLeft)
     val dir = if (fx.fromLeft) 1f else -1f
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
@@ -105,7 +109,7 @@ internal fun SuperCutIn(fx: SuperFx?, progress: () -> Float, loader: AssetLoader
                     translationX = dir * (w * 0.06f - slide * w * 0.5f) + dir * w * 0.03f * ((p - 0.3f).coerceIn(0f, 0.55f))
                     alpha = a
                     val s = 1f + 0.06f * (p - 0.3f).coerceIn(0f, 0.55f)
-                    scaleX = s
+                    scaleX = if (mirror) -s else s
                     scaleY = s
                 },
         )

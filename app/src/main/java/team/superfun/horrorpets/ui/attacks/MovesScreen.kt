@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.model.Attack
+import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.Slot
 import team.superfun.horrorpets.model.attacksOf
@@ -77,10 +78,11 @@ internal fun standingOf(pet: PetState, a: Attack): Standing = when {
  * MOVES: [pet]'s three slots down the left, each showing one of its four attacks (starting on the equipped one),
  * and that attack's card on the right, against what is equipped. Up and Down pick a slot; Left and Right (or the
  * arrows, on a phone) browse its attacks, the locked ones too, with the level they unlock at; OK (or a tap on the
- * slot) equips the one shown ([onEquip] with its id), when it is unlocked. Back ([onBack]) returns Home.
+ * slot) equips the one shown ([onEquip] with its id), when it is unlocked. Back ([onBack]) returns Home. The card's
+ * preview takes any picture it throws from [loader].
  */
 @Composable
-fun MovesScreen(pet: PetState, onEquip: (String) -> Unit, onBack: () -> Unit, focusEntry: Any? = Unit) {
+fun MovesScreen(pet: PetState, loader: AssetLoader, onEquip: (String) -> Unit, onBack: () -> Unit, focusEntry: Any? = Unit) {
     GameBackHandler(enabled = focusEntry != null, onBack = onBack)
     val first = remember { FocusRequester() }
     RequestFocusOnEntry(first, focusEntry)
@@ -128,6 +130,7 @@ fun MovesScreen(pet: PetState, onEquip: (String) -> Unit, onBack: () -> Unit, fo
                     browsed,
                     vs = equipped.takeIf { it != browsed },
                     title = if (browsed == equipped) "EQUIPPED ${looking.label.uppercase()}" else "${looking.label.uppercase()} · AGAINST ${equipped.name.uppercase()}",
+                    loader = loader,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     lit = browsed == equipped,
                 )

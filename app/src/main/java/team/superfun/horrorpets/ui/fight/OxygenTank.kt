@@ -133,6 +133,9 @@ private const val HISS_LIFE_MS = 380f
 private const val SPRAY = 7
 private const val SPRAY_MS = 260f
 
+/** A full-size fighter's body as drawn in a fight, in dp (38% of the 540 dp screen): the blast's bits are sized for it. */
+private const val FULL_BODY_DP = 205f
+
 private val TankSilver = Color(0xFFCDD2DA)
 private val TankDark = Color(0xFF1C1C21)
 private val Vapor = Color(0xFFEAF4FF)
@@ -277,7 +280,7 @@ private fun DrawScope.flyingTank(f: SpecialFx, ms: Float, arc: Float, dir: Float
 private fun DrawScope.spray(f: SpecialFx, ms: Float, unit: Float, dir: Float, kit: TankKit) {
     val age = ms / SPRAY_MS
     if (age >= 1f) return
-    val reach = f.bodyH * 0.32f * easeOut(age)
+    val reach = f.throwerH * 0.32f * easeOut(age)
     blob(kit.vapor, f.fromX, f.fromY, f.throwerH * 0.1f * (1f + 1.2f * age), 0.6f * (1f - age))
     for (i in 0 until SPRAY) {
         // Flung forward, in a fan toward the target.
@@ -299,7 +302,7 @@ private fun DrawScope.hiss(f: SpecialFx, ms: Float, unit: Float, arc: Float, kit
         if (age >= 1f) continue
         val t = tankFlight(born)
         val x = tankX(f.fromX, f.cx, t)
-        val y = tankY(f.fromY, f.cy, arc, t) - f.bodyH * 0.08f * age
+        val y = tankY(f.fromY, f.cy, arc, t) - f.throwerH * 0.08f * age
         blob(kit.vapor, x, y, (7f + 18f * age) * unit, 0.4f * (1f - age))
     }
 }
@@ -319,6 +322,9 @@ private fun DrawScope.blast(f: SpecialFx, b: Float, sec: Float, unit: Float, kit
     // The dark red rim outlasts the heat, and has burnt down by 0.72, leaving the smoke.
     val rim = max(heat, 1f - smoothstep(0.35f, 0.72f, b))
     val rise = r * 0.5f * b * b
+    // The bits and the sparks are drawn in dp, sized for a full-height fighter: a smaller target (a half-height
+    // Chucky, the MOVES card's preview) gets smaller ones, so they keep to the blast's scale.
+    val bit = unit * (r / (FULL_BODY_DP * unit)).coerceIn(0.4f, 1.2f)
 
     blob(kit.glow, cx, cy - rise * 0.5f, r * (1.25f + 0.6f * reach), max(heat, 0.5f * rim))
 
@@ -388,13 +394,13 @@ private fun DrawScope.blast(f: SpecialFx, b: Float, sec: Float, unit: Float, kit
         val x = cx + cos(a) * speed * sec
         val y = cy + sin(a) * speed * sec + r * 2.25f * sec * sec
         val spin = hash01(i, 74) * 2f * PI.toFloat() + (hash01(i, 75) - 0.5f) * 22f * sec
-        val half = (3.5f + 6f * hash01(i, 76)) * unit
+        val half = (3.5f + 6f * hash01(i, 76)) * bit
         val hx = cos(spin) * half
         val hy = sin(spin) * half
-        val w = (4f + 4f * hash01(i, 77)) * unit
+        val w = (4f + 4f * hash01(i, 77)) * bit
         val fade = 1f - smoothstep(0.7f * life, life, sec)
         val silver = i % 3 != 0
-        drawLine(TankDark, Offset(x - hx, y - hy), Offset(x + hx, y + hy), strokeWidth = w + 2.5f * unit, cap = StrokeCap.Round, alpha = 0.9f * fade)
+        drawLine(TankDark, Offset(x - hx, y - hy), Offset(x + hx, y + hy), strokeWidth = w + 2.5f * bit, cap = StrokeCap.Round, alpha = 0.9f * fade)
         if (silver) drawLine(TankSilver, Offset(x - hx, y - hy), Offset(x + hx, y + hy), strokeWidth = w, cap = StrokeCap.Round, alpha = fade)
     }
 
@@ -413,7 +419,7 @@ private fun DrawScope.blast(f: SpecialFx, b: Float, sec: Float, unit: Float, kit
             color,
             Offset(cx + cos(a) * tail, cy + sin(a) * tail + drop * 0.7f),
             Offset(cx + cos(a) * head, cy + sin(a) * head + drop),
-            strokeWidth = (3.2f - 1.8f * age) * unit,
+            strokeWidth = (3.2f - 1.8f * age) * bit,
             cap = StrokeCap.Round,
             alpha = 1f - age,
         )

@@ -66,7 +66,8 @@ data class Passive(
  * `voice/<pet>_never_dies.wav`), and the manifest's `displayScale` sets how tall it stands. A manifest that
  * ships the optional `dance` animation plays it for PLAY on Home (and for a [SpecialStyle.danced] special).
  * [tagline] is what its fake death's poster says as it comes back (see [PetId.tagline]): null for the usual
- * "<NAME> NEVER DIES.", or its own line, said by its `_never_dies` voice line.
+ * "<NAME> NEVER DIES.", or its own line, said by its `_never_dies` voice line. [facing] is which way its art faces
+ * (see [Facing]), so it can be turned to face whoever it stands across from.
  *
  * Adding a killer: a [PetId] entry, an entry here, and those asset folders.
  */
@@ -77,7 +78,14 @@ data class PetSpec(
     val specialHitMs: Long,
     val walkSpeed: Float = 1f,
     val tagline: String? = null,
+    val facing: Facing = Facing.FRONT,
 )
+
+/**
+ * Which way a killer's art faces, its runs aside (a run always faces the way it goes): the camera, as the killers'
+ * toys stand, or screen-left (Jaws, side-on: his sprites and his head).
+ */
+enum class Facing { FRONT, LEFT }
 
 /** Every killer's [PetSpec], in [PetId] order. */
 val Roster: Map<PetId, PetSpec> = listOf(
@@ -106,6 +114,7 @@ val Roster: Map<PetId, PetSpec> = listOf(
         SpecialStyle.OXYGEN_TANK,
         specialHitMs = 780,
         tagline = "YOU'RE GONNA NEED A BIGGER BOAT.",
+        facing = Facing.LEFT,
     ),
 ).associateBy { it.id }
 

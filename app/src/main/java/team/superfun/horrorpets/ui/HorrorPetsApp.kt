@@ -212,6 +212,7 @@ fun HorrorPetsApp(
                             pet = pet,
                             attack = attack,
                             current = kitOf(pet).of(attack.slot),
+                            loader = loader,
                             onLearn = { vm.onLearn(learn = true) },
                             onKeep = { vm.onLearn(learn = false) },
                             onLater = vm::onLearnLater,
@@ -222,7 +223,7 @@ fun HorrorPetsApp(
 
                 Screen.Moves -> {
                     val pet = state.game.selected?.let { state.game.pets[it] }
-                    if (pet != null) MovesScreen(pet = pet, onEquip = vm::onEquip, onBack = vm::onMovesBack, focusEntry = focusEntry)
+                    if (pet != null) MovesScreen(pet = pet, loader = loader, onEquip = vm::onEquip, onBack = vm::onMovesBack, focusEntry = focusEntry)
                 }
 
                 is Screen.Training -> {

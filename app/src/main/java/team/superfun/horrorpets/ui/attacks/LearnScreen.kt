@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.model.Attack
+import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.ui.common.FocusPill
 import team.superfun.horrorpets.ui.common.GameBackHandler
@@ -46,13 +47,14 @@ import team.superfun.horrorpets.ui.theme.TextLo
  * LEARN IT ([onLearn], focused first) swaps it in; KEEP ([onKeep]) leaves the old one. Either way the pet knows it
  * now and can equip it later from MOVES. Back ([onLater]) puts the choice off until the next launch. OK and taps are
  * ignored for a moment after it comes up (see `rememberOkReady`), so a press mashed through the results cannot
- * choose for the player.
+ * choose for the player. The cards' previews take any picture they throw from [loader].
  */
 @Composable
 fun LearnScreen(
     pet: PetState,
     attack: Attack,
     current: Attack,
+    loader: AssetLoader,
     onLearn: () -> Unit,
     onKeep: () -> Unit,
     onLater: () -> Unit,
@@ -81,11 +83,11 @@ fun LearnScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AttackCard(current, vs = null, title = "NOW", modifier = Modifier.weight(1f).fillMaxHeight())
+                AttackCard(current, vs = null, title = "NOW", loader = loader, modifier = Modifier.weight(1f).fillMaxHeight())
                 Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
                     Chevron(left = false, color = Amber, modifier = Modifier.size(26.dp))
                 }
-                AttackCard(attack, vs = current, title = "NEW", lit = true, modifier = Modifier.weight(1f).fillMaxHeight())
+                AttackCard(attack, vs = current, title = "NEW", loader = loader, lit = true, modifier = Modifier.weight(1f).fillMaxHeight())
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {

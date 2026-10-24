@@ -1156,21 +1156,24 @@ private fun FightStage.impactOf(
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
 ): Job? {
-    // A special whose blow lands partway through its effect (The Shape's slash) holds its number, flash and
-    // HP drain until then, and starts its sound so the clip's hit lands with them (see specialSoundAtMs);
-    // everything else lands right at the impact.
+    // A special whose blow lands partway through its effect (The Shape's slash, Jaws's tank) holds its number, flash
+    // and HP drain until then, and starts its sound so the clip's hit lands with them, the announcer's line with the
+    // blow itself (see specialSoundTimes); everything else lands right at the impact.
     val specialHit = event as? FightEvent.Hit
     val isSpecial = specialHit?.move == Move.SPECIAL
     val landMs = if (isSpecial) specialLandsAtMs(a.pet.spec.special) else 0L
-    val soundMs = if (specialHit != null && isSpecial) specialSoundAtMs(landMs, a.pet.spec.specialHitMs, specialHit.crit) else 0L
+    val times = if (specialHit != null && isSpecial) {
+        specialSoundTimes(landMs, a.pet.spec.specialHitMs, specialHit.crit)
+    } else {
+        SpecialSoundTimes(sfxMs = 0L, voiceMs = 0L)
+    }
     val sound = sounds.of(event)
     // The announcer reacts to the blow itself, which for a late-landing special comes after its clip has started.
-    val voiceMs = if (sound.voice.isEmpty()) soundMs else landMs
-    if (voiceMs == soundMs) {
-        at(scope, soundMs) { play(sound) }
+    if (times.sfxMs == times.voiceMs || sound.voice.isEmpty()) {
+        afterImpact(scope, times.sfxMs) { play(sound) }
     } else {
-        at(scope, soundMs) { play(FightSounds(sound.sfx, emptyList())) }
-        at(scope, voiceMs) { play(FightSounds(emptyList(), sound.voice)) }
+        afterImpact(scope, times.sfxMs) { play(FightSounds(sound.sfx, emptyList())) }
+        afterImpact(scope, times.voiceMs) { play(FightSounds(emptyList(), sound.voice)) }
     }
     // An interrupt is the defender's: say it on the defender's number rather than over it.
     val interrupted = riders.any { it is Beat.Interrupt && it.side == d.side }
@@ -1298,8 +1301,8 @@ private fun FightStage.impactOf(
     return effect
 }
 
-/** Runs [block] now if [ms] is 0 (in this frame, as the blow lands), else [ms] later. */
-private inline fun at(scope: CoroutineScope, ms: Long, crossinline block: () -> Unit) {
+/** Runs [block] [ms] after the impact: right away for 0 (in this frame, with the impact itself), else launched in [scope]. */
+private inline fun afterImpact(scope: CoroutineScope, ms: Long, crossinline block: () -> Unit) {
     if (ms == 0L) {
         block()
     } else {

@@ -30,6 +30,26 @@ class SpecialTimingTest {
     private val lateLanders = setOf(SpecialStyle.THE_SHAPE, SpecialStyle.OXYGEN_TANK)
 
     @Test
+    fun theAnnouncerReactsToTheBlowNotToTheClipsStart() {
+        // The Shape: special_michael's stab is 420 ms in, so the clip starts 420 ms before the slash cuts through,
+        // and the announcer's line waits for the slash itself.
+        val shape = specialLandsAtMs(SpecialStyle.THE_SHAPE)
+        assertEquals(SpecialSoundTimes(sfxMs = shape - 420L, voiceMs = shape), specialSoundTimes(shape, hitMs = 420L, crit = false))
+        // Jaws's tank: the clip starts at the impact as the tank leaves his mouth; the line comes with the blast.
+        val tank = specialLandsAtMs(SpecialStyle.OXYGEN_TANK)
+        assertEquals(SpecialSoundTimes(sfxMs = 0L, voiceMs = 780L), specialSoundTimes(tank, hitMs = 780L, crit = false))
+        // A crit's sting and its line both play with the blow.
+        assertEquals(SpecialSoundTimes(shape, shape), specialSoundTimes(shape, hitMs = 420L, crit = true))
+        assertEquals(SpecialSoundTimes(tank, tank), specialSoundTimes(tank, hitMs = 780L, crit = true))
+        // Every special that lands at its impact plays everything then, as it always did.
+        for (style in SpecialStyle.entries - lateLanders) {
+            for (crit in listOf(false, true)) {
+                assertEquals("$style crit=$crit", SpecialSoundTimes(0L, 0L), specialSoundTimes(specialLandsAtMs(style), 500L, crit))
+            }
+        }
+    }
+
+    @Test
     fun theOtherSpecialsSoundAtTheImpactAsBefore() {
         for (style in SpecialStyle.entries - lateLanders) {
             val land = specialLandsAtMs(style)

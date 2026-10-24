@@ -58,6 +58,7 @@ import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SpriteView
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
+import team.superfun.horrorpets.ui.common.mirrorToFace
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.rememberTouchTick
 import team.superfun.horrorpets.ui.common.safeInset
@@ -214,13 +215,10 @@ internal fun vsLineup(player: PetId, opponent: PetId) = VsLineup(
     left = player,
     right = opponent,
     logo = opponent,
-    mirrorLeft = artFacing(player) < 0,
-    mirrorRight = artFacing(opponent) > 0,
+    mirrorLeft = mirrorToFace(player, onLeft = true),
+    mirrorRight = mirrorToFace(opponent, onLeft = false),
     lines = listOf(player.name.lowercase(), "versus", opponent.name.lowercase()),
 )
-
-/** Which way [pet]'s sprites face: -1 left (Jaws, side-on), 0 the camera (everyone else). */
-private fun artFacing(pet: PetId): Int = if (pet == PetId.JAWS) -1 else 0
 
 // ---- staging ----
 

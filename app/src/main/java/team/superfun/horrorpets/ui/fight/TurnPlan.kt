@@ -13,6 +13,7 @@ import team.superfun.horrorpets.fight.other
 import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.SpecialStyle
+import team.superfun.horrorpets.ui.common.mirrorToFace
 
 /** One step of a fight turn's playback, in the order the fight screen plays them. */
 internal sealed interface Beat {
@@ -187,21 +188,13 @@ internal fun swingHoldMs(swing: Anim, spec: AnimSpec, impact: Long): Long {
 }
 
 /**
- * Which way [pet]'s sprites face, its runs aside (every run faces the way it goes): -1 screen-left (Jaws, side-on),
- * 0 the camera (everyone else).
- */
-private fun spriteFacing(pet: PetId): Int = if (pet == PetId.JAWS) -1 else 0
-
-/**
- * Whether [pet] is drawn mirrored on [side] while it shows [anim], so that it faces the other fighter: art that
- * faces left turns round on the player's side (the left of the screen), art that faces right on the CPU's, and art
- * that faces the camera never does. A run is never mirrored: it already faces the way it goes (in at the other
- * fighter, or off the screen).
+ * Whether [pet] is drawn mirrored on [side] while it shows [anim], so that it faces the other fighter: see
+ * [mirrorToFace] (Jaws, whose art faces left, turns round on the player's side). A run is never mirrored: it already
+ * faces the way it goes (in at the other fighter, or off the screen).
  */
 internal fun mirroredInFight(pet: PetId, side: Side, anim: Anim): Boolean {
     if (anim == Anim.RUN_LEFT || anim == Anim.RUN_RIGHT) return false
-    val facing = spriteFacing(pet)
-    return if (side == Side.PLAYER) facing < 0 else facing > 0
+    return mirrorToFace(pet, onLeft = side == Side.PLAYER)
 }
 
 /** Where a side's HP bar and special meter stand, in hit points and meter points. */
