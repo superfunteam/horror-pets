@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.pvp.nfc
 
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 /** How this phone's NFC is used for PvP taps, from where the game is (see `tapModeOf`). */
@@ -35,9 +36,21 @@ class TapRadio(private val rng: Random) {
     /** Whether the game is in front: NFC reading is only ever on while it is. */
     var resumed = false
 
-    /** A tap is under way, read by this phone: reading stays as it is until it is done. Set from the NFC thread. */
-    @Volatile
-    var holding = false
+    /**
+     * Taps under way, read by this phone ([hold], [unhold]): reading stays as it is until they are done. Taps are read
+     * on two threads (reader mode's and the one for taps found outside it), so this is a count.
+     */
+    private val holds = AtomicInteger(0)
+
+    val holding: Boolean get() = holds.get() > 0
+
+    fun hold() {
+        holds.incrementAndGet()
+    }
+
+    fun unhold() {
+        holds.decrementAndGet()
+    }
 
     private var cardUntilMs = Long.MIN_VALUE
     private var reading = false

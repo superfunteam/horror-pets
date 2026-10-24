@@ -77,11 +77,12 @@ class TapFightTest {
     }
 
     @Test
-    fun aTapAskingForAnotherReads() {
+    fun aTapAskingForAnotherTakesTurnsAgain() {
+        // Its friend may be asking for another tap too: two phones that only read could never meet.
         val again = at(Screen.PvpLobby(LobbyPhase.Tapped(again = true)))
-        assertEquals(TapMode.LISTEN, tapModeOf(again))
+        assertEquals(TapMode.TAKE_TURNS, tapModeOf(again))
         assertTrue(tapJoinOpen(again))
-        assertFalse("it reads, so it is no card", tapReadyOf(again))
+        assertTrue(tapReadyOf(again))
     }
 
     @Test

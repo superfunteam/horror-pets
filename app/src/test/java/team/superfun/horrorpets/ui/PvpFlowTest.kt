@@ -135,6 +135,7 @@ private class App(pet: PetState, relay: PvpRelay?) {
         scope = scope,
         pvpRelay = relay,
         onHostCode = { hostCodes += it },
+        uptimeMs = { scope.testScheduler.currentTime },
     )
 
     val ui: UiState get() = vm.state.value
@@ -469,9 +470,55 @@ class PvpFlowTest {
     @Test
     fun aFailedTapJoinAsksForAnotherTapWithTheProblem() {
         val guest = freddyApp()
-        guest.vm.onTapCode("9999")
+        assertTrue(guest.vm.onTapCode("9999"))
         guest.pump(0)
         assertEquals(LobbyPhase.Tapped(again = true, problem = PvpProblem.NO_ROOM), guest.lobby)
+        assertFalse("phones still touching don't try again at once", guest.vm.onTapCode("9999"))
+        guest.pump(TAP_RETRY_MS)
+        assertTrue("a moment later, they may", guest.vm.onTapCode("9999"))
+    }
+
+    @Test
+    fun aTapNeverJoinsAnotherVersionsRoomTwice() {
+        val old = App(PetState(PetId.FREDDY, strength = 30.0), hub.app(version = 0))
+        old.toLobby()
+        old.vm.onLobbyHost()
+        old.pump(0)
+        val code = (old.lobby as LobbyPhase.Hosting).code!!
+        val guest = freddyApp()
+        guest.vm.onTapCode(code)
+        guest.pump(0)
+        assertEquals(LobbyPhase.Tapped(again = true, problem = PvpProblem.VERSION), guest.lobby)
+        guest.pump(TAP_RETRY_MS)
+        assertFalse(guest.vm.onTapCode(code))
+    }
+
+    @Test
+    fun aRoomATapOpenedIsClosedIfTheFriendNeverJoins() {
+        val reader = jasonApp()
+        reader.vm.onHostForTap()
+        reader.pump(0)
+        assertEquals(LobbyPhase.Hosting("4821", fromTap = true), reader.lobby)
+        reader.pump(TAP_GUEST_MS)
+        assertEquals("ask for another tap, which starts over", LobbyPhase.Tapped(again = true), reader.lobby)
+        assertEquals(Role.HOST, hub.rooms.single().left)
+        assertNull(reader.hostCodes.last())
+        assertTrue(reader.vm.canBeTapped())
+    }
+
+    @Test
+    fun steppingOutOfAJoinUnderWayLeavesTheRoom() {
+        val host = jasonApp()
+        host.toLobby()
+        host.vm.onLobbyHost()
+        host.pump(0)
+        val guest = freddyApp()
+        guest.vm.onTapCode("4821")
+        guest.vm.onLobbyBack()
+        assertEquals(Screen.Home, guest.ui.screen)
+        guest.pump(0)
+        assertEquals("the relay let it in, so it left", Role.GUEST, hub.rooms.single().left)
+        assertEquals(Screen.Home, guest.ui.screen)
     }
 
     @Test
@@ -527,6 +574,9 @@ class PvpFlowTest {
         reader.pump(0)
         assertEquals(LobbyPhase.Tapped(again = true, problem = PvpProblem.OFFLINE), reader.lobby)
         assertFalse("so the tap stops waiting for a code", reader.vm.tapHosting())
+        assertFalse("and phones still touching don't try again at once", reader.vm.canBeTapped())
+        reader.pump(TAP_RETRY_MS)
+        assertTrue(reader.vm.canBeTapped())
     }
 
     @Test

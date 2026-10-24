@@ -38,24 +38,24 @@ fun tapJoinOpen(s: UiState): Boolean {
 }
 
 /**
- * How the phone's NFC reads from where [s] is: in turns with being read wherever a tap starts a fight; all the time
- * on the code entry and when a tap asks for another (a friend's phone there is a card); and not at all anywhere else.
- * A phone waiting for the room a tap promised it is only a card.
+ * How the phone's NFC reads from where [s] is: in turns with being read wherever a tap starts a fight, and when a tap
+ * asks for another (the friend's phone may be reading too, or hosting); all the time on the code entry; and not at
+ * all anywhere else. A phone waiting for the room a tap promised it is only a card.
  */
 fun tapModeOf(s: UiState): TapMode {
     if (tapFightOpen(s)) return TapMode.TAKE_TURNS
     return when (val phase = (s.screen as? Screen.PvpLobby)?.phase) {
         is LobbyPhase.Joining -> if (phase.busy) TapMode.OFF else TapMode.LISTEN
-        is LobbyPhase.Tapped -> if (phase.again) TapMode.LISTEN else TapMode.OFF
+        is LobbyPhase.Tapped -> if (phase.again) TapMode.TAKE_TURNS else TapMode.OFF
         else -> TapMode.OFF
     }
 }
 
 /**
- * Whether this phone, read by a tap, says it is ready for a fight: wherever a tap starts one, and while it waits for
- * the room a tap promised it.
+ * Whether this phone, read by a tap, says it is ready for a fight: wherever a tap starts one, while it waits for the
+ * room a tap promised it, and when a tap asks for another.
  */
-fun tapReadyOf(s: UiState): Boolean = tapFightOpen(s) || (s.screen as? Screen.PvpLobby)?.phase == LobbyPhase.Tapped()
+fun tapReadyOf(s: UiState): Boolean = tapFightOpen(s) || (s.screen as? Screen.PvpLobby)?.phase is LobbyPhase.Tapped
 
 /** Whether this phone is opening a room whose code is not in yet (a tap reading it asks again until it is). */
 fun tapOpeningOf(s: UiState): Boolean = ((s.screen as? Screen.PvpLobby)?.phase as? LobbyPhase.Hosting)?.let { it.code == null } == true

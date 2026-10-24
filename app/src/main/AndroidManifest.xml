@@ -24,6 +24,8 @@
 
     <!-- PvP Battle on phones: tap two phones together to join a room. Never required: TVs have no NFC. -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- A short buzz when a tap catches, with the phones back to back and the screens out of sight. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature
         android:name="android.hardware.nfc"
         android:required="false" />

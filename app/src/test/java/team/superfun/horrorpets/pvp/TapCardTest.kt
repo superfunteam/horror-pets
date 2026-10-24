@@ -11,6 +11,7 @@ import team.superfun.horrorpets.pvp.nfc.handOverApdu
 import team.superfun.horrorpets.pvp.nfc.openingResponse
 import team.superfun.horrorpets.pvp.nfc.pingApdu
 import team.superfun.horrorpets.pvp.nfc.readyResponse
+import team.superfun.horrorpets.pvp.nfc.releaseApdu
 import team.superfun.horrorpets.pvp.nfc.selectApdu
 import team.superfun.horrorpets.pvp.nfc.yesNo
 
@@ -117,5 +118,15 @@ class TapCardTest {
     @Test
     fun anythingElseIsNotUnderstood() {
         assertArrayEquals(UNKNOWN_COMMAND, card.answer(byteArrayOf(0x00, 0xB0.toByte(), 0x00, 0x00)))
+    }
+
+    @Test
+    fun aReaderWhoseRoomWontOpenLetsTheCardGo() {
+        card.ready = true
+        card.answer(claimApdu())
+        assertArrayEquals(yesNo(true), card.answer(releaseApdu()))
+        assertArrayEquals(yesNo(false), card.answer(pingApdu()))
+        card.deactivated()
+        assertEquals("told once", listOf("claimed", "lost"), heard)
     }
 }

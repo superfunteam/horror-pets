@@ -104,6 +104,8 @@ class GameViewModel(
     private val pickRng: Random = Random.Default,
     private val pvpRelay: PvpRelay? = null,
     private val onHostCode: (String?) -> Unit = {},
+    /** A clock that only ever runs forward, in milliseconds, for short waits such as a tap's quiet moment. */
+    private val uptimeMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -734,16 +736,26 @@ class GameViewModel(
                 relay.create(me)
             } catch (e: PvpException) {
                 val problem = problemOf(e)
+                // A tap's room that would not open: a moment's quiet, so phones still touching don't try again at once.
+                if (fromTap) quietTaps(TAP_RETRY_MS)
                 setLobby(if (fromTap) LobbyPhase.Tapped(again = true, problem = problem) else LobbyPhase.Menu(problem), onlyIf = { it is LobbyPhase.Hosting })
                 return@launch
             }
             hostedRoom = hosted.room to hosted.token
             onHostCode(hosted.code)
             updateLobby { (it as? LobbyPhase.Hosting)?.copy(code = hosted.code) }
-            // Wait for a challenger: sooner after a tap, where the friend is joining right now. A dropped request or
-            // two is only a slower wait.
+            // Wait for a challenger: sooner after a tap, where the friend is joining right now, but not for long, since
+            // a tap's room shows no code to wait over. A dropped request or two is only a slower wait.
+            var waited = 0L
             while (true) {
-                delay(if (fromTap) TAP_POLL_MS else LOBBY_POLL_MS)
+                val poll = if (fromTap) TAP_POLL_MS else LOBBY_POLL_MS
+                delay(poll)
+                waited += poll
+                if (fromTap && waited >= TAP_GUEST_MS) {
+                    closeHostedRoom()
+                    setLobby(LobbyPhase.Tapped(again = true), onlyIf = { it is LobbyPhase.Hosting })
+                    return@launch
+                }
                 val room = try {
                     relay.room(hosted.room, hosted.token)
                 } catch (e: PvpException) {
@@ -783,10 +795,20 @@ class GameViewModel(
 
     // ---- tap fights: two phones tapped together (NFC; see TapFight.kt and pvp/nfc) -------------
 
-    /** Until when taps are ignored, after a player called one off: the phones may well still be touching. */
+    /** Until when ([uptimeMs]) taps are ignored: after a player called one off, or one failed, while the phones may well still touch. */
     private var tapQuietUntilMs = Long.MIN_VALUE
 
-    private fun tapQuiet(): Boolean = clock.nowMs() < tapQuietUntilMs
+    private fun tapQuiet(): Boolean = uptimeMs() < tapQuietUntilMs
+
+    private fun quietTaps(forMs: Long) {
+        tapQuietUntilMs = maxOf(tapQuietUntilMs, uptimeMs() + forMs)
+    }
+
+    /** The join under way, if any: one the player stepped out of has an older number (see [join]). */
+    private var joinAttempt = 0
+
+    /** Room codes a tap joined that turned out to be another version's: read again, they are left alone. */
+    private val otherVersionCodes = mutableSetOf<String>()
 
     private fun lobbyPhase(): LobbyPhase? = (_state.value.screen as? Screen.PvpLobby)?.phase
 
@@ -794,10 +816,11 @@ class GameViewModel(
      * A code read off a hosting phone by a tap: joins its room, from wherever a tap may (see [tapJoinOpen]). A tap
      * shows no code, only that the phones are connecting.
      */
-    fun onTapCode(code: String) {
-        if (code.length != CODE_LENGTH || !code.all(Char::isDigit)) return
-        if (pvpRelay == null || tapQuiet() || !tapJoinOpen(_state.value)) return
+    fun onTapCode(code: String): Boolean {
+        if (code.length != CODE_LENGTH || !code.all(Char::isDigit)) return false
+        if (pvpRelay == null || tapQuiet() || code in otherVersionCodes || !tapJoinOpen(_state.value)) return false
         join(code, fromTap = true)
+        return true
     }
 
     /**
@@ -831,11 +854,11 @@ class GameViewModel(
         updateLobby { (it as? LobbyPhase.Hosting)?.takeIf { h -> h.fromTap }?.copy(tapAgain = !ok) }
     }
 
-    /** Whether a tap may claim this phone, to have the reader open a room for both. */
+    /** Whether a tap may claim this phone, to have the reader open a room for both (see [tapReadyOf]). */
     fun canBeTapped(): Boolean {
         val s = _state.value
         if (pvpRelay == null || myFighter(s) == null || tapQuiet()) return false
-        return tapFightOpen(s) || lobbyPhase() is LobbyPhase.Tapped
+        return tapReadyOf(s)
     }
 
     /**
@@ -877,13 +900,14 @@ class GameViewModel(
     fun onLobbyBack() {
         val s = _state.value
         val lobby = s.screen as? Screen.PvpLobby ?: return
-        pvpJob?.cancel()
-        pvpJob = null
         val phase = lobby.phase
+        // A join under way is let finish (the relay may already have let this player in), and leaves (see [join]).
+        if ((phase as? LobbyPhase.Joining)?.busy == true) joinAttempt++ else pvpJob?.cancel()
+        pvpJob = null
         val tapped = phase is LobbyPhase.Tapped || (phase as? LobbyPhase.Hosting)?.fromTap == true || (phase as? LobbyPhase.Joining)?.fromTap == true
         if (phase is LobbyPhase.Hosting) closeHostedRoom()
         if (tapped) {
-            tapQuietUntilMs = clock.nowMs() + TAP_QUIET_MS
+            quietTaps(TAP_QUIET_MS)
             _state.value = s.goHome()
             return
         }
@@ -899,13 +923,27 @@ class GameViewModel(
         val s = _state.value
         val me = myFighter(s) ?: return
         _state.value = s.copy(screen = Screen.PvpLobby(LobbyPhase.Joining(code, busy = true, fromTap = fromTap)), refuse = null)
+        val attempt = ++joinAttempt
         pvpJob?.cancel()
         pvpJob = scope.launch {
+            val walkedAway = { joinAttempt != attempt }
             val joined = try {
                 relay.join(code, me)
             } catch (e: PvpException) {
+                if (walkedAway()) return@launch
                 val problem = problemOf(e)
+                if (fromTap) {
+                    // Phones still touching would read the same room again at once: a moment's quiet, and never
+                    // another version's room again.
+                    quietTaps(TAP_RETRY_MS)
+                    if (e is PvpException.Version) otherVersionCodes += code
+                }
                 setLobby(if (fromTap) LobbyPhase.Tapped(again = true, problem = problem) else LobbyPhase.Joining("", problem = problem), onlyIf = { it is LobbyPhase.Joining })
+                return@launch
+            }
+            if (walkedAway()) {
+                // The player stepped out while the relay let them in: leave, so the host isn't left facing nobody.
+                runCatching { relay.leave(joined.room, joined.token) }
                 return@launch
             }
             startMatch(PvpMatch(Role.GUEST, joined.room, joined.token, joined.seed, joined.host, me))
@@ -1324,6 +1362,12 @@ const val TAP_WAIT_MS = 12_000L
 
 /** How long taps are ignored after a player calls one off. */
 const val TAP_QUIET_MS = 5_000L
+
+/** How long taps are ignored after one failed (no room, or no way to join it), so phones still touching don't loop. */
+const val TAP_RETRY_MS = 5_000L
+
+/** How long a room a tap opened waits for the friend's phone to join, once its code is in: then it is closed. */
+const val TAP_GUEST_MS = 15_000L
 private const val TURN_POLL_MS = 800L
 
 /** A fight is called off after this many failed asks in a row (about half a minute without the relay). */

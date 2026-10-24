@@ -22,7 +22,7 @@ class TapCard {
         /** The reader's room [code], handed over: whether this phone takes it (and joins). */
         fun onHandedCode(code: String): Boolean
 
-        /** The tap is over (the phones parted, or the reader moved on) before a code was handed over. */
+        /** The tap is over before a code was handed over: the phones parted, or the reader's room won't open. */
         fun onLost()
     }
 
@@ -59,6 +59,10 @@ class TapCard {
             return yesNo(claimed)
         }
         if (isPing(apdu)) return yesNo(awaitingCode)
+        if (isRelease(apdu)) {
+            deactivated()
+            return yesNo(true)
+        }
         val code = handedOverCode(apdu) ?: return UNKNOWN_COMMAND
         if (!awaitingCode) return yesNo(false)
         awaitingCode = false

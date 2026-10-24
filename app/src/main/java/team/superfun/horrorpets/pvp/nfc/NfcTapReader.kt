@@ -19,6 +19,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -42,8 +43,8 @@ private const val SLOW_SWITCH_NS = 8_000_000L
 
 /** What the game does with what a tap reads. Called on the main thread, and expected to answer at once. */
 interface TapEvents {
-    /** The tapped phone hosts a room: join it. */
-    fun onCodeRead(code: String)
+    /** The tapped phone hosts a room: join it, returning whether this phone does. */
+    fun onCodeRead(code: String): Boolean
 
     /** Whether this phone would open a room for a tapped phone that is ready for a fight (before claiming it). */
     fun canHost(): Boolean
@@ -94,12 +95,7 @@ class NfcTapReader private constructor(
     private val action = "${activity.packageName}.PVP_TAP"
     private val dispatched = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val tag = if (Build.VERSION.SDK_INT >= 33) {
-                intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
-            } ?: return
+            val tag = IntentCompat.getParcelableExtra(intent, NfcAdapter.EXTRA_TAG, Tag::class.java) ?: return
             worker.execute { onTag(tag) }
         }
     }
@@ -191,7 +187,7 @@ class NfcTapReader private constructor(
     private fun onTag(tag: Tag) {
         val iso = IsoDep.get(tag) ?: return
         // Reading stays as it is until this tap is done: switching it would drop the link.
-        radio.holding = true
+        radio.hold()
         try {
             iso.connect()
             iso.timeout = 2_000
@@ -205,10 +201,7 @@ class NfcTapReader private constructor(
             when (answer) {
                 is TapAnswer.Room -> {
                     Log.d(TAG, "Tapped a phone hosting room ${answer.code}")
-                    main.post {
-                        events.onCaught()
-                        events.onCodeRead(answer.code)
-                    }
+                    main.post { if (events.onCodeRead(answer.code)) events.onCaught() }
                 }
                 TapAnswer.Ready -> claim(iso)
                 TapAnswer.Opening -> Log.d(TAG, "The tapped phone's room never opened")
@@ -226,7 +219,7 @@ class NfcTapReader private constructor(
             Thread.currentThread().interrupt()
         } finally {
             runCatching { iso.close() }
-            radio.holding = false
+            radio.unhold()
             main.post { update() }
         }
     }
@@ -261,6 +254,8 @@ class NfcTapReader private constructor(
                 }
                 if (now() >= deadline || !onMain(false) { events.stillHosting() }) {
                     Log.d(TAG, "No room to hand over")
+                    // Let the friend's phone go at once, to ask for another tap, rather than wait on a room that won't come.
+                    runCatching { iso.transceive(releaseApdu()) }
                     main.post { events.onHandOver(false) }
                     return
                 }

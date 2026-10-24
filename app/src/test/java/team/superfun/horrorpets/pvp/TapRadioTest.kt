@@ -42,7 +42,7 @@ class TapRadioTest {
         val r = radio(TapMode.LISTEN)
         r.resumed = false
         assertFalse(r.readerOn(0, current = false))
-        r.holding = true
+        r.hold()
         assertFalse(r.readerOn(0, current = true))
     }
 
@@ -91,12 +91,15 @@ class TapRadioTest {
     @Test
     fun aTapUnderWayChangesNothing() {
         val r = radio(TapMode.TAKE_TURNS, seed = 3)
-        r.holding = true
+        r.hold()
         assertTrue("a reader keeps reading", r.readerOn(0, current = true))
         assertFalse("a card found outside reader mode stays a card", r.readerOn(0, current = false))
         r.setMode(TapMode.OFF, 5_000)
         assertTrue("even once the game moves on", r.readerOn(5_000, current = true))
-        r.holding = false
+        r.hold()
+        r.unhold()
+        assertTrue("one tap done, the other still under way", r.readerOn(5_000, current = true))
+        r.unhold()
         assertFalse(r.readerOn(5_000, current = true))
     }
 

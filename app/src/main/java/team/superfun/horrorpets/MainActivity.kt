@@ -8,8 +8,11 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
-import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -88,6 +91,7 @@ class MainActivity : ComponentActivity() {
                     pvpRelay = HttpPvpRelay(PVP_RELAY, appVersionCode(appContext)),
                     // A phone tapped against this one reads the room code this one is hosting (see TapCard).
                     onHostCode = { TapCard.shared.hosted = it },
+                    uptimeMs = SystemClock::elapsedRealtime,
                 )
             }
         }
@@ -123,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
     /** What a tap read off another phone means to the game. */
     private val tapEvents = object : TapEvents {
-        override fun onCodeRead(code: String) = vm.onTapCode(code)
+        override fun onCodeRead(code: String): Boolean = vm.onTapCode(code)
 
         override fun canHost(): Boolean = vm.canHostForTap()
 
@@ -160,9 +164,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** A short buzz: the players feel the tap catch, with the phones back to back and the screens out of sight. */
+    /**
+     * A short buzz: the players feel the tap catch, with the phones back to back and the screens out of sight. A real
+     * vibration, not touch feedback, which many players switch off.
+     */
     private fun buzz() {
-        window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+        if (vibrator?.hasVibrator() != true) return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(VibrationEffect.createOneShot(BUZZ_MS, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(BUZZ_MS)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -396,6 +417,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val TAG = "HorrorPets"
         const val TICK_MS = 60_000L
+
+        /** How long a tap's buzz lasts. */
+        const val BUZZ_MS = 60L
 
         /** The PvP relay (netlify/functions/pvp.mjs, deployed with the landing page). */
         const val PVP_RELAY = "https://pets.superfun.games/api/pvp"

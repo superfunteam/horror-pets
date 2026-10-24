@@ -17,9 +17,11 @@ import team.superfun.horrorpets.pvp.nfc.handedOverCode
 import team.superfun.horrorpets.pvp.nfc.isClaim
 import team.superfun.horrorpets.pvp.nfc.isPing
 import team.superfun.horrorpets.pvp.nfc.isPvpSelect
+import team.superfun.horrorpets.pvp.nfc.isRelease
 import team.superfun.horrorpets.pvp.nfc.openingResponse
 import team.superfun.horrorpets.pvp.nfc.pingApdu
 import team.superfun.horrorpets.pvp.nfc.readyResponse
+import team.superfun.horrorpets.pvp.nfc.releaseApdu
 import team.superfun.horrorpets.pvp.nfc.saidYes
 import team.superfun.horrorpets.pvp.nfc.selectApdu
 import team.superfun.horrorpets.pvp.nfc.yesNo
@@ -89,6 +91,9 @@ class TapProtocolTest {
     fun claimsAndPingsAreTheirOwnCommands() {
         assertTrue(isClaim(claimApdu()))
         assertTrue(isPing(pingApdu()))
+        assertTrue(isRelease(releaseApdu()))
+        assertFalse(isRelease(pingApdu()))
+        assertFalse(isClaim(releaseApdu()))
         assertFalse(isClaim(pingApdu()))
         assertFalse(isPing(claimApdu()))
         assertFalse(isClaim(selectApdu()))

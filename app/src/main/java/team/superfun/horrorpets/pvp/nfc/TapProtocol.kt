@@ -13,7 +13,8 @@ package team.superfun.horrorpets.pvp.nfc
  * (see `TapRadio`), so a tap finds one of each. Newer answers to the SELECT, which older versions read as no room:
  * - [readyResponse] (`HPVP?`): no room, but a tap may start a fight from where this phone is. The reader claims it
  *   ([claimApdu]: "I'm opening a room for you"), opens a room, and hands over its code ([handOverApdu]) over the same
- *   tap, asking "still there?" ([pingApdu]) while the room opens. The card joins the code it is handed.
+ *   tap, asking "still there?" ([pingApdu]) while the room opens. The card joins the code it is handed, or, when the
+ *   reader's room won't open, is let go ([releaseApdu]) to ask for another tap.
  * - [openingResponse] (`HPVP.`): this phone's room is opening and its code is not in yet. The reader asks again
  *   until it gets the code (so a tap that comes too soon, or a hand-over cut short, still ends in a join).
  */
@@ -86,6 +87,11 @@ fun isClaim(apdu: ByteArray): Boolean = apdu.size >= 4 && apdu.copyOfRange(0, 4)
 fun pingApdu(): ByteArray = byteArrayOf(0x80.toByte(), 0x50, 0x00, 0x00)
 
 fun isPing(apdu: ByteArray): Boolean = apdu.size >= 4 && apdu.copyOfRange(0, 4).contentEquals(pingApdu())
+
+/** A reader letting a claimed card go, with no room coming: CLA 80, INS 52 ("R"), P1 00, P2 00. */
+fun releaseApdu(): ByteArray = byteArrayOf(0x80.toByte(), 0x52, 0x00, 0x00)
+
+fun isRelease(apdu: ByteArray): Boolean = apdu.size >= 4 && apdu.copyOfRange(0, 4).contentEquals(releaseApdu())
 
 /**
  * The reader's room [code], handed to the card it claimed: a proprietary command (CLA 80, INS 4A for "J", P1 00,
