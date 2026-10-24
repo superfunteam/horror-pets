@@ -100,7 +100,9 @@ val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
 
 /**
  * Cooks [a] and [b], in either order (the board has no left or right). In this order of rules:
- * 1. A botched dish is a dead end: any board holding one is [CookResult.Refused].
+ * 1. Botched dishes only go with each other: two of them (any two, the same one twice included) make one Pile of
+ *    Slop, so a shelf of slop can be squashed down, two places into one. A botch with anything else is
+ *    [CookResult.Refused].
  * 2. The pair's recipe, or its named botch, in [RECIPES]. This is why Batter + Grill is Pancake Stack and Batter +
  *    Cauldron is Cursed Cake, not burnt.
  * 3. Two ways to cook make a Kitchen Fire.
@@ -108,7 +110,9 @@ val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
  * 5. Anything else, two of the same item included, is a Pile of Slop.
  */
 fun cook(a: PantryItem, b: PantryItem): CookResult {
-    if (a.kind == ItemKind.BOTCHED || b.kind == ItemKind.BOTCHED) return CookResult.Refused
+    val botches = listOf(a, b).count { it.kind == ItemKind.BOTCHED }
+    if (botches == 2) return CookResult.Cooked(PILE_OF_SLOP)
+    if (botches == 1) return CookResult.Refused
     RECIPES[setOf(a, b)]?.let { return CookResult.Cooked(it) }
     val methods = listOf(a, b).count { it.kind == ItemKind.METHOD }
     val dishes = listOf(a, b).count { it.kind == ItemKind.SNACK || it.kind == ItemKind.MEAL }

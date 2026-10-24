@@ -202,25 +202,39 @@ class CookbookTest {
     }
 
     @Test
-    fun everyPairCooksSomethingExceptWhenABotchIsInvolved() {
+    fun everyPairCooksSomethingExceptABotchWithAnythingElse() {
         val items = PantryItem.entries
         for (a in items) for (b in items) {
             val result = cook(a, b)
             assertEquals("$a + $b both ways", result, cook(b, a))
-            if (a.kind == ItemKind.BOTCHED || b.kind == ItemKind.BOTCHED) continue
+            val botches = listOf(a, b).count { it.kind == ItemKind.BOTCHED }
+            if (botches == 1) continue
             assertTrue("$a + $b", result is CookResult.Cooked)
             assertTrue("$a + $b", !(result as CookResult.Cooked).item.raw) // a dish or a botch, never an ingredient
         }
     }
 
     @Test
-    fun nothingCooksWithABotch() {
+    fun aBotchCooksWithNothingButAnotherBotch() {
         val botches = PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }
         assertEquals(12, botches.size)
-        for (botch in botches) for (other in PantryItem.entries) {
+        for (botch in botches) for (other in PantryItem.entries.filter { it.kind != ItemKind.BOTCHED }) {
             assertEquals("$botch + $other", CookResult.Refused, cook(botch, other))
             assertEquals("$other + $botch", CookResult.Refused, cook(other, botch))
         }
+    }
+
+    @Test
+    fun twoBotchesMakeOnePileOfSlop() {
+        // The player's ask: slop squashes down, two shelf places into one. Any two botches, the same one twice
+        // included, named ones and all, make the plain Pile of Slop and nothing better.
+        val botches = PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }
+        for (a in botches) for (b in botches) assertCooks(PILE_OF_SLOP, a, b)
+        assertCooks(PILE_OF_SLOP, PILE_OF_SLOP, PILE_OF_SLOP)
+        assertCooks(PILE_OF_SLOP, KITCHEN_FIRE, BURNT_TO_A_CRISP)
+        assertCooks(PILE_OF_SLOP, CURSED_CAKE, FISHMALLOW)
+        // No recipe names a botch as an input, so the botch rule never hides one.
+        assertTrue(RECIPES.keys.none { inputs -> inputs.any { it.kind == ItemKind.BOTCHED } })
     }
 
     @Test
