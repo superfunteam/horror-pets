@@ -17,6 +17,7 @@ import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.attackById
 import team.superfun.horrorpets.model.canUse
 import team.superfun.horrorpets.model.pantryItemById
+import team.superfun.horrorpets.game.pantry.DISHES
 
 /** The save file format: [GameState] as JSON. Decoding never throws; an unusable save is reported as null or becomes a fresh game. */
 object SaveCodec {
@@ -62,6 +63,8 @@ object SaveCodec {
      * - a `revealed` that is not a list reads as nothing revealed, with the pets kept; in a list, a name that is not a
      *   killer this build knows (or not a string) is dropped. (A build from before the field ignores it, as it skips a
      *   killer it does not know in `pets`.)
+     * - a `recipesFound` that is not a list reads as no recipes found, with the pets kept; in a list, an id that is not
+     *   a dish this build's cookbook makes (or not a string) is dropped.
      * Every pet is sanitised at this trust boundary:
      * - its `id` is its map key, whether the entry's own `id` is missing or says something else;
      * - level is in 1..[Tuning.MAX_LEVEL] and xp is in 0 until the cost of the next level;
@@ -80,7 +83,7 @@ object SaveCodec {
                 else -> return null
             }
             // Pets, the selection, the pantry and the reveal are read on their own below, so none of them can sink the rest.
-            val rest = reader.decodeFromJsonElement(GameState.serializer(), JsonObject(root - "pets" - "selected" - "pantry" - "revealed"))
+            val rest = reader.decodeFromJsonElement(GameState.serializer(), JsonObject(root - "pets" - "selected" - "pantry" - "revealed" - "recipesFound"))
             if (rest.version > SUPPORTED_VERSION) return null
             if (rest.version < SUPPORTED_VERSION) return GameState()
             val stable = PetId.entries.filter { it.name in pets }.associateWith { id -> petOrDefault(id, pets[id.name]) }
@@ -89,6 +92,7 @@ object SaveCodec {
                 selected = petIdOrNull(root["selected"])?.takeIf { it in stable } ?: stable.keys.firstOrNull(),
                 pantry = pantryOrEmpty(root["pantry"]),
                 revealed = revealedOrEmpty(root["revealed"]),
+                recipesFound = recipesFoundOrEmpty(root["recipesFound"]),
             )
         } catch (_: Exception) {
             // SerializationException, IllegalArgumentException (bad number): the save as a whole is unusable.
@@ -107,6 +111,16 @@ object SaveCodec {
             .filter { pantryItemById(it) != null }
             .take(Tuning.PANTRY_MAX)
             .toList()
+    }
+
+    /**
+     * The dishes found in [e], by id: only the dishes this build's cookbook makes, in the cookbook's order. Anything
+     * that is not a list (or is missing) is no recipes found.
+     */
+    private fun recipesFoundOrEmpty(e: JsonElement?): Set<String> {
+        val list = e as? JsonArray ?: return emptySet()
+        val ids = list.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }.toSet()
+        return DISHES.filter { it.id in ids }.map { it.id }.toSet()
     }
 
     /**

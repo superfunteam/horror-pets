@@ -249,6 +249,7 @@ fun HorrorPetsApp(
                             screen = screen,
                             pet = pet,
                             shelf = remember(state.game.pantry) { state.game.pantryItems() },
+                            found = state.game.recipesFound,
                             loader = loader,
                             onPick = vm::onPantryPick,
                             onCook = vm::onPantryCook,

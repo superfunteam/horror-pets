@@ -80,6 +80,7 @@ import team.superfun.horrorpets.ui.switcher.carouselFlingTarget
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextHi
+import androidx.compose.ui.graphics.StrokeCap
 
 /** A shelf item stands in a box this big (its picture fitted inside, standing on the plank). */
 internal val ShelfItemSize = 64.dp
@@ -129,9 +130,11 @@ private const val ON_BOARD_DIM = 1f
  * The pantry's shelf: a wooden plank along the bottom of the kitchen with [shelf]'s items standing on it, [window]'s
  * run of them in its slots (a long shelf slides left and right under them as the window moves, and a finger can drag
  * it). Every item has its name on a small label hanging from the plank under it. Items on the [board] stand dimmed in
- * their place, labels too; the [heart] dish wears its heart. [focus] is the remote's focus (in a gold cursor, a little
- * bigger, its label lit gold), or null when the remote is not on the shelf (it is on the buttons, or a finger is in
- * charge). The [hidden] slot stands empty, label and all (a cooked dish is still on its way to it).
+ * their place, labels too; the [heart] dish wears its heart, and the [known] items (the ones that have made a dish
+ * with what is on the board) a gold check. A groove in the plank before each slot in [breaks] parts one kind of item
+ * from the next. [focus] is the remote's focus (in a gold cursor, a little bigger, its label lit gold), or null when
+ * the remote is not on the shelf (it is on the buttons, or a finger is in charge). The [hidden] slot stands empty,
+ * label and all (a cooked dish is still on its way to it).
  *
  * A tap on an item calls [onTap] with its index on [shelf] as it is drawn now; a drag that ends calls [onScrolled]
  * with the window's first slot as it settles. Neither happens while [enabled] says no (read as a finger comes down):
@@ -143,6 +146,8 @@ internal fun Shelf(
     shelf: List<PantryItem>,
     board: List<Int>,
     heart: PantryItem?,
+    breaks: Set<Int>,
+    known: Set<Int>,
     window: ShelfWindow,
     focus: Int?,
     hidden: Int?,
@@ -174,6 +179,8 @@ internal fun Shelf(
             shelf = shelf,
             board = board,
             heart = heart,
+            breaks = breaks,
+            known = known,
             window = window,
             focus = focus,
             hidden = hidden,
@@ -243,6 +250,8 @@ private fun ShelfBody(
     shelf: List<PantryItem>,
     board: List<Int>,
     heart: PantryItem?,
+    breaks: Set<Int>,
+    known: Set<Int>,
     window: ShelfWindow,
     focus: Int?,
     hidden: Int?,
@@ -266,10 +275,20 @@ private fun ShelfBody(
                 .fillMaxSize()
                 .drawWithCache {
                     val plank = PlankPaint(this, ShelfStandY.toPx())
+                    val grooveTop = ShelfStandY.toPx() - GrooveRise.toPx()
+                    val grooveBottom = (ShelfStandY + PlankTopDepth + PlankFront).toPx()
                     onDrawBehind {
                         val count = shelf.size
                         val s = scroll()
                         plank.draw(this, moreLeft = s > 0.05f, moreRight = s + window.slots < count - 0.05f)
+                        // A groove in the wood before each slot that starts a new kind of item.
+                        val pitch = size.width / window.slots
+                        for (slot in breaks) {
+                            val x = (slot - s) * pitch
+                            if (x < 0f || x > size.width) continue
+                            drawLine(GrooveDark, Offset(x, grooveTop), Offset(x, grooveBottom), strokeWidth = 2.dp.toPx())
+                            drawLine(GrooveLight, Offset(x + 2.dp.toPx(), grooveTop), Offset(x + 2.dp.toPx(), grooveBottom), strokeWidth = 1.dp.toPx())
+                        }
                     }
                 },
         )
@@ -290,6 +309,7 @@ private fun ShelfBody(
                         item = item,
                         onBoard = index in board,
                         heart = item == heart,
+                        known = index in known,
                         focused = index == focus,
                         hidden = index == hidden,
                         x = { pitch -> (index - scroll() + 0.5f) * pitch },
@@ -314,6 +334,7 @@ private fun ShelfSlot(
     item: PantryItem,
     onBoard: Boolean,
     heart: Boolean,
+    known: Boolean,
     focused: Boolean,
     hidden: Boolean,
     x: (pitch: Float) -> Float,
@@ -352,6 +373,7 @@ private fun ShelfSlot(
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 },
             heart = heart,
+            known = known,
             dim = { dim },
         )
     }
@@ -487,7 +509,8 @@ private fun Modifier.labelPlate(lit: () -> Float, dim: () -> Float): Modifier = 
 /**
  * [item]'s picture, fitted into this element and standing on its bottom edge over a soft contact shadow. [dim] (0..1,
  * read while drawing) fades and greys it, as an item on the board stands in its shelf slot. [heart] puts the
- * found-favorite heart on its shoulder.
+ * found-favorite heart on its shoulder; [known] a gold check on the other (it has made a dish with what is on the
+ * board before).
  */
 @Composable
 internal fun ItemArt(
@@ -495,6 +518,7 @@ internal fun ItemArt(
     item: PantryItem,
     modifier: Modifier,
     heart: Boolean = false,
+    known: Boolean = false,
     dim: () -> Float = { 0f },
 ) {
     val image = rememberItemImage(loader, item)
@@ -528,8 +552,29 @@ internal fun ItemArt(
                 filterQuality = FilterQuality.High,
             )
             if (heart) drawHeart(Offset(left + w - w * 0.08f, top + h * 0.1f), size.minDimension * 0.3f, alpha = 1f - 0.5f * d)
+            if (known) drawKnownCheck(Offset(left + w * 0.1f, top + h * 0.12f), size.minDimension * 0.13f, alpha = 1f - 0.5f * d)
         },
     )
+}
+
+/** A groove in the plank, where one kind of item ends and the next begins: a dark cut with a lit edge. */
+private val GrooveRise = 10.dp
+private val GrooveDark = Color.Black.copy(alpha = 0.45f)
+private val GrooveLight = Color(0x33FFE08A)
+
+/**
+ * The "made this before" mark: a gold disc with a dark check in it, [r] in radius at [center], as the heart is drawn
+ * on the other shoulder.
+ */
+private fun DrawScope.drawKnownCheck(center: Offset, r: Float, alpha: Float) {
+    drawCircle(Color(0xFF1A1208).copy(alpha = alpha), r * 1.2f, center)
+    drawCircle(CursorEdge.copy(alpha = alpha), r, center)
+    val check = Path().apply {
+        moveTo(center.x - r * 0.5f, center.y + r * 0.02f)
+        lineTo(center.x - r * 0.12f, center.y + r * 0.42f)
+        lineTo(center.x + r * 0.55f, center.y - r * 0.4f)
+    }
+    drawPath(check, Color(0xFF1A1208).copy(alpha = alpha), style = Stroke(width = r * 0.32f, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 /** An item on the board, greyed and darkened in its shelf slot (built once: it is drawn every frame the shelf slides). */

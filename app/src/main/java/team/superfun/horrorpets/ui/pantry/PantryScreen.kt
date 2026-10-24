@@ -95,6 +95,9 @@ import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
 import team.superfun.horrorpets.ui.training.trainingKeyOf
 import team.superfun.horrorpets.game.pantry.canEat
+import team.superfun.horrorpets.game.pantry.DISHES
+import team.superfun.horrorpets.game.pantry.dishesFound
+import team.superfun.horrorpets.game.pantry.knownDish
 
 /** How long a refused cook's note stays up, over the shaking board (see [REFUSED_COOK_NOTE]). */
 private const val NOTE_MS = 1_500L
@@ -147,6 +150,7 @@ fun PantryScreen(
     screen: Screen.Pantry,
     pet: PetState,
     shelf: List<PantryItem>,
+    found: Set<String>,
     loader: AssetLoader,
     onPick: (Long, Int) -> Unit,
     onCook: (Long) -> Unit,
@@ -159,7 +163,17 @@ fun PantryScreen(
     // Each visit starts afresh (focus on the first item), even on a screen that never left: FEED, Back and FEED again
     // within a frame (as the debug puppet can) hands this screen the next session while it still shows.
     key(screen.session) {
-        PantryVisit(screen, pet, shelf, loader, onPick, onCook, onFeed, onDone, onMore, onBack, focusEntry)
+        // Shown in kind order (see [ShelfView]): the visit works in shown slots, the view model in shelf indices.
+        val view = remember(shelf) { ShelfView(shelf) }
+        val shown = screen.copy(
+            board = screen.board.map(view::place),
+            cook = screen.cook?.let { if (it.at in shelf.indices) it.copy(at = view.place(it.at)) else it },
+        )
+        PantryVisit(
+            shown, pet, view.items, view.breaks, found, loader,
+            onPick = { s, slot -> onPick(s, view.order[slot]) },
+            onCook, onFeed, onDone, onMore, onBack, focusEntry,
+        )
     }
 }
 
@@ -169,6 +183,8 @@ private fun PantryVisit(
     screen: Screen.Pantry,
     pet: PetState,
     shelf: List<PantryItem>,
+    breaks: Set<Int>,
+    found: Set<String>,
     loader: AssetLoader,
     onPick: (Long, Int) -> Unit,
     onCook: (Long) -> Unit,
@@ -213,6 +229,12 @@ private fun PantryVisit(
     val latestScreen by rememberUpdatedState(screen)
     val latestPlaces by rememberUpdatedState(places)
     val latestPet by rememberUpdatedState(pet)
+    // With one item on the board, the shelf items it has made a dish with before wear a mark (see [knownDish]).
+    val known: Set<Int> = remember(screen.board, shelf, found) {
+        val index = screen.board.singleOrNull() ?: return@remember emptySet()
+        val on = shelf.getOrNull(index) ?: return@remember emptySet()
+        shelf.indices.filterTo(mutableSetOf()) { it != index && knownDish(on, shelf[it], found) != null }
+    }
     // Once fed: whether OK feeds again (the killer could eat more, and there is something to eat) rather than go Home.
     val feedMore = fed != null && canEat(pet) && shelf.isNotEmpty()
 
@@ -380,6 +402,11 @@ private fun PantryVisit(
                 style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = hungerColor(pet.hunger), tracking = HUD_STATUS_TRACKING, halo = true),
                 maxLines = 1,
             )
+            BasicText(
+                "RECIPES ${dishesFound(found)} / ${DISHES.size}",
+                style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
+                maxLines = 1,
+            )
         }
 
         val boardLeft = layout.columnCenter - layout.boardWidth / 2f
@@ -414,6 +441,8 @@ private fun PantryVisit(
             shelf = shelf,
             board = screen.board,
             heart = heart,
+            breaks = breaks,
+            known = known,
             window = window,
             focus = cursor.focus.takeIf { cursor.row == KitchenRow.SHELF && !touch && shelf.isNotEmpty() && fed == null },
             hidden = cook?.at?.takeIf { cooking },

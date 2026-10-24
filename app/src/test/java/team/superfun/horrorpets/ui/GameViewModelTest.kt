@@ -1274,6 +1274,22 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aDishCookedIsARecipeFoundAndSlopIsNot() {
+        val rig = pantryRig()
+        val session = rig.openPantry().session
+        assertTrue(rig.game.recipesFound.isEmpty())
+        rig.pick(0, 2) // Grill + Egg: a fried egg
+        rig.vm.onPantryCook(session)
+        assertEquals(setOf(FRIED_EGG.id), rig.game.recipesFound)
+        rig.pick(2, 0) // Campfire + the fried egg: burnt to a crisp, which is no recipe
+        rig.vm.onPantryCook(session)
+        assertEquals(BURNT_TO_A_CRISP, rig.shelf[0])
+        assertEquals(setOf(FRIED_EGG.id), rig.game.recipesFound)
+        rig.settle()
+        assertEquals("saved with the game", setOf(FRIED_EGG.id), rig.store.last.recipesFound)
+    }
+
+    @Test
     fun cookNeedsTwoOnTheBoardAndFeedNeedsOne() {
         val rig = pantryRig()
         val session = rig.openPantry().session

@@ -227,6 +227,23 @@ class SaveCodecTest {
     }
 
     @Test
+    fun recipesFoundRoundTrip() {
+        val state = GameState(pets = mapOf(PetId.JASON to PetState(PetId.JASON)), selected = PetId.JASON, recipesFound = setOf("fried_egg", "steak"))
+        val json = SaveCodec.encode(state)
+        assertTrue(json, json.contains("\"recipesFound\":["))
+        assertTrue("no new save version", json.contains("\"version\":2"))
+        assertEquals(state, SaveCodec.decode(json))
+        assertTrue(defaults.recipesFound.isEmpty())
+        assertTrue("a save from before the field", SaveCodec.decode(v2(""""JASON":{"level":5}""", selected = "JASON")).recipesFound.isEmpty())
+        // Unknown ids, a way to cook and a botch (none of them a dish) are dropped; not a list is nothing found, pets kept.
+        val odd = SaveCodec.decode(v2(""""JASON":{"level":5}""", selected = "JASON", extra = ""","recipesFound":["fried_egg","grill","pile_of_slop",7,"zzz"]"""))
+        assertEquals(setOf("fried_egg"), odd.recipesFound)
+        val notAList = SaveCodec.decode(v2(""""JASON":{"level":5}""", selected = "JASON", extra = ""","recipesFound":"fried_egg""""))
+        assertTrue(notAList.recipesFound.isEmpty())
+        assertEquals(5, notAList.pets.getValue(PetId.JASON).level)
+    }
+
+    @Test
     fun revealedRoundTrips() {
         val state = GameState(
             pets = PetId.entries.filterNot { it.secret }.associateWith { PetState(it) },

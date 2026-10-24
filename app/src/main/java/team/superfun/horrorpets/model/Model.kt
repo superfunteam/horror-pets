@@ -87,6 +87,8 @@ data class GameState(
     val lastSeenMs: Long? = null,
     val pantry: List<String> = emptyList(),
     val revealed: Set<String> = emptySet(),
+    /** The dishes the player has cooked, by id (never a botch): the pantry marks what they have made before. */
+    val recipesFound: Set<String> = emptySet(),
 ) {
     /** Whether [id] is in the stable. */
     fun isUnlocked(id: PetId): Boolean = id in pets

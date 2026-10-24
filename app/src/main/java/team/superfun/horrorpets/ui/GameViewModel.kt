@@ -426,7 +426,9 @@ class GameViewModel(
         }
         val at = pantry.board.min()
         val left = shelf.filterIndexed { i, _ -> i !in pantry.board }
-        val game = s.game.copy(pantry = (left.take(at) + result + left.drop(at)).map { it.id })
+        // A real dish is a recipe found, for the pantry to mark from now on; slop is not.
+        val found = if (result.kind == ItemKind.BOTCHED) s.game.recipesFound else s.game.recipesFound + result.id
+        val game = s.game.copy(pantry = (left.take(at) + result + left.drop(at)).map { it.id }, recipesFound = found)
         val method = inputs.firstOrNull { it.kind == ItemKind.METHOD }
         val sfx = listOfNotNull(method?.let { "cook_${it.id}" })
         val show = CookShow(result, inputs, at, nextToken++)

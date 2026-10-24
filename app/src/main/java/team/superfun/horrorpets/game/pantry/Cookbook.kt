@@ -19,6 +19,18 @@ sealed interface CookResult {
  * meals, then the botches it names for particular wrong pairs. A pair not listed here falls to the general rules in
  * [cook].
  */
+/**
+ * Every dish the cookbook makes, each once: what "recipes found" counts against. The named botches some pairs make on
+ * purpose (Stinky Fish, Cursed Cake...) are not dishes: they are never a recipe found.
+ */
+val DISHES: Set<PantryItem> by lazy { RECIPES.values.filterNot { it.kind == ItemKind.BOTCHED }.toSet() }
+
+/** How many of [DISHES] are in [found] (dish ids, as `GameState.recipesFound` keeps them). */
+fun dishesFound(found: Set<String>): Int = DISHES.count { it.id in found }
+
+/** The dish [a] and [b] make, when the player has made it before (its id is in [found]); null otherwise. */
+fun knownDish(a: PantryItem, b: PantryItem, found: Set<String>): PantryItem? = RECIPES[setOf(a, b)]?.takeIf { it.id in found }
+
 val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
     // Snacks: a food and a way to cook
     setOf(RAW_STEAK, GRILL) to STEAK,
