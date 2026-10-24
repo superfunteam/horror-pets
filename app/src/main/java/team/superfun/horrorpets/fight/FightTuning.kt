@@ -92,4 +92,12 @@ object FightTuning {
     const val WIN_MOOD_BONUS = 15.0
     const val LOSS_FUN = -5.0
     const val RUN_MOOD_PENALTY = -10.0
+
+    // The fight screen's clock: a hit that lands freezes both fighters for HIT_STOP_STRIKE_MS (a STRIKE) or
+    // HIT_STOP_HEAVY_MS (a HEAVY, a crit, a counter or a special), and the blow that empties a bar plays at KO_SLOW
+    // speed for KO_SLOW_MS.
+    const val HIT_STOP_STRIKE_MS = 70L
+    const val HIT_STOP_HEAVY_MS = 110L
+    const val KO_SLOW = 0.3f
+    const val KO_SLOW_MS = 900L
 }

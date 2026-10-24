@@ -40,6 +40,7 @@ import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.frameAt
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.ui.fight.ScaledClock
 
 /** Contact-shadow ellipse: width as a fraction of the drawn cell width, height as a fraction of its width. */
 private const val SHADOW_WIDTH_OF_CELL = 0.45f
@@ -103,6 +104,10 @@ class SpritePose {
  *
  * [loopOffsetMs] starts a looping animation that far into its cycle, so several pets idling side by side
  * don't bob in lockstep. It does not move the "one full cycle" report, and one-shots ignore it.
+ *
+ * [timeScale] is how fast the animation's clock runs, read every frame (never in composition): at 1 it plays as
+ * timed, at 0 its frame holds, at 0.3 it crawls (a fight's hit-stop and knockout). A one-shot's end and a loop's full
+ * cycle come in that time too.
  */
 @Composable
 fun SpriteView(
@@ -119,6 +124,7 @@ fun SpriteView(
     shadowOpacity: Float = 0f,
     pose: SpritePose? = null,
     loopOffsetMs: Long = 0L,
+    timeScale: () -> Float = { 1f },
     playKey: Any? = null,
     onStarted: (() -> Unit)? = null,
     onFinished: (() -> Unit)? = null,
@@ -137,6 +143,7 @@ fun SpriteView(
     var frame by remember(pet) { mutableIntStateOf(0) }
     val started by rememberUpdatedState(onStarted)
     val finished by rememberUpdatedState(onFinished)
+    val speed by rememberUpdatedState(timeScale)
 
     LaunchedEffect(loader, pet, anim, playKey) {
         val spec = manifest.spec(anim)
@@ -145,13 +152,14 @@ fun SpriteView(
         frame = 0
         started?.invoke()
         val total = spec.durationsMs.sumOf { it.coerceAtLeast(0).toLong() }
-        var start = -1L
+        val clock = ScaledClock()
+        var last = -1L
         var reported = false
         val offset = if (spec.loop) loopOffsetMs.coerceAtLeast(0L) else 0L
         while (true) {
             val now = withFrameMillis { it }
-            if (start < 0) start = now
-            val elapsed = now - start
+            val elapsed = clock.advance(if (last < 0) 0L else now - last, speed())
+            last = now
             val index = frameAt(spec, elapsed + offset)
             if (index == null) {
                 frame = frameAt(spec, total - 1) ?: 0 // hold the last frame of a finished one-shot

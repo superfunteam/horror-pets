@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -254,9 +255,12 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); a special
  *    whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
  *    then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast flashes the screen white
- *    and shakes it hard ([specialJolt]).
+ *    and shakes it hard ([specialJolt]). A hit stops the fight's clock as it lands ([hitStopFor]): its sound plays,
+ *    both fighters freeze for a blink, and its number, flash, shake and drain come as time resumes. The blow that
+ *    wins the fight then crawls in slow motion, the scene and the fighters greying, with a low boom ([knockout]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a
- *    slammed-in K.O. while the winner plays JUMP then WAVE; after a RUN the player runs off instead.
+ *    slammed-in K.O. (the colour coming back with it) while the winner plays JUMP then WAVE; after a RUN the
+ *    player runs off instead.
  *    Otherwise the bars settle on the real values and the command window comes back, the cursor on the last move.
  *
  * Back (or the RUN command, or a phone's back gesture) asks "Run away?"; Yes runs ([Move.RUN]). On a phone the
@@ -450,13 +454,16 @@ fun FightScreen(
         ) {
             SceneBackdrop(loader = loader, scene = arena) { floorY ->
                 SideEffect { stage.floorY = floorY }
-                // The arena dims while a special plays, so its effect owns the screen.
+                // The arena dims while a special plays, so its effect owns the screen, and greys while the
+                // knockout blow crawls.
                 Spacer(
                     Modifier
                         .fillMaxSize()
                         .drawBehind {
                             val d = stage.darken.value
                             if (d > 0f) drawRect(Color.Black, alpha = d)
+                            val g = stage.koGrey.value
+                            if (g > 0f) drawRect(KoGrey, alpha = g * 0.4f)
                         },
                 )
                 // The fighters in a box of their own, so the attacker's z-order stays among the fighters
@@ -666,6 +673,8 @@ private fun FightersLayer(
                 shadowOpacity = shadowOpacity,
                 jitterPx = jitterPx,
                 front = stage.front == side,
+                timeScale = { stage.timeScale },
+                koGrey = { stage.koGrey.value },
             )
         }
     }
@@ -764,6 +773,13 @@ private class FighterRig(val side: Side, val pet: PetId, hp: Float, meter: Float
 /** Steps of the white hit flash: the sprite's color filter is rebuilt per step, not per frame. */
 private const val FLASH_STEPS = 6f
 
+/** Steps of the knockout's grey, for the same reason. */
+private const val GREY_STEPS = 4f
+
+/**
+ * One fighter on the floor. [timeScale] is the fight's clock speed and [koGrey] the knockout's grey (see
+ * [FightStage.timeScale] and [FightStage.koGrey]), both read as they change, never in composition.
+ */
 @Composable
 private fun FighterView(
     loader: AssetLoader,
@@ -777,9 +793,12 @@ private fun FighterView(
     shadowOpacity: Float,
     jitterPx: Float,
     front: Boolean,
+    timeScale: () -> Float,
+    koGrey: () -> Float,
 ) {
     val flash by remember(rig) { derivedStateOf { (rig.flash.value * FLASH_STEPS).roundToInt() / FLASH_STEPS } }
     val ko by remember(rig) { derivedStateOf { (rig.ko.value * FLASH_STEPS).roundToInt() / FLASH_STEPS } }
+    val grey by remember(koGrey) { derivedStateOf { (koGrey() * GREY_STEPS).roundToInt() / GREY_STEPS } }
     val pose = rig.pose
     SpriteView(
         loader = loader,
@@ -789,10 +808,12 @@ private fun FighterView(
         tint = tint,
         tintStrength = tintStrength,
         dim = 0.35f * ko,
-        saturation = 1f - 0.8f * ko,
+        // The loser's own K.O. greying, and the knockout's grey over both fighters, each draining what is left.
+        saturation = (1f - 0.8f * ko) * (1f - 0.4f * grey),
         flashWhite = flash,
         shadowOpacity = shadowOpacity,
         loopOffsetMs = if (rig.side == Side.CPU) 380L else 0L,
+        timeScale = timeScale,
         playKey = pose,
         onStarted = {
             rig.shownAnim = pose.anim
@@ -837,6 +858,15 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
         player = FighterRig(Side.PLAYER, f.player.id, p.hp.toFloat(), p.meter.toFloat(), playerLook, f.player)
         cpu = FighterRig(Side.CPU, f.cpu.id, c.hp.toFloat(), c.meter.toFloat(), cpuLook, f.cpu)
     }
+
+    /**
+     * How fast the fight's clock runs: 1, 0 while a hit-stop holds both fighters, [FightTuning.KO_SLOW] while the
+     * knockout blow crawls. The sprites read it every frame, and so does [pass]; it is never read in composition.
+     */
+    var timeScale by mutableFloatStateOf(1f)
+
+    /** The knockout's grey (0..1): the scene and both fighters drain toward grey while the winning blow crawls. */
+    val koGrey = Animatable(0f)
 
     val shake = Animatable(0f)
     val flash = Animatable(0f)
@@ -921,6 +951,32 @@ private class FightStage(screen: Screen.Fight, turnPending: Boolean, playerLook:
     /** How much a sprite of [rig] playing [anim] may take before the turn stops waiting for it. */
     fun timeoutFor(loader: AssetLoader, rig: FighterRig, anim: Anim): Long =
         loader.manifest(rig.pet).spec(anim).durationsMs.sumOf { it.coerceAtLeast(0) }.toLong() + ANIM_SLACK_MS
+
+    /**
+     * Waits [ms] of fight time (see [timeScale]): that long at full speed, longer in slow motion, and on hold through a
+     * hit-stop, so a wait timed to a sprite stays in step with it. It counts frames, so it ends on the first one past
+     * [ms].
+     */
+    suspend fun pass(ms: Long) {
+        if (ms <= 0L) return
+        val clock = ScaledClock()
+        var last = withFrameMillis { it }
+        do {
+            val now = withFrameMillis { it }
+            val passed = clock.advance(now - last, timeScale)
+            last = now
+        } while (passed < ms)
+    }
+
+    /** Runs the fight's clock at [scale] for [ms] of real time, then back at full speed (even if cut short). */
+    suspend fun slowFor(scale: Float, ms: Long) {
+        timeScale = scale
+        try {
+            delay(ms)
+        } finally {
+            timeScale = 1f
+        }
+    }
 }
 
 /** The strips [turn] shows, by pet: idles, guards, swings, and the finale or the run-off. At most 11. */
@@ -1006,7 +1062,7 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
             // The same fighter must be back on its mark first, and a special's effect must have played
             // out; otherwise the other fighter may set off as the last one lands.
             if (tailSide == beat.attacker || special != null) tail?.join() else if (tail?.isActive == true) delay(140)
-            tail = lunge(this, beat, riders, guarding, loader, sounds, play)
+            tail = lunge(this, beat, riders, guarding, winner, loader, sounds, play)
             tailSide = beat.attacker
         } else if (beat is Beat.Drink) {
             tail?.join()
@@ -1062,14 +1118,16 @@ private fun callout(scope: CoroutineScope, rig: FighterRig, move: Move?) {
 
 /**
  * One attacker's swing: run in, ATTACK (or its DANCE, see [swingAnim]), the impact (see [swingImpactMs]),
- * then a hop back to the mark. Returns once the swing has played; the returned job is the hop back (and any
- * special effect still running), which the next beat may overlap.
+ * then a hop back to the mark. A hit stops the fight's clock as it lands ([hitStopFor]), and the blow that wins
+ * the fight for [winner] then crawls ([knockout]). Returns once the swing has played; the returned job is the hop
+ * back (and any special effect still running), which the next beat may overlap.
  */
 private suspend fun FightStage.lunge(
     scope: CoroutineScope,
     beat: Beat.Lunge,
     riders: List<Beat>,
     guarding: MutableSet<Side>,
+    winner: Side?,
     loader: AssetLoader,
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
@@ -1106,17 +1164,28 @@ private suspend fun FightStage.lunge(
     val impact = swingImpactMs(swingAnim, swingSpec)
     val swingPose = a.show(swingAnim)
     val swing = scope.launch { withTimeoutOrNull(timeoutFor(loader, a, swingAnim)) { swingPose.ended.await() } }
-    // The impact is timed from the swing's first frame on screen, not from asking for it.
+    // The impact is timed from the swing's first frame on screen, not from asking for it, and counted in frames of
+    // fight time alongside the sprite's own: the blow lands on the frame that shows the snap, so a stop freezes that.
     withTimeoutOrNull(SWING_START_WAIT_MS) { swingPose.started.await() }
     if (special) scope.launch {
         delay(max(0L, impact - 220L))
         darken.animateTo(0.5f + 0.08f * a.kit.special.tier, tween(220))
     }
-    delay(impact)
-    val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play)
+    pass(impact)
+    val stop = hitStopFor(event)
+    // Only the winner's blow crawls: a heal later in the turn may fill an emptied bar again, and in a double K.O. the
+    // loser's blow empties one too.
+    val ko = winner == a.side && koBlow(event, d.hpTarget.toInt())
+    val effect = impactOf(scope, a, d, event, riders, guarding, sounds, play, stopMs = stop, ko = ko)
+    // A blow at the impact stops the clock now, and the winning one then crawls; a special's later blow does both
+    // as it lands (see impactOf).
+    if (landsAtMs(a, event) == 0L) {
+        if (stop > 0L) slowFor(0f, stop)
+        if (ko) knockout(scope, play)
+    }
     // An ATTACK's last frames only ease back to standing: hop back on the way out of them instead. A dance
-    // is danced to its end.
-    delay(swingHoldMs(swingAnim, swingSpec, impact))
+    // is danced to its end. Held in fight time, so a special's later stop or knockout holds it back with the sprite.
+    pass(swingHoldMs(swingAnim, swingSpec, impact))
     a.show(Anim.IDLE)
     swing.join()
 
@@ -1133,7 +1202,18 @@ private suspend fun FightStage.lunge(
 
 private fun FightStage.cellHeight(): Float = height * FIGHTER_HEIGHT
 
-/** What lands at the impact. Returns the special effect's job, if one is playing. */
+/**
+ * How long after the swing's impact [a]'s [event] lands: partway through its effect for a special whose blow comes
+ * later ([specialLandsAtMs]), right at the impact (0) for everything else.
+ */
+private fun landsAtMs(a: FighterRig, event: FightEvent): Long =
+    if (event is FightEvent.Hit && event.move == Move.SPECIAL) specialLandsAtMs(a.pet.spec.special) else 0L
+
+/**
+ * What lands at the impact. A hit stops the clock for [stopMs] as it lands and its blow comes as time resumes (see
+ * [impactSchedule]); [ko] is whether it is the blow that wins the fight (see [knockout]). Returns the special effect's
+ * job, if one is playing.
+ */
 private fun FightStage.impactOf(
     scope: CoroutineScope,
     a: FighterRig,
@@ -1143,13 +1223,16 @@ private fun FightStage.impactOf(
     guarding: MutableSet<Side>,
     sounds: TurnSounds,
     play: (FightSounds) -> Unit,
+    stopMs: Long,
+    ko: Boolean,
 ): Job? {
     // A special whose blow lands partway through its effect (The Shape's slash, Jaws's tank) holds its number, flash
     // and HP drain until then, and starts its sound so the clip's hit lands with them, the announcer's line with the
     // blow itself (see specialSoundTimes); everything else lands right at the impact.
     val specialHit = event as? FightEvent.Hit
     val isSpecial = specialHit?.move == Move.SPECIAL
-    val landMs = if (isSpecial) specialLandsAtMs(a.pet.spec.special) else 0L
+    val landMs = landsAtMs(a, event)
+    val schedule = impactSchedule(landMs, stopMs)
     val times = if (specialHit != null && isSpecial) {
         specialSoundTimes(landMs, a.pet.spec.specialHitMs, specialHit.crit)
     } else {
@@ -1195,7 +1278,7 @@ private fun FightStage.impactOf(
             val blow = {
                 float(if (event.crit) FloatKind.CRIT else FloatKind.DAMAGE, "\u2212${event.damage}", labels, d.side)
                 hurt(scope, d, strength = 1f)
-                drain(scope, d, event.damage)
+                drain(scope, d, event.damage, stretch = if (ko) KO_DRAIN_STRETCH else 1)
                 when (event.effect) {
                     SpecialEffect.BLEED -> d.bleed = maxOf(d.bleed, attack?.bleed?.turns ?: FightTuning.BLEED_TURNS)
                     SpecialEffect.DAZE -> d.dazed = true
@@ -1220,12 +1303,17 @@ private fun FightStage.impactOf(
                     event.move == Move.HEAVY -> flash(scope, Color.White, 0.22f, 160)
                 }
             }
-            if (landMs == 0L) {
-                blow()
+            // The blow comes as the clock starts again after its stop. One at the impact has its stop (and its
+            // knockout) played by the swing (see lunge); a special's later blow plays them here, as it lands.
+            val landing = if (landMs == 0L) {
+                afterImpact(scope, schedule.blowAtMs) { blow() }
+                null
             } else {
                 scope.launch {
-                    delay(landMs)
+                    delay(schedule.soundAtMs)
+                    slowFor(0f, schedule.stopMs)
                     blow()
+                    if (ko) knockout(scope, play)
                 }
             }
             if (event.move != Move.SPECIAL) charge(scope, a, if (event.counter) FightTuning.METER_PER_HIT else attack?.meterGain ?: FightTuning.METER_PER_HIT)
@@ -1238,10 +1326,12 @@ private fun FightStage.impactOf(
                     special = null
                     specialT.snapTo(0f)
                     darken.animateTo(0f, tween(260))
+                    // A later blow's stop and knockout belong to the special: the turn moves on after them.
+                    landing?.join()
                 }
                 // The target keeps reeling through the effect (a lighter flash, so the effect still reads over it).
                 scope.launch {
-                    delay(landMs + SPECIAL_MS / 3L)
+                    delay(schedule.blowAtMs + SPECIAL_MS / 3L)
                     hurt(scope, d, strength = 0.4f)
                 }
             }
@@ -1279,7 +1369,7 @@ private fun FightStage.impactOf(
     for (r in riders) rider(scope, r, landedOn = if (interrupted) d.side else null)
     // A drain flows back to the attacker just after its blow lands.
     for (r in riders.filterIsInstance<Beat.Drain>()) scope.launch {
-        delay(landMs + DRAIN_AFTER_MS)
+        delay(schedule.blowAtMs + DRAIN_AFTER_MS)
         play(sounds.of(FightEvent.Drain(r.side, r.amount)))
         float(FloatKind.HEAL, "+${r.amount}", listOf("DRAIN"), r.side)
         a.flash.snapTo(0.45f)
@@ -1387,13 +1477,14 @@ private fun hurt(scope: CoroutineScope, d: FighterRig, strength: Float) {
     }
 }
 
-private fun drain(scope: CoroutineScope, d: FighterRig, damage: Int) {
+/** [d]'s HP bar drains by [damage], its trail following; [stretch] times as slowly for the knockout blow. */
+private fun drain(scope: CoroutineScope, d: FighterRig, damage: Int, stretch: Int = 1) {
     val target = max(0f, d.hpTarget - damage)
     d.hpTarget = target
-    scope.launch { d.hp.animateTo(target, tween(DRAIN_MS, easing = FastOutSlowInEasing)) }
+    scope.launch { d.hp.animateTo(target, tween(DRAIN_MS * stretch, easing = FastOutSlowInEasing)) }
     scope.launch {
-        delay(TRAIL_DELAY_MS)
-        d.trail.animateTo(target, tween(TRAIL_MS, easing = FastOutSlowInEasing))
+        delay(TRAIL_DELAY_MS * stretch)
+        d.trail.animateTo(target, tween(TRAIL_MS * stretch, easing = FastOutSlowInEasing))
     }
 }
 
@@ -1463,7 +1554,28 @@ private suspend fun FightStage.opponentRunsAway(scope: CoroutineScope, loader: A
     cpu.step.animateTo(-0.4f, tween(800, easing = FastOutLinearInEasing))
 }
 
-/** The K.O.: the loser plays FAIL and greys out as K.O. slams in, then the winner jumps and waves. */
+/** The scene's grey while the knockout blow crawls (see [FightStage.koGrey]). */
+private val KoGrey = Color(0xFF9A9A9A)
+
+/** The knockout blow's HP drain, and its trail, take this many times as long, in step with the slow motion. */
+private const val KO_DRAIN_STRETCH = 3
+
+/**
+ * The blow that wins the fight crawls: the fight's clock runs at [FightTuning.KO_SLOW] for [FightTuning.KO_SLOW_MS]
+ * while the scene and both fighters drain toward grey under a blink of white, with a low boom (`ko_boom`). Returns
+ * with the clock back at full speed; the grey stays until K.O. slams in (see [finale]).
+ */
+private suspend fun FightStage.knockout(scope: CoroutineScope, play: (FightSounds) -> Unit) {
+    scope.launch { koGrey.animateTo(1f, tween(100)) }
+    flash(scope, Color.White, 0.6f, 10)
+    play(FightSounds(listOf("ko_boom"), emptyList()))
+    slowFor(FightTuning.KO_SLOW, FightTuning.KO_SLOW_MS)
+}
+
+/**
+ * The K.O.: the loser plays FAIL and greys out as K.O. slams in (the knockout's grey lifting, so the winner
+ * celebrates in colour), then the winner jumps and waves.
+ */
 private suspend fun FightStage.finale(
     scope: CoroutineScope,
     winner: Side,
@@ -1479,6 +1591,7 @@ private suspend fun FightStage.finale(
     val fall = scope.launch { loser.play(Anim.FAIL, timeoutFor(loader, loser, Anim.FAIL)) }
     scope.launch { loser.ko.animateTo(1f, tween(900)) }
     koShown = true
+    scope.launch { koGrey.animateTo(0f, tween(300)) }
     ko.snapTo(0f)
     ko.animateTo(1f, tween(190, easing = FastOutLinearInEasing))
     // It lands: the screen jolts and flashes red.

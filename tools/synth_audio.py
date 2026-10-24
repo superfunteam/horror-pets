@@ -709,6 +709,22 @@ def challenger_hit() -> np.ndarray:
     return reverb(cr, out, 1.6, 0.25, 3500)
 
 
+def ko_boom() -> np.ndarray:
+    """The knockout blow's low boom: a sub sine dropping 90 -> 32 Hz under a short thud and a saturated low saw."""
+    kr = rng_for("ko_boom")  # its own stream, so the sounds before it are untouched
+    n = int(0.9 * SR)
+    t = np.arange(n) / SR
+    hz = 90 * (32 / 90) ** np.minimum(t / 0.5, 1.0)  # the drop: 90 Hz down to 32 over 0.5 s, then held
+    sub = sine(hz, n)
+    growl = np.tanh(3.0 * lowpass(saw(hz, n) + saw(hz * 1.01, n), 400)) * 0.35
+    bn = int(0.03 * SR)
+    thud = np.zeros(n)
+    thud[:bn] = bandpass(noise(kr, bn), 60, 900) * env_exp(bn, 0.008, 0.0005)
+    out = (sub + growl) * env_exp(n, 0.35, 0.002) + 0.7 * thud
+    out[-int(0.1 * SR):] *= np.linspace(1, 0, int(0.1 * SR))  # a soft tail, not a cut
+    return out
+
+
 def sfx_all() -> dict[str, np.ndarray]:
     rng = rng_for("sfx")
     s: dict[str, np.ndarray] = {}
@@ -868,6 +884,8 @@ def sfx_all() -> dict[str, np.ndarray]:
     # The secret killer's two (appended last, each on its own random stream, so nothing above changes).
     s["special_jaws"] = jaws_special()
     s["challenger_hit"] = challenger_hit()
+    # The knockout's boom (appended last, on its own random stream, so nothing above changes).
+    s["ko_boom"] = ko_boom()
     return s
 
 
