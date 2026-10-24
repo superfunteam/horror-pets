@@ -163,51 +163,100 @@ private val WAYS_TO_COOK: List<PantryItem> = PantryItem.entries.filter { it.kind
 
 private val FOODS: List<PantryItem> = PantryItem.entries.filter { it.kind == ItemKind.FOOD }
 
+/** The raw recipes made of a way to cook and a food ("raw steak on the grill"), the ones the top-up leans toward. */
+private val ON_THE_HEAT: List<Set<PantryItem>> = RAW_RECIPES.filter { pair -> pair.any { it.kind == ItemKind.METHOD } }
+
 /**
- * Brings [pantry] up to what every visit to the kitchen starts with, by adding random ingredients on the end: at
- * least [Tuning.PANTRY_MIN_RAW] raw items, at least [Tuning.PANTRY_MIN_METHODS] ways to cook and at least
- * [Tuning.PANTRY_MIN_FOODS] foods, so there is always something to cook. An empty pantry gets a starting handful
- * instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and [Tuning.PANTRY_START_FOODS] foods). A shelf that
- * already has enough comes back as it was. The open draws lean toward a way to cook ([Tuning.PANTRY_METHOD_ODDS]),
- * since a food alone can only be fed raw.
+ * Brings [pantry] up to what every visit to the kitchen starts with, by adding random ingredients on the end:
+ *
+ * 1. [Tuning.PANTRY_PAIRS] cookable pairs: pairs of raw items that each cook into a real dish (see [cookablePairs]),
+ *    sharing nothing, so there is always something good to make and a run of slop never leaves the player stuck. The
+ *    pairs already on the shelf are counted first; for each one missing, a raw recipe is drawn at random and whichever
+ *    of its two items the shelf can't spare is added. The draws lean toward a way to cook and a food
+ *    ([Tuning.PANTRY_PAIR_METHOD_ODDS]) over two foods, and a shelf with no way to cook on it always draws one.
+ * 2. The minimums, which the pairs nearly always meet already: at least [Tuning.PANTRY_MIN_RAW] raw items, at
+ *    least [Tuning.PANTRY_MIN_METHODS] ways to cook and at least [Tuning.PANTRY_MIN_FOODS] foods. An open draw leans
+ *    toward a way to cook ([Tuning.PANTRY_METHOD_ODDS]), since a food alone can only be fed raw.
+ *
+ * An empty pantry gets a starting handful instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and
+ * [Tuning.PANTRY_START_FOODS] foods, two of each pairing up on a recipe like Raw Steak + Grill). A shelf that already
+ * has enough comes back as it was.
  *
  * The shelf never grows past [Tuning.PANTRY_MAX] (the save keeps only that many, so anything more would vanish on the
- * next load). A shelf without room for what the minimums need first throws out its oldest botches (the ones nearest
- * the front), as many as it takes and no more: a botch can't be cooked, only eaten, so a shelf full of slop would
- * otherwise get nothing new for days. Nothing else is ever removed or reordered: a shelf full of good dishes gets
- * nothing, and one with only a few places left fills them in order of importance, a way to cook first, then foods,
- * then open draws.
+ * next load). A shelf without room for what it needs first throws out its oldest botches (the ones nearest the
+ * front), as many as it takes and no more: a botch only cooks into more slop, so a shelf full of it would otherwise
+ * get nothing new for days. Nothing else is ever removed or reordered: a shelf full of good dishes gets nothing, and
+ * one with only a few places left fills them as best it can, a pair that only needs one more item first, and a way
+ * to cook before anything when there is none.
  */
 fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
+    if (pantry.isEmpty()) return startingHandful(rng)
     val shelf = pantry.toMutableList()
-    if (shelf.isEmpty()) {
-        repeat(Tuning.PANTRY_START_METHODS) { shelf += WAYS_TO_COOK.random(rng) }
-        repeat(Tuning.PANTRY_START_FOODS) { shelf += FOODS.random(rng) }
-        shelf.shuffle(rng)
-        return shelf
+    // Everything but the botches stays, so that is all the room there can be.
+    val added = topUpItems(shelf, Tuning.PANTRY_MAX - shelf.count { it.kind != ItemKind.BOTCHED }, rng)
+    if (added.isEmpty()) return shelf
+    // Room for them, made by throwing out the oldest botches, and only those.
+    repeat((added.size - (Tuning.PANTRY_MAX - shelf.size)).coerceAtLeast(0)) {
+        shelf.removeAt(shelf.indexOfFirst { it.kind == ItemKind.BOTCHED })
     }
-    // Room for the minimums, made by throwing out the oldest botches, and only those.
-    repeat((topUpNeed(shelf) - (Tuning.PANTRY_MAX - shelf.size)).coerceAtLeast(0)) {
-        val oldest = shelf.indexOfFirst { it.kind == ItemKind.BOTCHED }
-        if (oldest >= 0) shelf.removeAt(oldest)
-    }
-    if (shelf.size >= Tuning.PANTRY_MAX) return shelf
-    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_MIN_METHODS) {
-        shelf += WAYS_TO_COOK.random(rng)
-    }
-    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.kind == ItemKind.FOOD } < Tuning.PANTRY_MIN_FOODS) {
-        shelf += FOODS.random(rng)
-    }
-    while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.raw } < Tuning.PANTRY_MIN_RAW) {
-        shelf += if (rng.nextDouble() < Tuning.PANTRY_METHOD_ODDS) WAYS_TO_COOK.random(rng) else FOODS.random(rng)
-    }
-    return shelf
+    return shelf + added
 }
 
-/** How many ingredients [shelf] is short of the top-up's minimums: the ways to cook, the foods, then the raw. */
-private fun topUpNeed(shelf: List<PantryItem>): Int {
-    val methods = (Tuning.PANTRY_MIN_METHODS - shelf.count { it.kind == ItemKind.METHOD }).coerceAtLeast(0)
-    val foods = (Tuning.PANTRY_MIN_FOODS - shelf.count { it.kind == ItemKind.FOOD }).coerceAtLeast(0)
-    val raw = (Tuning.PANTRY_MIN_RAW - shelf.count { it.raw } - methods - foods).coerceAtLeast(0)
-    return methods + foods + raw
+/** An empty pantry's first handful: two pairs of a way to cook and a food that cook together, then foods, shuffled. */
+private fun startingHandful(rng: Random): List<PantryItem> {
+    val handful = mutableListOf<PantryItem>()
+    repeat(Tuning.PANTRY_PAIRS) { handful += ON_THE_HEAT.random(rng) }
+    while (handful.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_START_METHODS) handful += WAYS_TO_COOK.random(rng)
+    while (handful.count { it.kind == ItemKind.FOOD } < Tuning.PANTRY_START_FOODS) handful += FOODS.random(rng)
+    handful.shuffle(rng)
+    return handful
+}
+
+/** What [topUp] adds to [shelf] (in the order it goes on the end), [room] items at most. */
+private fun topUpItems(shelf: List<PantryItem>, room: Int, rng: Random): List<PantryItem> {
+    val added = mutableListOf<PantryItem>()
+    fun count(kind: ItemKind) = shelf.count { it.kind == kind } + added.count { it.kind == kind }
+
+    // The cookable pairs: the ones there, then the missing ones' items, using the raw items no pair has taken.
+    val pairs = cookablePairs(shelf, Tuning.PANTRY_PAIRS)
+    val spare = shelf.filter { it.raw }.toMutableList()
+    pairs.flatten().forEach { spare.remove(it) }
+    for (missing in Tuning.PANTRY_PAIRS - pairs.size downTo 1) {
+        val recipe = drawPair(spare, room - added.size, missing, onTheHeat = count(ItemKind.METHOD) == 0, rng) ?: break
+        added += recipe.filterNot { spare.remove(it) }.sortedBy { it.kind }
+    }
+
+    // The minimums, in order of importance.
+    while (added.size < room && count(ItemKind.METHOD) < Tuning.PANTRY_MIN_METHODS) added += WAYS_TO_COOK.random(rng)
+    while (added.size < room && count(ItemKind.FOOD) < Tuning.PANTRY_MIN_FOODS) added += FOODS.random(rng)
+    while (added.size < room && shelf.count { it.raw } + added.count { it.raw } < Tuning.PANTRY_MIN_RAW) {
+        added += if (rng.nextDouble() < Tuning.PANTRY_METHOD_ODDS) WAYS_TO_COOK.random(rng) else FOODS.random(rng)
+    }
+    return added
+}
+
+/**
+ * A raw recipe to complete the next of [missing] cookable pairs, with [room] places left and the [spare] raw items
+ * no pair has taken (an input there costs no place), or null when none fits. With room for every missing pair at two
+ * new items each, any recipe will do; with less, only the ones that cost the fewest places. [onTheHeat] (the shelf
+ * has no way to cook) takes only a way to cook and a food; otherwise those still come up [Tuning.PANTRY_PAIR_METHOD_ODDS]
+ * of the time, and two foods the rest.
+ */
+private fun drawPair(spare: List<PantryItem>, room: Int, missing: Int, onTheHeat: Boolean, rng: Random): Set<PantryItem>? {
+    fun cost(recipe: Set<PantryItem>) = recipe.count { it !in spare }
+    val allowed = if (onTheHeat) ON_THE_HEAT else RAW_RECIPES
+    val fitting = if (room >= 2 * missing) {
+        allowed
+    } else {
+        val cheapest = allowed.filter { cost(it) <= room }.minOfOrNull(::cost) ?: return null
+        allowed.filter { cost(it) == cheapest }
+    }
+    val (heat, mixes) = fitting.partition { it in ON_THE_HEAT }
+    val pool = when {
+        mixes.isEmpty() -> heat
+        heat.isEmpty() -> mixes
+        rng.nextDouble() < Tuning.PANTRY_PAIR_METHOD_ODDS -> heat
+        else -> mixes
+    }
+    return pool.randomOrNull(rng)
 }

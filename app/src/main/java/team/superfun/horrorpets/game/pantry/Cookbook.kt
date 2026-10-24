@@ -126,6 +126,42 @@ fun cook(a: PantryItem, b: PantryItem): CookResult {
 }
 
 /**
+ * The recipes that cook two raw items into a real dish (a snack, never a botch): a way to cook and a food ("raw steak
+ * on the grill"), or two foods mixed. A named botch for two raw items (Sardines + Orange) is not one. In the
+ * cookbook's order; each is the two items it takes, always two different ones.
+ */
+val RAW_RECIPES: List<Set<PantryItem>> =
+    RECIPES.filter { (inputs, result) -> inputs.all { it.raw } && result.kind != ItemKind.BOTCHED }.keys.toList()
+
+/**
+ * Up to [most] pairs of raw items on [shelf] that each cook into a real dish (see [RAW_RECIPES]), no shelf item in
+ * two of them: two copies of an item are two items, so Egg + Grill twice needs two eggs and two grills. As many pairs
+ * as the shelf can make at once, up to [most], found by trying every way of pairing (a shelf holds a few dozen items
+ * and the cookbook has 41 such recipes, so it is cheap). Each pair is its recipe's inputs; which pairs come back, when
+ * there is a choice, is the first way in the cookbook's order. Cooked dishes and botches are never in a pair.
+ */
+fun cookablePairs(shelf: List<PantryItem>, most: Int = 2): List<Set<PantryItem>> {
+    val left = shelf.filter { it.raw }.groupingBy { it }.eachCount().toMutableMap()
+    // The most pairs (up to [want]) from the recipes at [from] on, with what is [left]; a recipe may come up again,
+    // on two more copies of its items.
+    fun search(from: Int, want: Int): List<Set<PantryItem>> {
+        var best = emptyList<Set<PantryItem>>()
+        if (want <= 0) return best
+        for (i in from until RAW_RECIPES.size) {
+            val pair = RAW_RECIPES[i]
+            if (pair.any { (left[it] ?: 0) == 0 }) continue
+            pair.forEach { left[it] = left.getValue(it) - 1 }
+            val rest = search(i, want - 1)
+            pair.forEach { left[it] = left.getValue(it) + 1 }
+            if (rest.size + 1 > best.size) best = listOf(pair) + rest
+            if (best.size == want) break
+        }
+        return best
+    }
+    return search(0, most)
+}
+
+/**
  * What a killer likes to eat: the flavor it [loves], the one it is [fine] with, the one it [hates], and its
  * [favorite] dish, a meal that takes exactly four raw ingredients to make. The player is never shown any of it
  * before feeding.

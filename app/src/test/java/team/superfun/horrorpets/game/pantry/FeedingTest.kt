@@ -1,5 +1,7 @@
 package team.superfun.horrorpets.game.pantry
 
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -409,14 +411,23 @@ class FeedingTest {
             assertEquals(6, handful.size)
             assertEquals(2, methods(handful))
             assertEquals(4, foods(handful))
+            assertEquals("seed $seed $handful", 2, cookablePairs(handful).size)
         }
     }
 
     @Test
+    fun theStartingHandfulIsRandom() {
+        val handfuls = (0 until 200).map { topUp(emptyList(), Random(it)).sorted() }.toSet()
+        assertTrue("${handfuls.size}", handfuls.size > 150)
+    }
+
+    @Test
     fun aShelfThatAlreadyHasEnoughIsLeftAlone() {
-        val enough = listOf(STEAK, GRILL, EGG, MILK, SUN, PILE_OF_SLOP)
+        // Two cookable pairs (Grill + Egg, Sun + Tomato) and the minimums.
+        val enough = listOf(STEAK, GRILL, EGG, MILK, SUN, PILE_OF_SLOP, TOMATO)
         for (seed in 0 until 100) assertEquals(enough, topUp(enough, Random(seed)))
-        val exact = listOf(GRILL, EGG, EGG, EGG)
+        // Just the minimums (one way to cook, three foods), and just two pairs: Grill + Egg, Milk + Sugar.
+        val exact = listOf(GRILL, EGG, MILK, SUGAR)
         for (seed in 0 until 100) assertEquals(exact, topUp(exact, Random(seed)))
     }
 
@@ -497,13 +508,25 @@ class FeedingTest {
             assertEquals("the oldest four went, the rest kept in order", full.drop(4), topped.take(Tuning.PANTRY_MAX - 4))
             assertTrue(topped.drop(Tuning.PANTRY_MAX - 4).all { it.raw })
         }
-        // A shelf of botches with a way to cook and two foods on it only needs one place: one botch goes.
-        val nearly = listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3)
+        // A shelf of botches with its two pairs on it (Milk + Sugar, Flour + Egg) but no way to cook only needs one
+        // place: one botch goes, for a way to cook.
+        val nearly = listOf(MILK, SUGAR, FLOUR, EGG) + botches(Tuning.PANTRY_MAX - 4)
         for (seed in 0 until 200) {
             val topped = topUp(nearly, Random(seed))
             assertEquals(Tuning.PANTRY_MAX, topped.size)
-            assertEquals(listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3).drop(1), topped.take(Tuning.PANTRY_MAX - 1))
-            assertTrue(topped.last().raw)
+            assertEquals(listOf(MILK, SUGAR, FLOUR, EGG) + botches(Tuning.PANTRY_MAX - 4).drop(1), topped.take(Tuning.PANTRY_MAX - 1))
+            assertEquals(ItemKind.METHOD, topped.last().kind)
+        }
+        // One pair on it and a spare Milk: the second pair takes the Milk or not, so one or two botches go.
+        val onePair = listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3)
+        for (seed in 0 until 200) {
+            val topped = topUp(onePair, Random(seed))
+            assertEquals(Tuning.PANTRY_MAX, topped.size)
+            val added = topped.size - 1 - topped.indexOfLast { it.kind == ItemKind.BOTCHED }
+            assertTrue("seed $seed $topped", added in 1..2)
+            val kept = listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3).drop(added)
+            assertEquals("the oldest botches went", kept, topped.take(Tuning.PANTRY_MAX - added))
+            assertEquals("seed $seed $topped", 2, cookablePairs(topped).size)
         }
     }
 
@@ -571,16 +594,135 @@ class FeedingTest {
 
     @Test
     fun waysToCookComeUpOften() {
-        // This shelf has its way to cook and its two foods but is one short of four raw, so each top-up is exactly
-        // one open draw. Five ways to cook against 21 foods would be one draw in five; the top-up leans toward them.
-        var methodsDrawn = 0
+        // This shelf has one cookable pair and nothing spare, so each top-up draws exactly one more pair, both of its
+        // items new. 28 of the 41 raw recipes are a way to cook and a food; the top-up leans further toward them.
+        assertEquals(41, RAW_RECIPES.size)
+        assertEquals(28, RAW_RECIPES.count { pair -> pair.any { it.kind == ItemKind.METHOD } })
+        var onTheHeat = 0
         val draws = 4000
         for (seed in 0 until draws) {
-            val extra = topUp(listOf(GRILL, EGG, MILK), Random(seed)).drop(3)
-            assertEquals(1, extra.size)
-            if (extra.single().kind == ItemKind.METHOD) methodsDrawn++
+            val extra = topUp(listOf(GRILL, EGG), Random(seed)).drop(2)
+            assertEquals(2, extra.size)
+            assertTrue("$extra", extra.toSet() in RAW_RECIPES)
+            if (extra.any { it.kind == ItemKind.METHOD }) onTheHeat++
         }
-        val share = methodsDrawn.toDouble() / draws
-        assertTrue("share $share", share in 0.3..0.5)
+        val share = onTheHeat.toDouble() / draws
+        assertTrue("share $share", share in 0.75..0.85)
+    }
+
+    // The cookable pairs.
+
+    /** Whether [shelf] holds two cookable pairs, checked the long way (every two pairs of shelf places), not with [cookablePairs]. */
+    private fun hasTwoPairs(shelf: List<PantryItem>): Boolean {
+        fun good(a: PantryItem, b: PantryItem): Boolean {
+            if (!a.raw || !b.raw) return false
+            val kind = (cook(a, b) as? CookResult.Cooked)?.item?.kind
+            return kind == ItemKind.SNACK || kind == ItemKind.MEAL
+        }
+        val pairs = shelf.indices.flatMap { i -> (i + 1 until shelf.size).map { j -> i to j } }.filter { (i, j) -> good(shelf[i], shelf[j]) }
+        return pairs.any { (a, b) -> pairs.any { (c, d) -> setOf(a, b, c, d).size == 4 } }
+    }
+
+    @Test
+    fun topUpAlwaysLeavesTwoCookablePairs() {
+        assertEquals(2, Tuning.PANTRY_PAIRS)
+        val shelves = partialShelves + listOf(listOf(MILK), listOf(MILK, MILK, MILK), listOf(SARDINES, ORANGE), listOf(EGG, EGG, GRILL))
+        for (seed in 0 until 1000) {
+            for (shelf in shelves) {
+                val topped = topUp(shelf, Random(seed))
+                assertTrue("seed $seed $shelf: $topped", hasTwoPairs(topped))
+                assertEquals(2, cookablePairs(topped).size)
+            }
+        }
+    }
+
+    @Test
+    fun theShelfsOwnPairsAreCountedFirst() {
+        // Raw Steak + Grill is there already: only one more pair is added.
+        for (seed in 0 until 500) {
+            val extra = topUp(listOf(RAW_STEAK, GRILL, PILE_OF_SLOP), Random(seed)).drop(3)
+            assertEquals("seed $seed $extra", 2, extra.size)
+        }
+        // A spare item a drawn recipe takes is used, not added again: the Pumpkin and the Pot pair up with nothing
+        // here, and a pair drawn on one of them only adds its other item.
+        var reused = 0
+        for (seed in 0 until 500) {
+            val extra = topUp(listOf(RAW_STEAK, GRILL, PUMPKIN, POT), Random(seed)).drop(4)
+            assertTrue("seed $seed $extra", extra.size in 1..2)
+            if (extra.size == 1) reused++
+        }
+        assertTrue("$reused", reused > 0)
+    }
+
+    @Test
+    fun aShelfWithNoWayToCookGetsAPairOnTheHeat() {
+        // Nothing raw on it: the first pair drawn is always a way to cook and a food, so no minimum needs more.
+        for (seed in 0 until 500) {
+            val extra = topUp(listOf(STEAK, PILE_OF_SLOP), Random(seed)).drop(2)
+            assertEquals("seed $seed $extra", 4, extra.size)
+            assertEquals(ItemKind.METHOD, extra[0].kind)
+            assertTrue(extra.all { it.raw })
+        }
+    }
+
+    @Test
+    fun aFullShelfOfGoodDishesFallsShort() {
+        // No botches and no room: nothing can go, so nothing comes.
+        val full = dishes(Tuning.PANTRY_MAX - 1) + EGG
+        for (seed in 0 until 100) assertEquals(full, topUp(full, Random(seed)))
+        // One place and a spare Egg, but no way to cook: the place goes to a way to cook, and pairs with the Egg when
+        // it can.
+        val oneLeft = dishes(Tuning.PANTRY_MAX - 2) + EGG
+        for (seed in 0 until 500) {
+            val topped = topUp(oneLeft, Random(seed))
+            assertEquals(Tuning.PANTRY_MAX, topped.size)
+            assertEquals(ItemKind.METHOD, topped.last().kind)
+            assertEquals(1, cookablePairs(topped).size)
+        }
+    }
+
+    /**
+     * One visit as a player might make it, on [shelf]: a few cooks of random pairs (a refused one uses nothing), maybe
+     * one item fed, then some random food from elsewhere stocked on the end as it fits (what fights may pay one day).
+     */
+    private fun visit(shelf: List<PantryItem>, rng: Random): List<PantryItem> {
+        val s = shelf.toMutableList()
+        repeat(rng.nextInt(0, 5)) {
+            if (s.size < 2) return@repeat
+            val i = rng.nextInt(s.size)
+            val j = (i + 1 + rng.nextInt(s.size - 1)) % s.size
+            val result = (cook(s[i], s[j]) as? CookResult.Cooked)?.item ?: return@repeat
+            s.removeAt(max(i, j))
+            s[min(i, j)] = result
+        }
+        if (s.isNotEmpty() && rng.nextBoolean()) s.removeAt(rng.nextInt(s.size))
+        repeat(rng.nextInt(0, 8)) { if (s.size < Tuning.PANTRY_MAX) s += PantryItem.entries.random(rng) }
+        return s
+    }
+
+    @Test
+    fun visitAfterVisitTheShelfKeepsTwoPairsUnderItsCap() {
+        var full = 0
+        for (seed in 0 until 500) {
+            val rng = Random(seed)
+            var shelf = topUp(emptyList(), rng)
+            assertTrue("seed $seed fresh $shelf", hasTwoPairs(shelf))
+            repeat(40) { n ->
+                val before = visit(shelf, rng)
+                shelf = topUp(before, rng)
+                val what = "seed $seed visit $n: $before -> $shelf"
+                assertTrue(what, shelf.size <= Tuning.PANTRY_MAX)
+                if (shelf.size == Tuning.PANTRY_MAX) full++
+                // Only botches ever go.
+                val gone = before.groupingBy { it }.eachCount().mapValues { (item, k) -> k - shelf.count { it == item } }
+                assertTrue(what, gone.filterValues { it > 0 }.keys.all { it.kind == ItemKind.BOTCHED })
+                // When room allows (four places, once every botch could go), the two pairs and the minimums are there.
+                if (Tuning.PANTRY_MAX - before.count { it.kind != ItemKind.BOTCHED } >= 4) {
+                    assertTrue(what, hasTwoPairs(shelf))
+                    assertMeetsTheMinimums(shelf, what)
+                }
+            }
+        }
+        assertTrue("the shelves fill up, so the cap is tested: $full", full > 1000)
     }
 }
