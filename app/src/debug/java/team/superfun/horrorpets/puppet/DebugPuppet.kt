@@ -356,7 +356,7 @@ private class Session(
                 val cooked = (state().screen as? Screen.Pantry)?.cook?.takeIf { it.token != before }
                 val inputs = wanted.joinToString(" + ") { it.id }
                 if (cooked == null) {
-                    Outcome.Refused("$inputs will not cook: a botched dish is a dead end, so they stay on the board")
+                    Outcome.Refused("$inputs will not cook: a botched dish only cooks with another, so they stay on the board")
                 } else {
                     Outcome.Done("$inputs = ${cooked.result.id}, ${state().game.pantry.size} on the shelf")
                 }
