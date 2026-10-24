@@ -34,6 +34,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.model.ItemKind
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.ui.CookShow
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -133,6 +134,12 @@ internal fun convergeFrom(inputs: List<PantryItem>, placed: List<PantryItem?>): 
     return found.filterNotNull()
 }
 
+/**
+ * The sound of the poof that shows [result]: the poof for a dish, and a squelch for a botch (the spec's "a squelch
+ * for slop", as for a refused cook).
+ */
+internal fun poofSound(result: PantryItem): String = if (result.kind == ItemKind.BOTCHED) "pantry_squelch" else "pantry_poof"
+
 /** A refused cook's shake lasts this long. */
 internal const val SHAKE_MS = 420L
 
@@ -222,7 +229,7 @@ internal class CookStage(
  * The cook show for [cook]: its inputs slide in from the board's places ([from], see [convergeFrom]) to its middle,
  * meet in a poof, the dish pops up there with its name, then flies off to its slot on the shelf, where the shelf takes
  * over (its slot is hidden till then). Its own clock runs once, for [CookTimeline.TOTAL_MS], then it calls [onDone]
- * and nothing more draws; `pantry_poof` plays as the poof shows. The dish's picture is asked for from the start, so
+ * and nothing more draws; the poof's sound ([poofSound]) plays as the poof shows. The dish's picture is asked for from the start, so
  * it is decoded by the time it shows.
  */
 @Composable
@@ -233,7 +240,7 @@ internal fun CookShowView(loader: AssetLoader, cook: CookShow, from: List<Int>, 
     LaunchedEffect(Unit) {
         launch {
             snapshotFlow { clock.value >= CookTimeline.POOF_SOUND_MS }.first { it }
-            sounds.sfx("pantry_poof")
+            sounds.sfx(poofSound(cook.result))
         }
         clock.animateTo(CookTimeline.TOTAL_MS.toFloat(), tween(CookTimeline.TOTAL_MS.toInt(), easing = LinearEasing))
         done()

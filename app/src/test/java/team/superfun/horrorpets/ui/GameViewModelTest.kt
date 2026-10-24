@@ -1390,6 +1390,23 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aShelfFullOfSlopMakesRoomAndIsSaved() {
+        // A full shelf of botches can't take its top-up's minimums: its oldest botches go to make room, and the
+        // shelf that changed is saved.
+        val slop = List(Tuning.PANTRY_MAX) { PILE_OF_SLOP }
+        val rig = pantryRig(slop)
+        rig.settle()
+        val saves = rig.store.saves.size
+        rig.openPantry()
+        assertEquals(Tuning.PANTRY_MAX, rig.shelf.size)
+        assertEquals("only the four oldest botches went", List(Tuning.PANTRY_MAX - 4) { PILE_OF_SLOP }, rig.shelf.take(Tuning.PANTRY_MAX - 4))
+        assertTrue(rig.shelf.drop(Tuning.PANTRY_MAX - 4).all { it.raw })
+        rig.settle()
+        assertEquals(saves + 1, rig.store.saves.size)
+        assertEquals(rig.shelf.map { it.id }, rig.store.last.pantry)
+    }
+
+    @Test
     fun doneWaitsForTheMeal() {
         // Done is the reaction's: before the killer has eaten it does nothing, so a FEED tapped twice (the second tap
         // landing as the reaction's OK) can never skip the reaction. Back still leaves at any time.

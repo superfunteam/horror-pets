@@ -425,7 +425,8 @@ class FeedingTest {
         for (seed in 0 until 1000) {
             for (shelf in partialShelves) {
                 val topped = topUp(shelf, Random(seed))
-                // Never removes or reorders: the shelf is the front of the result, and only ingredients are added.
+                // With room on the shelf it never removes or reorders: the shelf is the front of the result, and only
+                // ingredients are added.
                 assertEquals("seed $seed", shelf, topped.take(shelf.size))
                 assertTrue("seed $seed", topped.drop(shelf.size).all { it.raw })
             }
@@ -474,6 +475,74 @@ class FeedingTest {
         for (seed in 0 until 1000) {
             val added = topUp(two, Random(seed)).drop(two.size)
             assertEquals("seed $seed", listOf(ItemKind.METHOD, ItemKind.FOOD), added.map { it.kind })
+        }
+    }
+
+    /** [n] botches, the oldest first: every kind there is, round and round. */
+    private fun botches(n: Int): List<PantryItem> {
+        val all = PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }
+        return List(n) { all[it % all.size] }
+    }
+
+    @Test
+    fun aFullShelfOfBotchesThrowsOutItsOldestToMakeRoom() {
+        // Slop can't be cooked or thrown away, only eaten one a visit: a shelf full of it would get nothing new for
+        // days. It makes room for the top-up's minimums (a way to cook, two foods, four raw: 4 places here) by
+        // throwing out its oldest botches, the ones at the front, and no more than that.
+        val full = botches(Tuning.PANTRY_MAX)
+        for (seed in 0 until 500) {
+            val topped = topUp(full, Random(seed))
+            assertEquals("seed $seed", Tuning.PANTRY_MAX, topped.size)
+            assertMeetsTheMinimums(topped, "seed $seed")
+            assertEquals("the oldest four went, the rest kept in order", full.drop(4), topped.take(Tuning.PANTRY_MAX - 4))
+            assertTrue(topped.drop(Tuning.PANTRY_MAX - 4).all { it.raw })
+        }
+        // A shelf of botches with a way to cook and two foods on it only needs one place: one botch goes.
+        val nearly = listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3)
+        for (seed in 0 until 200) {
+            val topped = topUp(nearly, Random(seed))
+            assertEquals(Tuning.PANTRY_MAX, topped.size)
+            assertEquals(listOf(GRILL, EGG, MILK) + botches(Tuning.PANTRY_MAX - 3).drop(1), topped.take(Tuning.PANTRY_MAX - 1))
+            assertTrue(topped.last().raw)
+        }
+    }
+
+    @Test
+    fun aFullShelfLosesOnlyItsBotches() {
+        // Two botches among good dishes, on a shelf that wants four places: both botches go (and nothing else), and
+        // the two places go to the most important minimums, a way to cook and then a food.
+        val good = dishes(Tuning.PANTRY_MAX - 2)
+        val shelf = good.take(10) + PILE_OF_SLOP + good.drop(10).take(15) + KITCHEN_FIRE + good.drop(25)
+        assertEquals(Tuning.PANTRY_MAX, shelf.size)
+        for (seed in 0 until 500) {
+            val topped = topUp(shelf, Random(seed))
+            assertEquals(Tuning.PANTRY_MAX, topped.size)
+            assertEquals("every good dish kept, in order", good, topped.take(good.size))
+            assertEquals(listOf(ItemKind.METHOD, ItemKind.FOOD), topped.drop(good.size).map { it.kind })
+            assertTrue(topped.none { it.kind == ItemKind.BOTCHED })
+        }
+    }
+
+    @Test
+    fun aFullShelfWithNoBotchesIsUnchanged() {
+        val full = dishes(Tuning.PANTRY_MAX)
+        assertTrue(full.none { it.kind == ItemKind.BOTCHED })
+        for (seed in 0 until 100) assertEquals(full, topUp(full, Random(seed)))
+    }
+
+    @Test
+    fun topUpNeverLeavesTheShelfPastTheCap() {
+        val rng = Random(23)
+        val kinds = PantryItem.entries
+        repeat(2_000) {
+            val size = rng.nextInt(0, Tuning.PANTRY_MAX + 1)
+            val shelf = List(size) { kinds.random(rng) }
+            val topped = topUp(shelf, Random(it))
+            assertTrue("$size: ${topped.size}", topped.size <= Tuning.PANTRY_MAX)
+            // Only botches ever go, and only from a shelf too full for its minimums.
+            val gone = shelf.groupingBy { it }.eachCount().mapValues { (item, n) -> n - topped.count { it == item } }
+            assertTrue(gone.filterValues { it > 0 }.keys.all { it.kind == ItemKind.BOTCHED })
+            if (Tuning.PANTRY_MAX - size >= 4) assertEquals(shelf, topped.take(shelf.size))
         }
     }
 

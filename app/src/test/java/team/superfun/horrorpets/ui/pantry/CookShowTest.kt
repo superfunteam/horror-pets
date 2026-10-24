@@ -7,9 +7,13 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.model.ItemKind
+import team.superfun.horrorpets.model.PantryItem
+import team.superfun.horrorpets.model.PantryItem.CAMP_CRYSTAL_FISH_FRY
 import team.superfun.horrorpets.model.PantryItem.EGG
 import team.superfun.horrorpets.model.PantryItem.GRILL
 import team.superfun.horrorpets.model.PantryItem.RAW_STEAK
+import team.superfun.horrorpets.model.PantryItem.STEAK
 
 /** The cook show's timeline: the inputs meet, a poof, the dish pops up, then flies to the shelf; and a refusal's shake. */
 class CookShowTest {
@@ -58,6 +62,14 @@ class CookShowTest {
         // The screen plays the poof's sound as the poof shows (the view model only plays the way to cook's).
         assertEquals(0f, poofAt(CookTimeline.POOF_SOUND_MS)!!, 0.001f)
         assertNull(poofAt(CookTimeline.POOF_SOUND_MS - 1))
+    }
+
+    @Test
+    fun aBotchedCookSquelchesWhereAGoodOnePoofs() {
+        // The spec's sounds: a squelch for slop (and a refused cook, the view model's), the poof for a dish.
+        assertEquals("pantry_poof", poofSound(STEAK))
+        assertEquals("pantry_poof", poofSound(CAMP_CRYSTAL_FISH_FRY))
+        for (botch in PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }) assertEquals("$botch", "pantry_squelch", poofSound(botch))
     }
 
     @Test

@@ -167,23 +167,31 @@ private val FOODS: List<PantryItem> = PantryItem.entries.filter { it.kind == Ite
  * Brings [pantry] up to what every visit to the kitchen starts with, by adding random ingredients on the end: at
  * least [Tuning.PANTRY_MIN_RAW] raw items, at least [Tuning.PANTRY_MIN_METHODS] ways to cook and at least
  * [Tuning.PANTRY_MIN_FOODS] foods, so there is always something to cook. An empty pantry gets a starting handful
- * instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and [Tuning.PANTRY_START_FOODS] foods). Never removes
- * or reorders what is there, and a shelf that already has enough comes back as it was. The open draws lean toward a
- * way to cook ([Tuning.PANTRY_METHOD_ODDS]), since a food alone can only be fed raw.
+ * instead (shuffled: [Tuning.PANTRY_START_METHODS] ways to cook and [Tuning.PANTRY_START_FOODS] foods). A shelf that
+ * already has enough comes back as it was. The open draws lean toward a way to cook ([Tuning.PANTRY_METHOD_ODDS]),
+ * since a food alone can only be fed raw.
  *
  * The shelf never grows past [Tuning.PANTRY_MAX] (the save keeps only that many, so anything more would vanish on the
- * next load): a full shelf gets nothing, and one with only a few places left fills them in order of importance, a way
- * to cook first, then foods, then open draws.
+ * next load). A shelf without room for what the minimums need first throws out its oldest botches (the ones nearest
+ * the front), as many as it takes and no more: a botch can't be cooked, only eaten, so a shelf full of slop would
+ * otherwise get nothing new for days. Nothing else is ever removed or reordered: a shelf full of good dishes gets
+ * nothing, and one with only a few places left fills them in order of importance, a way to cook first, then foods,
+ * then open draws.
  */
 fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
     val shelf = pantry.toMutableList()
-    if (shelf.size >= Tuning.PANTRY_MAX) return shelf
     if (shelf.isEmpty()) {
         repeat(Tuning.PANTRY_START_METHODS) { shelf += WAYS_TO_COOK.random(rng) }
         repeat(Tuning.PANTRY_START_FOODS) { shelf += FOODS.random(rng) }
         shelf.shuffle(rng)
         return shelf
     }
+    // Room for the minimums, made by throwing out the oldest botches, and only those.
+    repeat((topUpNeed(shelf) - (Tuning.PANTRY_MAX - shelf.size)).coerceAtLeast(0)) {
+        val oldest = shelf.indexOfFirst { it.kind == ItemKind.BOTCHED }
+        if (oldest >= 0) shelf.removeAt(oldest)
+    }
+    if (shelf.size >= Tuning.PANTRY_MAX) return shelf
     while (shelf.size < Tuning.PANTRY_MAX && shelf.count { it.kind == ItemKind.METHOD } < Tuning.PANTRY_MIN_METHODS) {
         shelf += WAYS_TO_COOK.random(rng)
     }
@@ -194,4 +202,12 @@ fun topUp(pantry: List<PantryItem>, rng: Random): List<PantryItem> {
         shelf += if (rng.nextDouble() < Tuning.PANTRY_METHOD_ODDS) WAYS_TO_COOK.random(rng) else FOODS.random(rng)
     }
     return shelf
+}
+
+/** How many ingredients [shelf] is short of the top-up's minimums: the ways to cook, the foods, then the raw. */
+private fun topUpNeed(shelf: List<PantryItem>): Int {
+    val methods = (Tuning.PANTRY_MIN_METHODS - shelf.count { it.kind == ItemKind.METHOD }).coerceAtLeast(0)
+    val foods = (Tuning.PANTRY_MIN_FOODS - shelf.count { it.kind == ItemKind.FOOD }).coerceAtLeast(0)
+    val raw = (Tuning.PANTRY_MIN_RAW - shelf.count { it.raw } - methods - foods).coerceAtLeast(0)
+    return methods + foods + raw
 }

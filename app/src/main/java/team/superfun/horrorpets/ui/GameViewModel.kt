@@ -348,7 +348,8 @@ class GameViewModel(
 
     /**
      * FEED on Home: opens the pantry for the selected pet, even one too full to eat (it can still cook). The shelf is
-     * topped up first (see [topUp]) and saved when that changed it; nothing else is paid or saved. Opening is not an
+     * topped up first (see [topUp]: a shelf too full for it throws out its oldest botches) and saved when that changed
+     * it; nothing else is paid or saved. Opening is not an
      * action: no animation plays and the game is not [UiState.busy].
      */
     private fun openPantry(s: UiState) {

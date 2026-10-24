@@ -246,8 +246,15 @@ private fun PantryVisit(
             latestOnDone(session)
         }
     }
-    // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now).
-    val carryOn = { if (feedStage.carryOn && !away.paused) latestOnDone(session) }
+    // OK or a tap once the reaction is up (read when it comes, so the tap's handler set up once still sees it now): a
+    // select's tick, as training's results card has, and Home. Once only: a second press in the same frame does nothing.
+    val carryOn = {
+        if (feedStage.carryOn && !away.paused) {
+            feedStage.carryOn = false
+            sounds.sfx("ui_select")
+            latestOnDone(session)
+        }
+    }
 
     val held = kitchenInputHeld(
         entered = focusEntry != null,
