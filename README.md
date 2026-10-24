@@ -35,6 +35,8 @@ nothing else.
   stable mate, so they only come up once you have a second killer. A new killer trains at both solo games (Slasher
   Says and Organ Drop) before its first fight, or FIGHT says "Train more first!".
 - **Fake death:** leave a pet alone for a week and you get a tombstone and "R.I.P.". Then: "GOTCHA. NEVER DIES."
+- **VS card:** every fight opens on a Street Fighter Alpha-style VS card: anime speed streaks in each killer's
+  colors, each name in its own film's lettering, and the VS logo of the killer you're facing.
 - **VS fights:** turn-based, Street-Fighter-style bouts picked from an RPG command window, with crits, blocks and specials, called by a shouting arena announcer who reacts to the big moments. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all of its health back, in green (+34). Win XP, level up.
 - **Made for TVs:** 16:9 and 4:3, remote-only controls, Android 5.1 and up (Google TV, Onn, Fire TV, Android TV).
 - **Plays on phones too:** the same APK, in landscape, with touch. Tap the buttons and the stable badge, swipe
@@ -105,7 +107,7 @@ adb -s emulator-5554 logcat -s Puppet Updates    # the update check, download an
 
 | Command | What it does |
 | --- | --- |
-| `unlock_all` | Every killer joins the stable. |
+| `unlock_all` | The seven killers join the stable. |
 | `pet <killer>` | That killer (`jason`, `freddy`, `pinhead`, `ghostface`, `chucky`, `michael`, `leatherface`) becomes the active pet, joining the stable if needed, and Home comes up. |
 | `level <n>` | The active pet's level (1 to 99); Home then offers its new attacks on the learn screens. `--ei debug_level <n>` on a cold start still does the same. |
 | `learn_all` | The active pet learns what its level unlocks and equips the best attack in each slot, with no learn screens. |
