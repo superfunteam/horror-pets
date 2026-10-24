@@ -27,8 +27,10 @@ nothing else.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **The pantry:** FEED opens a horror kitchen where you cook two things at a time into snacks and meals (raw steak on
   the grill, a severed foot left in the sun, worms in the pot), using five ways to cook that get used up like any
-  ingredient. Some dishes are gross on purpose; a wrong pair makes slop, and nothing cooks with slop. Feed one to your
-  killer and it reacts to its taste: better food pays more, and every killer has a secret favorite to find.
+  ingredient. Some dishes are gross on purpose; a wrong pair makes slop, and slop only cooks with more slop (two
+  piles squash into one, to make room on the shelf). Every visit stocks the shelf with at least two pairs that cook
+  into something good, and every item wears its name. Feed one to your killer and it reacts to its taste: better food
+  pays more, and every killer has a secret favorite to find.
 - **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
   your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
   killer trains (up to triple the strength and XP), and it keeps its best in each. Quick Draw and Hide and Eek! need a
@@ -120,7 +122,7 @@ adb -s emulator-5554 logcat -s Puppet Updates    # the update check, download an
 | `train <game>` | Training on that game (`slash_says`, `quick_draw`, `hide_and_seek`, `organ_drop`) instead of the pick. Quick Draw and Hide and Eek! need another killer in the stable (`unlock_all`), else the command is refused. |
 | `score <n>` | Ends the training game on screen now with that score (0 or more): the pet is paid for it and the results card comes up, as if the game had ended with it. |
 | `stock <id> [<id>…]` | Adds those items to the end of the pantry's shelf, on any screen once the save has loaded (`grill`, `raw_steak`, `steak_dinner`: an item's id is its name in lower case with underscores). Stops when the shelf is full (40 items); an id the game does not know is refused. |
-| `cook <id> <id>` | In the pantry, cooks those two items from the shelf, which must hold both (two of the same id take two places). Like a player's COOK: both are used up, the result takes the earlier place, and it is saved. A botched dish on the board is refused and stays on the board. |
+| `cook <id> <id>` | In the pantry, cooks those two items from the shelf, which must hold both (two of the same id take two places). Like a player's COOK: both are used up, the result takes the earlier place, and it is saved. Two botched dishes make one Pile of Slop; a botched dish with anything else is refused and stays on the board. |
 | `serve <id>` | In the pantry, feeds that item from the shelf to the active pet, like a player's FEED; a pet too full to eat refuses it. The meal is tossed, munched and reacted to, then the kitchen carries on Home by itself 4 s into the reaction (or on OK). |
 | `home` | Back to Home from anywhere but a fight (a learn screen is put off until the next launch; a training game or the pantry is left, or its card dismissed). |
 | `wait <seconds>`, `wait home` | Holds the rest of the line: for that long, or until Home is up and idle (a fight and its cards over). |

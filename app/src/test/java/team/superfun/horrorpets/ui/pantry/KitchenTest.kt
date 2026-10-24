@@ -265,6 +265,9 @@ class KitchenTest {
             assertTrue(l.boardWidth <= 290f)
             assertTrue("$width: slots at least 84 dp", l.columnHalf * 2f / l.slots >= 84f)
             assertTrue(l.slots >= 4)
+            // The shelf's labels (two lines under every item) still leave the board all its width at 540 dp.
+            assertEquals("$width: the board at full size", 290f, l.boardWidth, 0.01f)
+            assertTrue("$width: the shelf holds its items and their labels", ShelfHeight.value >= ShelfStandY.value + 50f)
         }
         // 16:9 centres the column; 4:3 has no room either side of the centre, so it moves right past the killer.
         assertEquals(480f, KitchenLayout.of(960f, 540f, 48f, 27f, killerHalf).columnCenter, 0.01f)

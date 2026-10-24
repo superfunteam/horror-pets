@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.pantry.tasteOf
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 
@@ -142,5 +143,71 @@ class ShelfFocusTest {
         // A cleared board (a cook) clears both places; a board seen for the first time fills them in order.
         assertEquals(listOf(null, null), boardPlaces(listOf(7, 1), emptyList()))
         assertEquals(listOf(3, 0), boardPlaces(listOf(null, null), listOf(3, 0)))
+    }
+
+    // The shelf's labels.
+
+    @Test
+    fun aLabelMayBreakBetweenWordsAndAfterHyphens() {
+        assertEquals("EGG", labelText("Egg"))
+        assertEquals(emptySet<Int>(), labelBreaks(labelText("Egg")))
+        val strawberry = labelText("Not-Strawberry Milk")
+        assertEquals("NOT-​STRAWBERRY MILK", strawberry)
+        // After "NOT-" and its zero-width space (5), and after "STRAWBERRY " (16).
+        assertEquals(setOf(5, 16), labelBreaks(strawberry))
+        assertEquals(setOf(5, 13, 18), labelBreaks(labelText("Camp Crystal Fish Fry")))
+        // A label reads as its name in capitals: the breaks show nothing.
+        for (item in PantryItem.entries) assertEquals(item.title.uppercase(), labelText(item.title).replace("​", ""))
+    }
+
+    /**
+     * A pretend typeface and line breaker for [title] in a label [width] wide: every letter (and space) half its size
+     * wide, lines filled greedily at the label's breaks, and a run too wide for a line cut wherever it overflows (as a
+     * real line breaker does), so that is what [labelFontSize] must steer clear of.
+     */
+    private fun fit(title: String, width: Float): Float {
+        val label = labelText(title)
+        fun lineEnds(sp: Float): List<Int> {
+            val per = sp * 0.5f
+            val ends = mutableListOf<Int>()
+            var start = 0
+            while (start < label.length) {
+                val room = (width / per).toInt().coerceAtLeast(1) // letters a line holds
+                val fits = labelBreaks(label).filter { it > start && it - start <= room + 1 } // a trailing space is free
+                val end = when {
+                    label.length - start <= room -> label.length
+                    fits.isNotEmpty() -> fits.max()
+                    else -> start + room // cut mid-word
+                }
+                ends += end
+                start = end
+            }
+            return ends
+        }
+        return labelFontSize(label, maxSp = 13f, minSp = 10f, stepSp = 0.5f, lineEnds = ::lineEnds)
+    }
+
+    @Test
+    fun aLabelShrinksOnlyAsFarAsItMust() {
+        // A short name, and one that wraps onto two lines between its words: the biggest size (6.5 a letter).
+        assertEquals(13f, fit("Egg", 70f), 0f)
+        assertEquals(13f, fit("Pile of Slop", 70f), 0f)
+        // A word too wide for a line at 13 (12 letters, 78 > 70) would be cut mid-word: it shrinks until the word fits
+        // a line whole (11.5: 69).
+        assertEquals(11.5f, fit("Cocoa & Marshmallows", 70f), 0f)
+        // After a hyphen is a fine place to break ("NOT-" / "STRAWBERRY", 12 letters a line at 78): the biggest size.
+        // A word as long with no hyphen would be cut mid-word there, so it shrinks to fit a line whole (14 letters at 11).
+        assertEquals(13f, fit("Not-Strawberry", 78f), 0f)
+        assertEquals(11f, fit("Notxstrawberry", 78f), 0f)
+        // Three lines at the biggest size shrink it to two: 8 letters a line at 13 is "AAAA" / "BBBB" / "CCCC", 9 at
+        // 12 is "AAAA BBBB" / "CCCC".
+        assertEquals(12f, fit("Aaaa Bbbb Cccc", 55f), 0f)
+        // Nothing fits at all: the smallest, and the label ends in an ellipsis.
+        assertEquals(10f, fit("Supercalifragilistic", 40f), 0f)
+        // Never bigger than asked, never smaller, and wherever it fits, never a word split.
+        for (item in PantryItem.entries) for (width in listOf(40f, 70f, 90f)) {
+            val sp = fit(item.title, width)
+            assertTrue("${item.title} $width: $sp", sp in 10f..13f)
+        }
     }
 }

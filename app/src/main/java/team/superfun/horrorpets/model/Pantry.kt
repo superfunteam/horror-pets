@@ -11,8 +11,8 @@ import team.superfun.horrorpets.model.ItemKind.SNACK
 
 /**
  * What a pantry item is. A [METHOD] (a way to cook) and a [FOOD] are the raw items: ingredients that start on the
- * shelf. A [SNACK] and a [MEAL] are cooked dishes, and a [BOTCHED] dish is a failed one (a dead end: nothing cooks
- * with it). The order is the cookbook's.
+ * shelf. A [SNACK] and a [MEAL] are cooked dishes, and a [BOTCHED] dish is a failed one (a dead end: it cooks with
+ * nothing but another botch, and two botches only make more slop). The order is the cookbook's.
  */
 enum class ItemKind { METHOD, FOOD, SNACK, MEAL, BOTCHED }
 

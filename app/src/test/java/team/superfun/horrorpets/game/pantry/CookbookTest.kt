@@ -202,24 +202,112 @@ class CookbookTest {
     }
 
     @Test
-    fun everyPairCooksSomethingExceptWhenABotchIsInvolved() {
+    fun everyPairCooksSomethingExceptABotchWithAnythingElse() {
         val items = PantryItem.entries
         for (a in items) for (b in items) {
             val result = cook(a, b)
             assertEquals("$a + $b both ways", result, cook(b, a))
-            if (a.kind == ItemKind.BOTCHED || b.kind == ItemKind.BOTCHED) continue
+            val botches = listOf(a, b).count { it.kind == ItemKind.BOTCHED }
+            if (botches == 1) continue
             assertTrue("$a + $b", result is CookResult.Cooked)
             assertTrue("$a + $b", !(result as CookResult.Cooked).item.raw) // a dish or a botch, never an ingredient
         }
     }
 
     @Test
-    fun nothingCooksWithABotch() {
+    fun aBotchCooksWithNothingButAnotherBotch() {
         val botches = PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }
         assertEquals(12, botches.size)
-        for (botch in botches) for (other in PantryItem.entries) {
+        for (botch in botches) for (other in PantryItem.entries.filter { it.kind != ItemKind.BOTCHED }) {
             assertEquals("$botch + $other", CookResult.Refused, cook(botch, other))
             assertEquals("$other + $botch", CookResult.Refused, cook(other, botch))
+        }
+    }
+
+    @Test
+    fun twoBotchesMakeOnePileOfSlop() {
+        // The player's ask: slop squashes down, two shelf places into one. Any two botches, the same one twice
+        // included, named ones and all, make the plain Pile of Slop and nothing better.
+        val botches = PantryItem.entries.filter { it.kind == ItemKind.BOTCHED }
+        for (a in botches) for (b in botches) assertCooks(PILE_OF_SLOP, a, b)
+        assertCooks(PILE_OF_SLOP, PILE_OF_SLOP, PILE_OF_SLOP)
+        assertCooks(PILE_OF_SLOP, KITCHEN_FIRE, BURNT_TO_A_CRISP)
+        assertCooks(PILE_OF_SLOP, CURSED_CAKE, FISHMALLOW)
+        // No recipe names a botch as an input, so the botch rule never hides one.
+        assertTrue(RECIPES.keys.none { inputs -> inputs.any { it.kind == ItemKind.BOTCHED } })
+    }
+
+    // The cookable pairs.
+
+    @Test
+    fun rawRecipesAreTheSnacksMadeFromTwoIngredients() {
+        // Every snack but none of the meals, and no named botch (Sardines + Orange is two raw items too).
+        val expected = snacks.filter { it.a.raw && it.b.raw }.map { setOf(it.a, it.b) }
+        assertEquals(41, expected.size)
+        assertEquals(expected, RAW_RECIPES)
+        for (pair in RAW_RECIPES) {
+            assertEquals(2, pair.size)
+            val made = (cook(pair.first(), pair.last()) as CookResult.Cooked).item
+            assertEquals("$pair", ItemKind.SNACK, made.kind)
+        }
+        assertTrue(setOf(SARDINES, ORANGE) !in RAW_RECIPES)
+        // Every ingredient is in at least one, so a top-up can draw any of them.
+        assertEquals(PantryItem.entries.filter { it.raw }.toSet(), RAW_RECIPES.flatten().toSet())
+        // Two ways to cook never cook into anything good.
+        assertTrue(RAW_RECIPES.all { pair -> pair.count { it.kind == ItemKind.METHOD } <= 1 })
+    }
+
+    @Test
+    fun cookablePairsFindsUpToTwoThatShareNothing() {
+        assertEquals(emptyList<Set<PantryItem>>(), cookablePairs(emptyList()))
+        assertEquals(emptyList<Set<PantryItem>>(), cookablePairs(listOf(PILE_OF_SLOP, STEAK, BAKED_POTATO))) // dishes don't count
+        // Raw items that only make botches (named ones, slop, a fire) make no pair.
+        assertEquals(emptyList<Set<PantryItem>>(), cookablePairs(listOf(SARDINES, MILK, MARSHMALLOW, CHOCOLATE, SUN, CAULDRON)))
+        assertEquals(listOf(setOf(RAW_STEAK, GRILL)), cookablePairs(listOf(GRILL, PILE_OF_SLOP, RAW_STEAK)))
+        // One Grill can't make two pairs; a second one can, and the same recipe twice counts twice.
+        assertEquals(1, cookablePairs(listOf(GRILL, EGG, RAW_STEAK)).size)
+        assertEquals(2, cookablePairs(listOf(GRILL, EGG, RAW_STEAK, GRILL)).size)
+        assertEquals(listOf(setOf(EGG, GRILL), setOf(EGG, GRILL)), cookablePairs(listOf(EGG, GRILL, EGG, GRILL)))
+        assertEquals(1, cookablePairs(listOf(EGG, GRILL, EGG)).size)
+        // It finds two whenever two can be had, even where the first pair in the cookbook's order spoils it: Egg +
+        // Grill comes before Flour + Egg, but only Cheese + Grill with Flour + Egg makes two.
+        val tricky = listOf(EGG, GRILL, FLOUR, CHEESE)
+        assertEquals(setOf(setOf(CHEESE, GRILL), setOf(FLOUR, EGG)), cookablePairs(tricky).toSet())
+        // At most [most], whatever the shelf holds.
+        val lots = listOf(GRILL, RAW_STEAK, POT, TOMATO, SUN, ORANGE, MILK, SUGAR)
+        assertEquals(2, cookablePairs(lots).size)
+        assertEquals(4, cookablePairs(lots, most = 4).size)
+        assertEquals(1, cookablePairs(lots, most = 1).size)
+        assertEquals(0, cookablePairs(lots, most = 0).size)
+    }
+
+    @Test
+    fun cookablePairsAreReallyOnTheShelfAndCookReally() {
+        val rng = kotlin.random.Random(7)
+        repeat(3_000) {
+            val shelf = List(rng.nextInt(0, 12)) { PantryItem.entries.random(rng) }
+            val pairs = cookablePairs(shelf)
+            assertTrue(pairs.size <= 2)
+            // No shelf item in two pairs.
+            val used = pairs.flatten().groupingBy { it }.eachCount()
+            for ((item, n) in used) assertTrue("$shelf $pairs", shelf.count { it == item } >= n)
+            for (pair in pairs) {
+                val made = (cook(pair.first(), pair.last()) as CookResult.Cooked).item
+                assertTrue("$pair", made.kind == ItemKind.SNACK || made.kind == ItemKind.MEAL)
+            }
+            // And as many as there are, up to two: checked the long way, over every two pairs of shelf places.
+            fun good(i: Int, j: Int): Boolean {
+                if (!shelf[i].raw || !shelf[j].raw) return false
+                val kind = (cook(shelf[i], shelf[j]) as CookResult.Cooked).item.kind
+                return kind == ItemKind.SNACK || kind == ItemKind.MEAL
+            }
+            val all = shelf.indices.flatMap { i -> (i + 1 until shelf.size).map { j -> i to j } }.filter { (i, j) -> good(i, j) }
+            val most = when {
+                all.any { (a, b) -> all.any { (c, d) -> setOf(a, b, c, d).size == 4 } } -> 2
+                all.isNotEmpty() -> 1
+                else -> 0
+            }
+            assertEquals("$shelf", most, pairs.size)
         }
     }
 

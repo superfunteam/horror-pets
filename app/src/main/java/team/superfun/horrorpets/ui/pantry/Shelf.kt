@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -41,17 +42,23 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
@@ -64,14 +71,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.model.PantryItem
+import team.superfun.horrorpets.ui.common.MAX_FONT_SCALE
 import team.superfun.horrorpets.ui.common.displayStyle
-import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.common.spriteFilter
 import team.superfun.horrorpets.ui.switcher.carouselDragRow
 import team.superfun.horrorpets.ui.switcher.carouselFlingTarget
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.TextHi
 
 /** A shelf item stands in a box this big (its picture fitted inside, standing on the plank). */
 internal val ShelfItemSize = 64.dp
@@ -94,11 +102,25 @@ private val PlankTopRise = 6.dp
 private val PlankTopDepth = 5.dp
 private val PlankFront = 16.dp
 
-/** The focused item's name tag hangs from the plank's front edge, this far below where the items stand. */
-private val TagDrop = 8.dp
+/** Every item's name label hangs from the plank's front edge, its top this far below where the items stand. */
+private val LabelTop = PlankTopDepth + PlankFront - 2.dp
 
-/** The shelf's whole box: the items, the plank and the name tag under it. */
-internal val ShelfHeight = ShelfStandY + TagDrop + 24.dp
+/** A label's name is this big at most, and shrinks to fit (see [labelFontSize]) as small as [LABEL_MIN_SP]. */
+private const val LABEL_MAX_SP = 13f
+private const val LABEL_MIN_SP = 10f
+private const val LABEL_STEP_SP = 0.5f
+
+/** The room between two labels side by side, and round a name inside its label. */
+private val LabelGap = 6.dp
+private val LabelPadX = 4.dp
+private val LabelPadY = 3.dp
+private val LabelCut = 5.dp
+
+/** A label at its tallest: two lines at the biggest size and the biggest font scale the game allows. */
+private val LabelMaxHeight = (LABEL_LINES * LABEL_MAX_SP * MAX_FONT_SCALE).dp + LabelPadY * 2
+
+/** The shelf's whole box: the items, the plank and the labels under it. */
+internal val ShelfHeight = ShelfStandY + LabelTop + LabelMaxHeight + 2.dp
 
 /** How far an item on the board fades in its shelf slot (see [ItemArt]'s dim). */
 private const val ON_BOARD_DIM = 1f
@@ -106,10 +128,10 @@ private const val ON_BOARD_DIM = 1f
 /**
  * The pantry's shelf: a wooden plank along the bottom of the kitchen with [shelf]'s items standing on it, [window]'s
  * run of them in its slots (a long shelf slides left and right under them as the window moves, and a finger can drag
- * it). Items on the [board] stand dimmed in their place; the [heart] dish wears its heart. [focus] is the remote's
- * focus (in a gold cursor, a little bigger, with its name on a tag under the plank), or null when the remote is not on
- * the shelf (it is on the buttons, or a finger is in charge). The [hidden] slot stands empty (a cooked dish is still
- * on its way to it).
+ * it). Every item has its name on a small label hanging from the plank under it. Items on the [board] stand dimmed in
+ * their place, labels too; the [heart] dish wears its heart. [focus] is the remote's focus (in a gold cursor, a little
+ * bigger, its label lit gold), or null when the remote is not on the shelf (it is on the buttons, or a finger is in
+ * charge). The [hidden] slot stands empty, label and all (a cooked dish is still on its way to it).
  *
  * A tap on an item calls [onTap] with its index on [shelf] as it is drawn now; a drag that ends calls [onScrolled]
  * with the window's first slot as it settles. Neither happens while [enabled] says no (read as a finger comes down):
@@ -212,7 +234,7 @@ internal fun Shelf(
 }
 
 /**
- * [Shelf]'s plank, items and name tag, the shelf slid to [scroll] (in slots, a short shelf's lead taken off) and
+ * [Shelf]'s plank, items and labels, the shelf slid to [scroll] (in slots, a short shelf's lead taken off) and
  * [scrolledTo] the whole slot of it; [gestures] takes the items' touches.
  */
 @Composable
@@ -227,9 +249,11 @@ private fun ShelfBody(
     scroll: () -> Float,
     scrolledTo: () -> Int,
     gestures: Modifier,
-) {
+) = BoxWithConstraints(Modifier.fillMaxSize()) {
     val density = LocalDensity.current
     val standPx = with(density) { ShelfStandY.toPx() }
+    val labelTopPx = with(density) { (ShelfStandY + LabelTop).toPx() }
+    val labelSize = rememberLabelSizes(labelTextWidth(constraints.maxWidth, window.slots, density))
     // Only the whole slot the shelf has slid to recomposes; the slide itself is read while placing.
     val near by remember { derivedStateOf { scrolledTo() } }
     val from = max(0, near - 2)
@@ -249,11 +273,12 @@ private fun ShelfBody(
                     }
                 },
         )
-        // The items, clipped at the shelf's ends (and nowhere else: the focused one grows up past the box).
+        // The items and their labels, clipped at the shelf's ends (and nowhere else: the focused one grows up past the
+        // box, and its label's glow spills under it).
         Box(
             Modifier
                 .fillMaxSize()
-                .drawWithContent { clipRect(0f, -size.height, size.width, size.height) { this@drawWithContent.drawContent() } }
+                .drawWithContent { clipRect(0f, -size.height, size.width, size.height * 2f) { this@drawWithContent.drawContent() } }
                 .then(gestures),
         ) {
             for (index in from..to) {
@@ -270,22 +295,19 @@ private fun ShelfBody(
                         x = { pitch -> (index - scroll() + 0.5f) * pitch },
                         slots = window.slots,
                         standPx = standPx,
+                        labelTopPx = labelTopPx,
+                        labelSize = labelSize(item.title),
                     )
                 }
             }
         }
-        if (focus != null && focus in shelf.indices && focus != hidden) {
-            NameTag(
-                title = shelf[focus].title,
-                centerX = { pitch -> (focus - scroll() + 0.5f) * pitch },
-                slots = window.slots,
-                top = ShelfStandY + TagDrop,
-            )
-        }
     }
 }
 
-/** One item on the shelf, standing at its slot's centre ([x] of the slot pitch), in its cursor when [focused]. */
+/**
+ * One item on the shelf, standing at its slot's centre ([x] of the slot pitch), in its cursor when [focused], and its
+ * name under it on a label (its top [labelTopPx] down the shelf, its name [labelSize]).
+ */
 @Composable
 private fun ShelfSlot(
     loader: AssetLoader,
@@ -297,6 +319,8 @@ private fun ShelfSlot(
     x: (pitch: Float) -> Float,
     slots: Int,
     standPx: Float,
+    labelTopPx: Float,
+    labelSize: TextUnit,
 ) {
     val lit by animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "shelfLit")
     val dim by animateFloatAsState(if (onBoard) ON_BOARD_DIM else 0f, tween(200), label = "shelfDim")
@@ -331,6 +355,7 @@ private fun ShelfSlot(
             dim = { dim },
         )
     }
+    if (!hidden) ShelfLabel(item.title, labelSize, lit = { lit }, dim = { dim }, x = x, slots = slots, topPx = labelTopPx)
 }
 
 /** A lit cursor's gold edge, paler than Amber, as the game's frames light up. */
@@ -362,27 +387,101 @@ private fun chamfer(size: Size, inset: Float, cut: Float): Path = Path().apply {
     close()
 }
 
-/** The focused item's name, on a small gold-edged tag hanging under it, kept within the shelf's ends. */
+/**
+ * A label's name, [size] big: centred, on lines as tall as the type, two lines balanced where the system can ("FINGER
+ * DOG / IN A BUN", not "FINGER DOG IN / A BUN").
+ */
+private fun labelStyle(size: TextUnit): TextStyle =
+    displayStyle(size, FontWeight.Bold, tracking = 0.04f, lineHeight = size).copy(textAlign = TextAlign.Center, lineBreak = LineBreak.Heading)
+
+/** How wide a label is on a shelf [shelfWidth] px wide in [slots] slots: its slot, less the gap to the next one. */
+private fun Density.labelWidth(shelfWidth: Int, slots: Int): Int =
+    (shelfWidth.toFloat() / max(1, slots) - LabelGap.toPx()).roundToInt().coerceAtLeast(1)
+
+/** How wide the name inside such a label may be (px). */
+private fun labelTextWidth(shelfWidth: Int, slots: Int, density: Density): Int =
+    with(density) { (labelWidth(shelfWidth, slots) - LabelPadX.roundToPx() * 2).coerceAtLeast(1) }
+
+/**
+ * The size each item's name is set at on a label whose name may be [width] px wide (see [labelFontSize]), worked out
+ * once per name for as long as the width holds.
+ */
 @Composable
-private fun NameTag(title: String, centerX: (pitch: Float) -> Float, slots: Int, top: Dp) {
-    val topPx = with(LocalDensity.current) { top.roundToPx() }
+private fun rememberLabelSizes(width: Int): (title: String) -> TextUnit {
+    val measurer = rememberTextMeasurer()
+    return remember(measurer, width) {
+        val sizes = HashMap<String, TextUnit>()
+        val pick: (String) -> TextUnit = { title ->
+            sizes.getOrPut(title) {
+                val label = labelText(title)
+                labelFontSize(label, LABEL_MAX_SP, LABEL_MIN_SP, LABEL_STEP_SP) { sp ->
+                    val laid = measurer.measure(label, labelStyle(sp.sp), constraints = Constraints(maxWidth = width))
+                    List(laid.lineCount) { laid.getLineEnd(it) }
+                }.sp
+            }
+        }
+        pick
+    }
+}
+
+/**
+ * [title] on its label under its item: centred on the slot ([x] of the slot pitch, among [slots]), its top [topPx]
+ * down the shelf, never wider than its slot (less the gap to the next), the name at [size] on at most two lines. A
+ * dark little plate behind it, which lights gold with a glow as the item takes the remote's focus ([lit], 0..1) and
+ * fades with the item when it is on the board ([dim]); both are read while drawing.
+ */
+@Composable
+private fun ShelfLabel(
+    title: String,
+    size: TextUnit,
+    lit: () -> Float,
+    dim: () -> Float,
+    x: (pitch: Float) -> Float,
+    slots: Int,
+    topPx: Float,
+) {
     BasicText(
-        title.uppercase(),
-        style = displayStyle(15.sp, FontWeight.Bold, tracking = 0.05f),
-        maxLines = 1,
+        labelText(title),
+        style = labelStyle(size),
+        maxLines = LABEL_LINES,
+        overflow = TextOverflow.Ellipsis,
+        color = { labelInk(lit(), dim()) },
         modifier = Modifier
             .layout { measurable, constraints ->
-                val placeable = measurable.measure(Constraints(maxWidth = constraints.maxWidth))
                 val pitch = constraints.maxWidth.toFloat() / slots
+                val placeable = measurable.measure(Constraints(maxWidth = labelWidth(constraints.maxWidth, slots)))
                 layout(constraints.maxWidth, constraints.maxHeight) {
-                    val left = (centerX(pitch) - placeable.width / 2f)
-                        .coerceIn(0f, max(0f, constraints.maxWidth - placeable.width.toFloat()))
-                    placeable.place(left.roundToInt(), topPx)
+                    placeable.place((x(pitch) - placeable.width / 2f).roundToInt(), topPx.roundToInt())
                 }
             }
-            .gameFrame(topEnd = 6.dp, bottomStart = 6.dp, inner = false)
-            .padding(horizontal = 10.dp, vertical = 2.dp),
+            .labelPlate(lit, dim)
+            .padding(horizontal = LabelPadX, vertical = LabelPadY),
     )
+}
+
+/** A label's name: soft white, lit pale gold, half faded on the board. */
+private fun labelInk(lit: Float, dim: Float): Color {
+    val ink = lerp(LabelInk, CursorEdge, lit)
+    return ink.copy(alpha = ink.alpha * (1f - 0.5f * dim))
+}
+
+private val LabelInk = TextHi.copy(alpha = 0.86f)
+
+/** An unlit label's edge: a faint gold line. */
+private val LabelEdge = Amber.copy(alpha = 0.3f)
+
+/** A label's plate: dark glass cut like the cursor, its edge going gold as it is [lit], faded as it is [dim]. */
+private fun Modifier.labelPlate(lit: () -> Float, dim: () -> Float): Modifier = drawWithCache {
+    val edge = 1.dp.toPx()
+    val plate = chamfer(size, edge, LabelCut.toPx())
+    val fill = Brush.verticalGradient(listOf(Color(0xFF1B1215), Color(0xFF070507)))
+    onDrawBehind {
+        val l = lit()
+        val fade = 1f - 0.5f * dim()
+        if (l > 0f) softGlow(Amber, alpha = 0.4f * l * fade, cornerRadius = 3.dp.toPx(), spread = 10.dp, layers = 5)
+        drawPath(plate, fill, alpha = (0.72f + 0.24f * l) * fade)
+        drawPath(plate, lerp(LabelEdge, CursorEdge, l), alpha = fade, style = Stroke(edge * (1f + l)))
+    }
 }
 
 /**

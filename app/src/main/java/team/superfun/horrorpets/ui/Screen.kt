@@ -154,8 +154,9 @@ sealed interface Screen {
      * - [board] is the shelf indices on the board, at most two, in the order they were put there. It is the visit's
      *   alone: it is never saved, and leaving puts everything back as it was.
      * - [cook] is the last cook of the visit, for the screen to show. It stays until the next cook replaces it.
-     * - [refusedCook] and [tooFull] are tokens that change on every refusal (a board with a botch on it can not be
-     *   cooked, a killer too full to eat can not be fed), 0 until the first one, so the screen reacts to each.
+     * - [refusedCook] and [tooFull] are tokens that change on every refusal (a botch with anything but another botch
+     *   can not be cooked, a killer too full to eat can not be fed), 0 until the first one, so the screen reacts to
+     *   each.
      * - [fed] is set once the killer has eaten, and ends the visit's doing: from then on only leaving does anything.
      */
     data class Pantry(

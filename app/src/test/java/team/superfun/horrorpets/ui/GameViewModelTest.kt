@@ -1264,6 +1264,30 @@ class GameViewModelTest {
     }
 
     @Test
+    fun twoBotchesCookIntoOnePileOfSlop() {
+        // Slop with slop squashes down to one pile: two places become one, shown and saved like any cook, and it pays
+        // nothing, as no cook does.
+        val rig = pantryRig(listOf(GRILL, KITCHEN_FIRE, EGG, PILE_OF_SLOP, FLOUR, CHEESE, RAW_STEAK))
+        val session = rig.openPantry().session
+        val before = rig.jason
+        rig.pick(3, 1) // the Slop and the Kitchen Fire
+        rig.vm.onPantryCook(session)
+
+        val expected = listOf(GRILL, PILE_OF_SLOP, EGG, FLOUR, CHEESE, RAW_STEAK)
+        assertEquals("both used up, the slop where the earlier one was", expected, rig.shelf)
+        val cook = rig.visit.cook!!
+        assertEquals(PILE_OF_SLOP, cook.result)
+        assertEquals(listOf(PILE_OF_SLOP, KITCHEN_FIRE), cook.inputs)
+        assertEquals(1, cook.at)
+        assertEquals(0L, rig.visit.refusedCook)
+        assertEquals(emptyList<Int>(), rig.visit.board)
+        assertEquals("no way to cook, so no cooking sound: the show's squelch is the screen's", emptyList<String>(), rig.ui.sfx)
+        assertEquals("cooking slop feeds no one and moves no mood", before, rig.jason)
+        rig.settle()
+        assertEquals(expected.map { it.id }, rig.store.last.pantry)
+    }
+
+    @Test
     fun feedPaysAndShowsTheReaction() {
         // Jason loves savory: a Steak is a loved snack.
         val rig = pantryRig(SHELF + STEAK, pet = jason(hunger = 60.0))

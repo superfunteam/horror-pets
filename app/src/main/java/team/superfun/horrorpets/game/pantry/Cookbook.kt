@@ -100,7 +100,9 @@ val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
 
 /**
  * Cooks [a] and [b], in either order (the board has no left or right). In this order of rules:
- * 1. A botched dish is a dead end: any board holding one is [CookResult.Refused].
+ * 1. Botched dishes only go with each other: two of them (any two, the same one twice included) make one Pile of
+ *    Slop, so a shelf of slop can be squashed down, two places into one. A botch with anything else is
+ *    [CookResult.Refused].
  * 2. The pair's recipe, or its named botch, in [RECIPES]. This is why Batter + Grill is Pancake Stack and Batter +
  *    Cauldron is Cursed Cake, not burnt.
  * 3. Two ways to cook make a Kitchen Fire.
@@ -108,7 +110,9 @@ val RECIPES: Map<Set<PantryItem>, PantryItem> = mapOf(
  * 5. Anything else, two of the same item included, is a Pile of Slop.
  */
 fun cook(a: PantryItem, b: PantryItem): CookResult {
-    if (a.kind == ItemKind.BOTCHED || b.kind == ItemKind.BOTCHED) return CookResult.Refused
+    val botches = listOf(a, b).count { it.kind == ItemKind.BOTCHED }
+    if (botches == 2) return CookResult.Cooked(PILE_OF_SLOP)
+    if (botches == 1) return CookResult.Refused
     RECIPES[setOf(a, b)]?.let { return CookResult.Cooked(it) }
     val methods = listOf(a, b).count { it.kind == ItemKind.METHOD }
     val dishes = listOf(a, b).count { it.kind == ItemKind.SNACK || it.kind == ItemKind.MEAL }
@@ -119,6 +123,42 @@ fun cook(a: PantryItem, b: PantryItem): CookResult {
             else -> PILE_OF_SLOP
         },
     )
+}
+
+/**
+ * The recipes that cook two raw items into a real dish (a snack, never a botch): a way to cook and a food ("raw steak
+ * on the grill"), or two foods mixed. A named botch for two raw items (Sardines + Orange) is not one. In the
+ * cookbook's order; each is the two items it takes, always two different ones.
+ */
+val RAW_RECIPES: List<Set<PantryItem>> =
+    RECIPES.filter { (inputs, result) -> inputs.all { it.raw } && result.kind != ItemKind.BOTCHED }.keys.toList()
+
+/**
+ * Up to [most] pairs of raw items on [shelf] that each cook into a real dish (see [RAW_RECIPES]), no shelf item in
+ * two of them: two copies of an item are two items, so Egg + Grill twice needs two eggs and two grills. As many pairs
+ * as the shelf can make at once, up to [most], found by trying every way of pairing (a shelf holds a few dozen items
+ * and the cookbook has 41 such recipes, so it is cheap). Each pair is its recipe's inputs; which pairs come back, when
+ * there is a choice, is the first way in the cookbook's order. Cooked dishes and botches are never in a pair.
+ */
+fun cookablePairs(shelf: List<PantryItem>, most: Int = 2): List<Set<PantryItem>> {
+    val left = shelf.filter { it.raw }.groupingBy { it }.eachCount().toMutableMap()
+    // The most pairs (up to [want]) from the recipes at [from] on, with what is [left]; a recipe may come up again,
+    // on two more copies of its items.
+    fun search(from: Int, want: Int): List<Set<PantryItem>> {
+        var best = emptyList<Set<PantryItem>>()
+        if (want <= 0) return best
+        for (i in from until RAW_RECIPES.size) {
+            val pair = RAW_RECIPES[i]
+            if (pair.any { (left[it] ?: 0) == 0 }) continue
+            pair.forEach { left[it] = left.getValue(it) - 1 }
+            val rest = search(i, want - 1)
+            pair.forEach { left[it] = left.getValue(it) + 1 }
+            if (rest.size + 1 > best.size) best = listOf(pair) + rest
+            if (best.size == want) break
+        }
+        return best
+    }
+    return search(0, most)
 }
 
 /**

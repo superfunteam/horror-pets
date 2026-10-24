@@ -81,6 +81,39 @@ fun shelfWindow(focus: Int, size: Int, slots: Int, previous: Int): ShelfWindow {
  */
 fun shelfLead(size: Int, slots: Int): Float = if (size < slots) (slots - size) / 2f else 0f
 
+/** A shelf item's name label wraps onto at most this many lines. */
+internal const val LABEL_LINES = 2
+
+/** A zero-width space: where a label's line may break with nothing to show for it. */
+private const val BREAK = '​'
+
+/**
+ * [title] as a shelf label sets it: in capitals, and free to break a line after each hyphen ("NOT-" / "STRAWBERRY
+ * MILK"), which a line breaker may not do by itself. A zero-width space there says so.
+ */
+internal fun labelText(title: String): String = title.uppercase().replace("-", "-$BREAK")
+
+/** Where a line of [label] (see [labelText]) may end: just after a space or a hyphen's break, as offsets into it. */
+internal fun labelBreaks(label: String): Set<Int> = label.indices.filter { label[it] == ' ' || label[it] == BREAK }.map { it + 1 }.toSet()
+
+/**
+ * The font size (sp) for [label] (see [labelText]) under a shelf item: the biggest from [maxSp] down to [minSp], in
+ * steps of [stepSp], at which it takes at most [LABEL_LINES] lines, each ending where a line may (see [labelBreaks]),
+ * so no word is ever split mid-word. [lineEnds] is where each line ends (the offset just past it, trailing space
+ * included) when the label is laid out at a size in its label's width. When nothing fits it is [minSp], and the
+ * label is cut short with an ellipsis.
+ */
+internal fun labelFontSize(label: String, maxSp: Float, minSp: Float, stepSp: Float, lineEnds: (sp: Float) -> List<Int>): Float {
+    val breaks = labelBreaks(label)
+    var sp = maxSp
+    while (sp > minSp) {
+        val ends = lineEnds(sp)
+        if (ends.size <= LABEL_LINES && ends.dropLast(1).all { it in breaks }) return sp
+        sp -= stepSp
+    }
+    return minSp
+}
+
 /**
  * The dish that wears a heart on [pet]'s visit: its favorite, once it has been fed it, and never before (a favorite
  * is never telegraphed).
