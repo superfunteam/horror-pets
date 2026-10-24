@@ -95,8 +95,14 @@ import team.superfun.horrorpets.ui.training.swallowTouches
 import team.superfun.horrorpets.ui.training.swallowedWhileHeld
 import team.superfun.horrorpets.ui.training.trainingKeyOf
 
-/** How long a refused cook's "That will not cook." stays up, over the shaking board. */
+/** How long a refused cook's note stays up, over the shaking board (see [REFUSED_COOK_NOTE]). */
 private const val NOTE_MS = 1_500L
+
+/**
+ * What a refused cook says over the board. The only cook refused is a botch with something that isn't one, so it
+ * teaches the rule.
+ */
+internal const val REFUSED_COOK_NOTE = "Slop only cooks with slop."
 
 /** What the help strip says once the reaction is up. */
 private val CarryOnHelp = listOf(HelpItem(listOf(TrainingKey.OK), "Carry on"))
@@ -214,7 +220,7 @@ private fun PantryVisit(
     var note by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(screen.refusedCook) {
         if (screen.refusedCook == 0L || screen.refusedCook == seenRefusal) return@LaunchedEffect
-        note = "That will not cook."
+        note = REFUSED_COOK_NOTE
         shake.snapTo(0f)
         shake.animateTo(SHAKE_MS.toFloat(), tween(SHAKE_MS.toInt(), easing = LinearEasing))
         delay(max(0L, NOTE_MS - SHAKE_MS))
