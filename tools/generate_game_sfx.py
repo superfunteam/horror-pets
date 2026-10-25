@@ -2,7 +2,8 @@
 mono WAV, 44.1 kHz): the slot reel's spin and the clunk it stops with, Slash Says' blade swish, the gravestone shuffle's
 stone scrape, the catch's squish, the drop's splat and the game-over sting. (The eight dot tones are synthesized, by
 tools/synth_audio.py.) Then the pantry's: the board's knock, the cook's poof, the squelch of a refused cook, a sound
-per way to cook, the killer's happy gulp and gross spit, and the favorite's fanfare.
+per way to cook, the killer's happy gulp and gross spit, and the favorite's fanfare. Then the weapons: a plain hit and
+a heavy one for each of the eight killers (hit_jason, heavy_jason, ...), played instead of the generic hit.
 
 Each is generated --takes times into art-work/sfx/ (gitignored). Like generate_video_sfx.py, a take must not ring (see
 tonality: a clunk or a swish that rings sounds like a bell under the game's music) and the loudest take that doesn't wins;
@@ -59,6 +60,25 @@ SOUNDS = {  # (prompt, seconds)
     "favorite_fanfare": ("A short triumphant arcade fanfare jingle, cheerful and celebratory, 8-bit game console sound "
                          "effect, no voices", 1.5),
 }
+WEAPONS = {  # (prompt, seconds): what each killer's blow sounds like, the plain hit and the heavy one
+    "hit_jason": (f"A machete chopping into meat, one wet heavy chop, {DRY}", 0.5),
+    "heavy_jason": (f"A machete slammed into a wooden post, a deep thunk, {DRY}", 0.8),
+    "hit_freddy": (f"Four steel claws raking across sheet metal, a short screech, {DRY}", 0.5),
+    "heavy_freddy": (f"Steel claws tearing through canvas and wood, a long ripping rake, {DRY}", 0.8),
+    "hit_pinhead": (f"A heavy iron chain cracking like a whip, {DRY}", 0.5),
+    "heavy_pinhead": (f"Iron chains cracking and a hook biting into wood, {DRY}", 0.8),
+    "hit_ghostface": (f"A hunting knife stabbing into a pumpkin, one quick wet stab, {DRY}", 0.5),
+    "heavy_ghostface": (f"Two fast knife stabs into a pumpkin, wet, {DRY}", 0.8),
+    "hit_chucky": (f"A small kitchen knife slashing through fabric, quick and sharp, {DRY}", 0.5),
+    "heavy_chucky": (f"A kitchen knife slashing twice, fast, with a splatter, {DRY}", 0.8),
+    "hit_michael": (f"A large kitchen knife stabbing into a wooden door, one hard stab, {DRY}", 0.5),
+    "heavy_michael": (f"A large knife driven through a door with a crack of wood, {DRY}", 0.8),
+    "hit_leatherface": (f"A chainsaw revving once and biting, a short rip, {DRY}", 0.5),
+    "heavy_leatherface": (f"A chainsaw tearing through a log, a long rip, {DRY}", 0.8),
+    "hit_jaws": (f"A huge shark's jaws snapping shut, a wet crunch, {DRY}", 0.5),
+    "heavy_jaws": (f"A shark thrashing and biting in water, a splash and a crunch, {DRY}", 0.8),
+}
+ALL = {**SOUNDS, **WEAPONS}  # what main() generates and --only may name
 TONAL_SOUNDS = {"game_over", "cook_sun", "favorite_fanfare"}  # meant to ring, so never rejected for it
 MIN_SECONDS = 0.5  # the API's shortest sound; a shorter ask is made this long (the kept take starts at its sound)
 
@@ -74,20 +94,20 @@ def sfx_filter(path: Path) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", action="append", choices=list(SOUNDS))
+    ap.add_argument("--only", action="append", choices=list(ALL))
     ap.add_argument("--takes", type=int, default=3)
     ap.add_argument("--pick", action="append", default=[], help="name=take: keep that take, without generating")
     args = ap.parse_args()
     picks = dict(p.split("=") for p in args.pick)
     key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key and any(n not in picks for n in SOUNDS if not args.only or n in args.only):
+    if not key and any(n not in picks for n in ALL if not args.only or n in args.only):
         print("ELEVENLABS_API_KEY is not set", file=sys.stderr)
         return 2
     raw_dir, out_dir = ROOT / "art-work/sfx", ROOT / "audio-final/sfx"
     raw_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
     failed = 0
-    for name, (text, seconds) in SOUNDS.items():
+    for name, (text, seconds) in ALL.items():
         if args.only and name not in args.only:
             continue
         tonal = name in TONAL_SOUNDS

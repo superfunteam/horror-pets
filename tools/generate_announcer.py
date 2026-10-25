@@ -86,8 +86,24 @@ LINES = {
     "jaws": "[shouting] JAWS!!!",
     "jaws_never_dies": "[shouting] YOU'RE GONNA NEED A BIGGER BOAT!!!",
     "new_challenger": "[shouting] HERE COMES A NEW CHALLENGER!!!",
+    # the fight's big calls (GameViewModel latches them on Screen.Fight) and the Gauntlet's bouts
+    "finish_him": "[shouting] FINISH HIM!!!",
+    "flawless_victory": "[shouting] FLAWLESS VICTORY!!!",
+    "first_blood": "[shouting] FIRST BLOOD!!!",
+    "last_chance": "[shouting] LAST CHANCE!!!",
+    "comeback": "[shouting] COMEBACK!!!",
+    "bout_2": "[shouting] BOUT TWO!!!",
+    "bout_3": "[shouting] BOUT THREE!!!",
+    "bout_4": "[shouting] BOUT FOUR!!!",
+    "bout_5": "[shouting] BOUT FIVE!!!",
+    "bout_6": "[shouting] BOUT SIX!!!",
+    "bout_7": "[shouting] BOUT SEVEN!!!",
+    "final_bout": "[shouting] FINAL BOUT!!!",
+    "champion": "[shouting] CHAMPION!!!",
 }
-NUMBERS = {"2": "two", "25": "twenty five", "60": "sixty"}
+# the speech-to-text may write a number as digits; the lines above spell them out
+NUMBERS = {"2": "two", "3": "three", "4": "four", "5": "five", "6": "six", "7": "seven", "25": "twenty five",
+           "60": "sixty"}
 
 # trim the breath before the shout and the quiet end of the tail (the voice keeps its own arena reverb), add a
 # short slap-back, normalize. Tight trims keep "[name]! Versus! [name]!" inside the VS card.
@@ -129,10 +145,11 @@ def encode(src: Path, out: Path, audio_filter: str = FILTER) -> None:
                     "-fflags", "+bitexact", "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", str(out)], check=True)
 
 
-def speak(key: str, text: str, voice_id: str = VOICE_ID) -> bytes:
+def speak(key: str, text: str, voice_id: str = VOICE_ID, voice_settings: dict | None = None) -> bytes:
     r = requests.post(f"{API}/text-to-speech/{voice_id}", params={"output_format": OUTPUT_FORMAT},
                       headers={"xi-api-key": key},
-                      json={"text": text, "model_id": MODEL, "voice_settings": VOICE_SETTINGS}, timeout=120)
+                      json={"text": text, "model_id": MODEL, "voice_settings": voice_settings or VOICE_SETTINGS},
+                      timeout=120)
     if r.status_code != 200:
         raise RuntimeError(f"text-to-speech {r.status_code}: {r.text[:300]}")
     return r.content
