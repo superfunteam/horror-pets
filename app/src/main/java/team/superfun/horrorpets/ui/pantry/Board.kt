@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +37,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -48,6 +51,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.game.pantry.methodHint
 import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.ui.common.SLAB_FOCUS_SCALE
 import team.superfun.horrorpets.ui.common.SlabHeight
@@ -59,6 +63,7 @@ import team.superfun.horrorpets.ui.common.leaning
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.TextHi
+import team.superfun.horrorpets.ui.training.TrainingGold
 
 /** The cutting board's picture is this much wider than it is tall (768 x 563 px). */
 internal const val BOARD_ASPECT = 768f / 563f
@@ -155,6 +160,7 @@ internal fun Board(
                 }
                 ItemName(
                     item.title,
+                    hint = methodHint(item),
                     maxWidth = width * 0.46f,
                     centerX = width * at.x,
                     top = height * at.y + itemSize / 2f - 4.dp,
@@ -178,13 +184,13 @@ private fun BoardItem(loader: AssetLoader, item: PantryItem, heart: Boolean, siz
     )
 }
 
-/** An item's name on a small dark tag, centred on [centerX] at [top], wrapping to two lines when it must. */
+/**
+ * An item's name on a small dark tag, centred on [centerX] at [top], wrapping to two lines when it must. A way to
+ * cook's [hint] (see `methodHint`) goes under it, smaller and gold, and the tag grows to hold it.
+ */
 @Composable
-internal fun ItemName(title: String, maxWidth: Dp, centerX: Dp, top: Dp, modifier: Modifier = Modifier) {
-    BasicText(
-        title.uppercase(),
-        style = displayStyle(15.sp, FontWeight.Bold, tracking = 0.05f, lineHeight = 16.sp).copy(textAlign = TextAlign.Center),
-        maxLines = 2,
+internal fun ItemName(title: String, hint: String? = null, maxWidth: Dp, centerX: Dp, top: Dp, modifier: Modifier = Modifier) {
+    Column(
         modifier = modifier
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(Constraints(maxWidth = maxWidth.roundToPx()))
@@ -194,8 +200,24 @@ internal fun ItemName(title: String, maxWidth: Dp, centerX: Dp, top: Dp, modifie
             }
             .gameFrame(topEnd = 6.dp, bottomStart = 6.dp, inner = false)
             .padding(horizontal = 9.dp, vertical = 3.dp),
-    )
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BasicText(
+            title.uppercase(),
+            style = displayStyle(15.sp, FontWeight.Bold, tracking = 0.05f, lineHeight = 16.sp).copy(textAlign = TextAlign.Center),
+            maxLines = 2,
+        )
+        if (hint != null) BasicText(hint.uppercase(), style = HintStyle, maxLines = 2)
+    }
 }
+
+/**
+ * A way to cook's hint under its name, on the board's tag and on its lit shelf label: small, gold, centred, two lines
+ * balanced where it wraps ("GRILLS, FRIES / AND SEARS").
+ */
+internal val HintStyle: TextStyle =
+    displayStyle(11.sp, FontWeight.Bold, color = TrainingGold, tracking = 0.05f, lineHeight = 12.sp)
+        .copy(textAlign = TextAlign.Center, lineBreak = LineBreak.Heading)
 
 /** A chunky gold "+" with a dark rim, [size] across, centred on [center]. */
 private fun DrawScope.drawPlus(center: Offset, size: Float) {

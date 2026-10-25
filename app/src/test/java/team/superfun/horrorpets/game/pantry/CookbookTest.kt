@@ -354,6 +354,44 @@ class CookbookTest {
         assertEquals(PetId.entries.size, PetId.entries.map { tasteOf(it).favorite }.toSet().size)
     }
 
+    // What the pantry teaches.
+
+    @Test
+    fun everyWayToCookHasAHintAndAtLeastFourRecipes() {
+        val hints = mapOf(
+            GRILL to "grills, fries and sears",
+            CAMPFIRE to "roasts, toasts and pops",
+            POT to "boils, poaches and simmers",
+            CAULDRON to "brews potions",
+            SUN to "dries, jerks and rots",
+        )
+        val methods = PantryItem.entries.filter { it.kind == ItemKind.METHOD }
+        assertEquals(methods.toSet(), hints.keys)
+        for (method in methods) {
+            assertEquals(method.name, hints[method], methodHint(method))
+            // A hint is a promise: the way to cook makes at least four real dishes (botches aside).
+            val dishes = RECIPES.filter { (inputs, made) -> method in inputs && made in DISHES }
+            assertTrue("${method.name} makes ${dishes.size}", dishes.size >= 4)
+        }
+        for (item in PantryItem.entries.filter { it.kind != ItemKind.METHOD }) assertNull(item.name, methodHint(item))
+    }
+
+    @Test
+    fun onlyDishesWearAFlavorMark() {
+        assertEquals(FlavorMark.DROP, flavorMark(STEAK))
+        assertEquals(FlavorMark.STAR, flavorMark(BIRTHDAY_CAKE))
+        assertEquals(FlavorMark.BLOT, flavorMark(WORM_SPAGHETTI))
+        // A raw food has a flavor, but no mark; a way to cook and a botch have neither.
+        assertNull(flavorMark(RAW_STEAK))
+        assertNull(flavorMark(GRILL))
+        assertNull(flavorMark(PILE_OF_SLOP))
+        val marks = mapOf(SAVORY to FlavorMark.DROP, SWEET to FlavorMark.STAR, GROSS to FlavorMark.BLOT)
+        for (item in PantryItem.entries) {
+            val dish = item.kind == ItemKind.SNACK || item.kind == ItemKind.MEAL
+            assertEquals(item.name, if (dish) marks[item.flavor] else null, flavorMark(item))
+        }
+    }
+
     @Test
     fun everyKillerHasTheTastesTheSpecGives() {
         val tastes = mapOf(

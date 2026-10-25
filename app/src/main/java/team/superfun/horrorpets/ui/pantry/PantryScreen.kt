@@ -414,6 +414,16 @@ private fun PantryVisit(
                 maxLines = 1,
                 modifier = Modifier.graphicsLayer { alpha = recipesShown },
             )
+            // What the killer has shown of its taste so far (nothing until it loves or hates a flavor): out of the
+            // bubble's way too.
+            tastesLine(pet)?.let {
+                BasicText(
+                    it,
+                    style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
+                    maxLines = 1,
+                    modifier = Modifier.graphicsLayer { alpha = recipesShown },
+                )
+            }
         }
 
         val boardLeft = layout.columnCenter - layout.boardWidth / 2f

@@ -192,3 +192,34 @@ fun tasteOf(pet: PetId): Taste = when (pet) {
     PetId.LEATHERFACE -> Taste(Flavor.GROSS, Flavor.SAVORY, Flavor.SWEET, TEXAS_BBQ_PLATTER)
     PetId.JAWS -> Taste(Flavor.GROSS, Flavor.SAVORY, Flavor.SWEET, FOOT_AND_POTATOES)
 }
+
+/**
+ * What a way to cook does, in a few words, so the player knows what to put with it before trying ("brews potions"):
+ * the shelf and the board show it under its name. Null for anything that is not a way to cook.
+ */
+fun methodHint(item: PantryItem): String? = when (item) {
+    GRILL -> "grills, fries and sears"
+    CAMPFIRE -> "roasts, toasts and pops"
+    POT -> "boils, poaches and simmers"
+    CAULDRON -> "brews potions"
+    SUN -> "dries, jerks and rots"
+    else -> null
+}
+
+/** The little mark a dish wears on its shelf label for its flavor: a drop for savory, a star for sweet, a blot for gross. */
+enum class FlavorMark { DROP, STAR, BLOT }
+
+/**
+ * The mark [item] wears for its flavor, when it is a dish (a snack or a meal); null otherwise. A raw food has a flavor
+ * too, but its mark would spoil the two-foods snacks (Flour and Egg are savory, yet make sweet Batter), so it wears
+ * none; a way to cook and a botch have no flavor to show.
+ */
+fun flavorMark(item: PantryItem): FlavorMark? {
+    if (item.kind != ItemKind.SNACK && item.kind != ItemKind.MEAL) return null
+    return when (item.flavor) {
+        Flavor.SAVORY -> FlavorMark.DROP
+        Flavor.SWEET -> FlavorMark.STAR
+        Flavor.GROSS -> FlavorMark.BLOT
+        null -> null
+    }
+}
