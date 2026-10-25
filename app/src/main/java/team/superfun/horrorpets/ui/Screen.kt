@@ -255,8 +255,9 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = n
  *   the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
  * - [hour] is the hour of the player's day (0..23) at [nowMs], read with it: what Home's light is chosen by
  *   (`dayLightAt`). Noon, in the day's light, until the clock is first read.
- * - [awakeUntilMs] is when the killer a press woke in the night (see [asleep]) dozes off again, on the [nowMs] clock.
- *   Not saved: a restart in the night finds it asleep.
+ * - [awakeUntilMs] is when the killer dozes off again (see [asleep]), on the [nowMs] clock: [Tuning.AWAKE_MS] after
+ *   the last press Home took, at any hour, so a press keeps it up ten minutes more and one just before bedtime keeps
+ *   it up past it. Not saved: a restart in the night finds it asleep.
  * - [wakeLine] is the sleepy line the last waking press got out of the killer, with a fresh token each time (so the
  *   same line twice still shows twice); Home shows it in the killer's bubble when the token changes.
  */
@@ -277,7 +278,8 @@ data class UiState(
 )
 
 /**
- * Whether the killer is asleep on Home: in the sleep hours (see [isSleepHour]) unless a press woke it less than
- * [Tuning.AWAKE_MS] ago ([UiState.awakeUntilMs]). Only Home sleeps; every other screen ignores this.
+ * Whether the killer is asleep on Home: in the sleep hours (see [isSleepHour]) unless Home took a press less than
+ * [Tuning.AWAKE_MS] ago ([UiState.awakeUntilMs]), whether that press woke it or found it up. Only Home sleeps; every
+ * other screen ignores this.
  */
 fun UiState.asleep(): Boolean = isSleepHour(hour) && nowMs >= awakeUntilMs

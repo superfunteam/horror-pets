@@ -6,6 +6,10 @@ import org.junit.Test
 /** When the sleeping killer's Zs rise, and how far along each one is. */
 class SleepZsTest {
 
+    /** The Zs [forEachSleepZ] gives, in its order. */
+    private fun sleepZsAt(elapsedMs: Long, everyMs: Long = Z_EVERY_MS): List<Float> =
+        buildList { forEachSleepZ(elapsedMs, everyMs) { add(it) } }
+
     private fun assertZs(expected: List<Float>, actual: List<Float>) {
         assertEquals("how many: $actual", expected.size, actual.size)
         expected.zip(actual).forEach { (e, a) -> assertEquals(e, a, 1e-4f) }

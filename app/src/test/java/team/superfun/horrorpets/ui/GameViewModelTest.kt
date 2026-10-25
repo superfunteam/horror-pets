@@ -2659,6 +2659,28 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aPressWhileItIsUpKeepsItUpTenMinutesMore() {
+        val rig = bedtimeRig()
+        rig.vm.onCare(CareAction.PLAY)
+        val line = rig.ui.wakeLine!!
+        rig.finishAllAnims()
+
+        rig.clock.now = BEDTIME + 5 * MINUTE // 23:35, still up
+        rig.vm.tick()
+        rig.vm.onCare(CareAction.PLAY)
+        assertEquals("ten minutes from this press", BEDTIME + 15 * MINUTE, rig.ui.awakeUntilMs)
+        assertEquals("it was up, so it has nothing sleepy to say", line, rig.ui.wakeLine)
+        rig.finishAllAnims()
+
+        rig.clock.now = BEDTIME + 14 * MINUTE
+        rig.vm.tick()
+        assertFalse("still up at 23:44", rig.ui.asleep())
+        rig.clock.now = BEDTIME + 15 * MINUTE
+        rig.vm.tick()
+        assertTrue("and asleep at 23:45", rig.ui.asleep())
+    }
+
+    @Test
     fun atSixItWakesByItself() {
         val dawn = T0 - 2 * HOUR - 30 * MINUTE // 05:30
         val rig = Rig(gameOf(lastSeenMs = dawn), clock = FakeClock(dawn)).started()
@@ -2706,14 +2728,31 @@ class GameViewModelTest {
         val rig = Rig(gameOf()).started() // 08:00
         rig.vm.onCare(CareAction.PLAY)
         assertNull(rig.ui.wakeLine)
-        assertEquals(0L, rig.ui.awakeUntilMs)
+        // It still counts: a press just before bedtime keeps the killer up past it (nothing shows by day).
+        assertEquals(T0 + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
+    }
+
+    @Test
+    fun aPressJustBeforeBedtimeKeepsItUpPastIt() {
+        val lateEvening = BEDTIME - 32 * MINUTE // 22:58
+        val rig = Rig(gameOf(lastSeenMs = lateEvening), clock = FakeClock(lateEvening)).started()
+        rig.vm.onCare(CareAction.PLAY)
+        rig.finishAllAnims()
+        rig.clock.now = BEDTIME - 30 * MINUTE // 23:00
+        rig.vm.tick()
+        assertFalse("up until 23:08", rig.ui.asleep())
+        rig.clock.now = BEDTIME - 22 * MINUTE
+        rig.vm.tick()
+        assertTrue(rig.ui.asleep())
+        assertNull("it dozed off without being woken: no line", rig.ui.wakeLine)
     }
 
     @Test
     fun aPressHomeTurnsDownWakesNobody() {
-        // Busy with a play from 22:59:30, the killer's bedtime comes with a tick: a walk pressed now is turned down
-        // (the play is still on), so it does not wake it either.
-        val lateEvening = BEDTIME - 30 * MINUTE - 30 * SECOND
+        // A play pressed at 22:45 is still on (its animations have not reported in) when bedtime and the end of its
+        // ten minutes have both come by 23:00: a walk pressed now is turned down, so it neither wakes the killer nor
+        // keeps it up.
+        val lateEvening = BEDTIME - 45 * MINUTE
         val rig = Rig(gameOf(lastSeenMs = lateEvening), clock = FakeClock(lateEvening)).started()
         rig.vm.onCare(CareAction.PLAY)
         rig.clock.now = BEDTIME - 30 * MINUTE
@@ -2723,7 +2762,7 @@ class GameViewModelTest {
 
         rig.vm.onWalk(1)
         assertNull(rig.ui.wakeLine)
-        assertEquals(0L, rig.ui.awakeUntilMs)
+        assertEquals(lateEvening + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
     }
 
     // ---- saving ------------------------------------------------------------------------------

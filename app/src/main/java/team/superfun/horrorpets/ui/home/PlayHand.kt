@@ -98,9 +98,10 @@ private class Hand {
 /**
  * How far above its feet [pet]'s head tops out (hat, hair or pins included), as a fraction of its cell's height:
  * the top solid row of its first idle frame. The heads sit at different heights in their cells, from Ghostface's
- * hood at 0.8 to Jason's mask at 0.94.
+ * hood at 0.8 to Jason's mask at 0.94. Reads the frame's pixels, so call it off the main thread: the glove aims at the
+ * head with it, and Home's sleeping killer has its Zs rise from it.
  */
-private fun headHeight(loader: AssetLoader, pet: PetId): Float {
+internal fun headHeight(loader: AssetLoader, pet: PetId): Float {
     val manifest = loader.manifest(pet)
     val cw = manifest.cell[0]
     val ch = manifest.cell[1]

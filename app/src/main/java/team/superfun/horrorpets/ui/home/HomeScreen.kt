@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -167,6 +168,9 @@ private const val SLUMP_MS = 600
 /** A sleeping killer's snore, again every this long: about the clip's own length, so one breath follows another. */
 internal const val SNORE_SFX = "snore"
 private const val SNORE_EVERY_MS = 4_000L
+
+/** Where the Zs start until the head has been measured (see headHeight): the middle of the roster's 0.8 to 0.94. */
+private const val HEAD_HEIGHT_GUESS = 0.87f
 
 /**
  * Strips decoded ahead of time on Home, with its PLAY: its DANCE when it has one, else JUMP and WAVE (so at most 7 of
@@ -424,14 +428,7 @@ fun HomeScreen(
             bubble = null
         }
     }
-    // Asleep, it snores, once a breath, until it wakes. The audio drops it while the app is in the background.
     val sounds = LocalSoundSink.current
-    LaunchedEffect(asleep) {
-        while (asleep) {
-            sounds.sfx(SNORE_SFX)
-            delay(SNORE_EVERY_MS)
-        }
-    }
 
     // Exactly one animation is on screen; the view model's request always wins. A walk keeps playing its
     // run under the request's token from the press until the pet has run into the next scene, so the run
@@ -569,6 +566,17 @@ fun HomeScreen(
                 }
             }
         }
+        // Asleep, it snores, once a breath, until it wakes; only in the foreground, as its idle life runs, so the
+        // background is not sent a snore every few seconds for the audio to drop.
+        LaunchedEffect(asleep, lifecycleOwner) {
+            if (!asleep) return@LaunchedEffect
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    sounds.sfx(SNORE_SFX)
+                    delay(SNORE_EVERY_MS)
+                }
+            }
+        }
 
         SceneBackdrop(loader = loader, scene = scene, vignette = { vignette.value }) { floorY ->
             // The hour's light over the scene and under the killer; the bubble and the HUD come after it, unlit.
@@ -593,11 +601,17 @@ fun HomeScreen(
                     .graphicsLayer { alpha = walkAlpha.value },
             )
             if (asleep) {
-                // Just over the head, where the bubble points, as the slump leans it about the feet and sinks it.
-                val headAbove = drawnHeightPx * BUBBLE_ABOVE_FEET
+                // The Zs rise from the top of its head: measured off the idle frame it sleeps on, then turned with the
+                // slump's lean about the feet and lowered with its sink. Read while drawing, so the measurement and
+                // the slump move them without recomposing.
+                val head by produceState(HEAD_HEIGHT_GUESS, loader, petId) {
+                    value = withContext(Dispatchers.IO) { headHeight(loader, petId) }
+                }
                 SleepZs(
-                    headX = { (homeX.value + walkX.value) * screenW + headAbove * sin(pose.tilt.value.toRadians()) },
-                    headY = { floorY - headAbove * cos(pose.tilt.value.toRadians()) - pose.lift.value },
+                    headX = {
+                        (homeX.value + walkX.value) * screenW + drawnHeightPx * head * sin(pose.tilt.value.toRadians())
+                    },
+                    headY = { floorY - drawnHeightPx * head * cos(pose.tilt.value.toRadians()) - pose.lift.value },
                 )
             }
             playing?.let { p ->

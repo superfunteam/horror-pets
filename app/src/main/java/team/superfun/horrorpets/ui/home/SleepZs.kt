@@ -18,13 +18,13 @@ import androidx.compose.ui.unit.sp
 import team.superfun.horrorpets.ui.common.displayStyle
 
 /** A new Z rises from a sleeping killer's head this often. */
-private const val Z_EVERY_MS = 1_600L
+internal const val Z_EVERY_MS = 1_600L
 
 /** Each Z takes this long to rise and fade away. */
-private const val Z_LIFE_MS = 2_000L
+internal const val Z_LIFE_MS = 2_000L
 
 /** Never more than this many Zs up at once. */
-private const val Z_MOST = 3
+internal const val Z_MOST = 3
 
 /** A Z fades in over this share of its rise, so it never pops on, and fades out over the rest. */
 private const val Z_FADE_IN = 0.15f
@@ -37,21 +37,25 @@ private val ZDrift = 8.dp
 private val ZStyle = displayStyle(26.sp, halo = true)
 
 /**
- * How far along its rise (0 just out, toward 1 gone) each Z is [elapsedMs] after the killer dropped off, oldest first:
- * one every [everyMs] from the start, each up for [Z_LIFE_MS], and only the newest [Z_MOST] of them. Empty before the
- * start.
+ * Calls [each] with how far along its rise (0 just out, toward 1 gone) each Z up [elapsedMs] after the killer dropped
+ * off is, oldest first: one every [everyMs] from the start, each up for [Z_LIFE_MS], and only the newest [Z_MOST] of
+ * them; none before the start. Inline, with no list, since it runs every frame the killer sleeps.
  */
-internal fun sleepZsAt(elapsedMs: Long, everyMs: Long = Z_EVERY_MS): List<Float> {
-    if (elapsedMs < 0L) return emptyList()
+internal inline fun forEachSleepZ(elapsedMs: Long, everyMs: Long = Z_EVERY_MS, each: (progress: Float) -> Unit) {
+    if (elapsedMs < 0L) return
     val newest = elapsedMs / everyMs
-    val oldest = maxOf(0L, newest - Z_MOST + 1)
-    return (oldest..newest).map { (elapsedMs - it * everyMs).toFloat() / Z_LIFE_MS }.filter { it < 1f }
+    var i = maxOf(0L, newest - Z_MOST + 1)
+    while (i <= newest) {
+        val progress = (elapsedMs - i * everyMs).toFloat() / Z_LIFE_MS
+        if (progress < 1f) each(progress)
+        i++
+    }
 }
 
 /**
  * The Zzz over a sleeping killer, from the moment this is composed: a "Z" in the HUD's display font every 1.6 s that
- * rises [ZRise] from just over the head ([headX], [headY], in this box's pixels) over 2 s, drifting [ZDrift] to the
- * right and fading away, never more than three at once (see [sleepZsAt]). The head and the time are read while
+ * rises [ZRise] from the top of the head ([headX], [headY], in this box's pixels) over 2 s, drifting [ZDrift] to the
+ * right and fading away, never more than three at once (see [forEachSleepZ]). The head and the time are read while
  * drawing, so the Zs follow a killer slumping into sleep without recomposing anything.
  */
 @Composable
@@ -66,7 +70,7 @@ fun SleepZs(headX: () -> Float, headY: () -> Float, modifier: Modifier = Modifie
     Canvas(modifier.fillMaxSize()) {
         val rise = ZRise.toPx()
         val drift = ZDrift.toPx()
-        for (t in sleepZsAt(elapsedMs)) {
+        forEachSleepZ(elapsedMs) { t ->
             val alpha = if (t < Z_FADE_IN) t / Z_FADE_IN else (1f - t) / (1f - Z_FADE_IN)
             // The Z's bottom centre is where it has got to.
             val at = Offset(headX() + drift * t - z.size.width / 2f, headY() - rise * t - z.size.height)

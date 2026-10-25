@@ -253,12 +253,12 @@ class GameViewModel(
      * is woken first (see [woken]).
      */
     fun onCare(a: CareAction) {
-        val pet = _state.value.homePet() ?: return
-        val s = _state.value.woken()
+        val s = _state.value
+        val pet = s.homePet() ?: return
         when (a) {
-            CareAction.FEED -> openPantry(s)
-            CareAction.TRAIN -> openTraining(s, pet)
-            CareAction.PLAY -> play(s, pet)
+            CareAction.FEED -> openPantry(s.woken())
+            CareAction.TRAIN -> openTraining(s.woken(), pet)
+            CareAction.PLAY -> play(s.woken(), pet)
         }
     }
 
@@ -304,10 +304,10 @@ class GameViewModel(
      */
     fun onWalk(dir: Int) {
         if (dir != -1 && dir != 1) return
-        if (_state.value.homePet() == null) return
-        val s = _state.value.woken()
+        val s = _state.value
+        if (s.homePet() == null) return
         val anim = if (dir > 0) Anim.RUN_RIGHT else Anim.RUN_LEFT
-        _state.value = s.copy(refuse = null).beginAction(listOf(anim)) { done ->
+        _state.value = s.woken().copy(refuse = null).beginAction(listOf(anim)) { done ->
             val id = done.game.selected
             val pet = id?.let { done.game.pets[it] }
             if (pet == null) {
@@ -590,8 +590,9 @@ class GameViewModel(
      * A sleeping killer is woken first (see [woken]), refused or not.
      */
     fun onFightPressed() {
-        val pet = _state.value.homePet() ?: return
-        val s = _state.value.woken()
+        val pressed = _state.value
+        val pet = pressed.homePet() ?: return
+        val s = pressed.woken()
         if (!canFight(pet)) {
             refuse(s, RefuseReason.TOO_HUNGRY)
             return
@@ -1306,16 +1307,17 @@ class GameViewModel(
     }
 
     /**
-     * This state with the killer woken, if it is asleep (see [asleep]): up until [Tuning.AWAKE_MS] from the last
-     * clock reading, and with a sleepy line to say ([UiState.wakeLine]). An awake killer, by day or woken already, is
-     * left as it is: it has nothing sleepy to say, and its ten minutes run from the press that woke it.
+     * This state after a press Home took: the killer is up until [Tuning.AWAKE_MS] from the last clock reading, at any
+     * hour, so each press keeps it up ten minutes more and one just before bedtime keeps it up past it (by day nothing
+     * shows: [asleep] reads the hour first). Only a press that found it asleep gets a sleepy line out of it
+     * ([UiState.wakeLine]); the rest leave the last line as it was.
      *
      * Every press Home takes calls this first and then goes through as it would by day (a FEED opens the pantry with
      * the killer up), so it is only ever called once the press is known to be taken (see [homePet]).
      */
     private fun UiState.woken(): UiState {
-        if (!asleep()) return this
-        return copy(awakeUntilMs = nowMs + Tuning.AWAKE_MS, wakeLine = SLEEPY_LINES.random(pickRng) to nextToken++)
+        val line = if (asleep()) SLEEPY_LINES.random(pickRng) to nextToken++ else wakeLine
+        return copy(awakeUntilMs = nowMs + Tuning.AWAKE_MS, wakeLine = line)
     }
 
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */
