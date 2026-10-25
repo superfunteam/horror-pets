@@ -30,7 +30,8 @@ import kotlin.math.abs
  *   SoundPool cannot decode Opus-in-Ogg below Android 10. They are all preloaded on a background thread at
  *   construction; a request that arrives before its clip has loaded waits for it.
  * - Voice lines play back to back, [VOICE_GAP_MS] apart, and duck the music while they run (a [VoiceQueue]).
- *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS].
+ *   [skipVoiceTo] cuts what an earlier screen left the announcer saying, fading the line out over [CUT_FADE_MS]. A
+ *   killer's line in a fight ([quip]) goes through the same queue, but only when it is empty; else it is dropped.
  * - Music (`audio/music/<track>.ogg`) plays one track at a time and loops. Switching tracks crossfades
  *   over [CROSSFADE_MS] using a second player; a null track fades the music out. A track that keeps its place (the
  *   fight music hardening, or easing back, see [keepsPlace]) comes in where the old one is, beat on beat, and
@@ -151,6 +152,20 @@ class GameAudio(context: Context) : SoundSink {
             return@onMain
         }
         voices.add(names)
+        pumpVoice()
+    }
+
+    override fun quip(name: String) = onMain {
+        Log.d(TAG, "quip $name")
+        if (released) return@onMain
+        if (paused) {
+            Log.d(TAG, "quip $name dropped: paused")
+            return@onMain
+        }
+        if (!voices.quip(name)) {
+            Log.d(TAG, "quip $name dropped: announcer talking")
+            return@onMain
+        }
         pumpVoice()
     }
 

@@ -256,7 +256,8 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    under its own riff (the music ducking under it until a second after the blow) and plays its pet's effect
  *    ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
  *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]), and now and
- *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); a special
+ *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]), or a killer with lines of its
+ *    own has its say about a blow, a block or a whiff ([Quips]), if the announcer is quiet; a special
  *    whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
  *    then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast flashes the screen white
  *    and shakes it hard ([specialJolt]). A hit stops the fight's clock as it lands ([hitStopFor]): its sound plays,
@@ -932,6 +933,9 @@ private class FightStage(
 
     /** The announcer's reactions, for the whole fight so they never repeat back to back. */
     val callouts = Callouts(Random.Default)
+
+    /** The killers' own lines, for the whole fight like [callouts], so no line is said twice running. */
+    val quips = Quips(Random.Default)
     val floats = mutableStateListOf<FloatText>()
     private var nextFloat = 0L
 
@@ -1089,10 +1093,11 @@ private suspend fun FightStage.playTurn(turn: Screen.Fight, loader: AssetLoader,
     val strips = launch(Dispatchers.IO) {
         for ((pet, anim) in turnStrips(turn)) loader.strip(pet, anim)
     }
-    val sounds = TurnSounds(fight, turn.lastEvents, callouts)
+    val sounds = TurnSounds(fight, turn.lastEvents, callouts, quips)
     val play: (FightSounds) -> Unit = { s ->
         s.sfx.forEach(sink::sfx)
         if (s.voice.isNotEmpty()) sink.voice(s.voice)
+        s.quip?.let(sink::quip)
     }
     // A side that chose BLOCK raises its guard (the wait pose) for the turn.
     val guarding = mutableSetOf<Side>()
@@ -1310,12 +1315,13 @@ private fun FightStage.impactOf(
         SpecialSoundTimes(sfxMs = 0L, voiceMs = 0L)
     }
     val sound = sounds.of(event)
-    // The announcer reacts to the blow itself, which for a late-landing special comes after its clip has started.
-    if (times.sfxMs == times.voiceMs || sound.voice.isEmpty()) {
+    // The announcer, or a killer with a line, reacts to the blow itself, which for a late-landing special comes after
+    // its clip has started.
+    if (times.sfxMs == times.voiceMs || (sound.voice.isEmpty() && sound.quip == null)) {
         afterImpact(scope, times.sfxMs) { play(sound) }
     } else {
         afterImpact(scope, times.sfxMs) { play(FightSounds(sound.sfx, emptyList())) }
-        afterImpact(scope, times.voiceMs) { play(FightSounds(emptyList(), sound.voice)) }
+        afterImpact(scope, times.voiceMs) { play(FightSounds(emptyList(), sound.voice, sound.quip)) }
     }
     // An interrupt is the defender's: say it on the defender's number rather than over it.
     val interrupted = riders.any { it is Beat.Interrupt && it.side == d.side }

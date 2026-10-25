@@ -140,6 +140,28 @@ class VoiceQueueTest {
     }
 
     @Test
+    fun aQuipIsDroppedWhenTheAnnouncerTalks() {
+        // "Knockout!" is being said (or it is the gap after it): Chucky's line would talk over it, so it is dropped,
+        // not saved for later.
+        val q = VoiceQueue()
+        q.add(listOf("ko"))
+        q.start()
+        assertFalse(q.quip("chucky_hurt_1"))
+        assertTrue("nothing queued", q.queued.isEmpty())
+
+        // Lines still waiting their turn (a clip loading) are the announcer's too.
+        val waiting = queue(null, "you_win")
+        assertFalse(waiting.quip("chucky_win"))
+        assertEquals(listOf("you_win"), waiting.queued)
+
+        // Once he is done, the line goes straight out.
+        q.finished()
+        assertTrue(q.quip("chucky_hurt_1"))
+        assertEquals("chucky_hurt_1", q.next)
+        assertEquals("chucky_hurt_1", q.start())
+    }
+
+    @Test
     fun clearSilencesItAll() {
         val q = queue("jason", "versus")
         q.clear()

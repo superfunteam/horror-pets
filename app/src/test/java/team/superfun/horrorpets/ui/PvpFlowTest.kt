@@ -333,6 +333,29 @@ class PvpFlowTest {
     }
 
     @Test
+    fun aPvpChuckyHasTheLastWordOnBothApps() {
+        // A friend's Chucky loses to strong Jason: each app's announcer calls its own result, then Chucky has his say.
+        val host = jasonApp()
+        val guest = App(PetState(PetId.CHUCKY, strength = 30.0), hub.app())
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        var turns = 0
+        while (host.ui.screen is Screen.Fight) {
+            host.vm.onMove(Move.STRIKE)
+            guest.vm.onMove(Move.HEAVY)
+            pumpBoth(host, guest)
+            pumpBoth(host, guest)
+            host.finishAnim()
+            guest.finishAnim()
+            check(++turns < 30) { "the fight never ended" }
+        }
+        assertTrue((host.ui.screen as Screen.Results).won)
+        assertEquals(listOf("you_win", "chucky_lose"), host.ui.voice.takeLast(2))
+        assertEquals(listOf("you_lose", "chucky_lose"), guest.ui.voice.takeLast(2))
+    }
+
+    @Test
     fun eachPlayerFightsWithTheirOwnAttacksOnBothApps() {
         val host = App(
             PetState(PetId.JASON, level = 3, known = setOf("jason_light_1", "jason_heavy_1"), equipped = mapOf(Slot.HEAVY to "jason_heavy_1")),

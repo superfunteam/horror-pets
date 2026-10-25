@@ -8,6 +8,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import team.superfun.horrorpets.audio.Beat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.Attacks
 import team.superfun.horrorpets.model.ItemKind
@@ -245,6 +247,14 @@ class RosterAssetsTest {
             val pet = id.name.lowercase()
             for (sfx in listOf("hit_$pet", "heavy_$pet")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
         }
+    }
+
+    @Test
+    fun everyKillerLineIsShipped() {
+        // A killer's lines are voice clips, loaded like the announcer's by name: every one the table can hand out is there.
+        val lines = PetId.entries.flatMap { pet -> Beat.entries.flatMap { killerLines(pet, it) } }
+        assertEquals("Chucky's seventeen", 17, lines.distinct().size)
+        for (line in lines) assertTrue(line, file("audio-final/voice/$line.wav").isFile)
     }
 
     @Test

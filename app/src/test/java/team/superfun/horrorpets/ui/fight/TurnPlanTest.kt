@@ -2,6 +2,7 @@ package team.superfun.horrorpets.ui.fight
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
@@ -17,6 +18,18 @@ import team.superfun.horrorpets.model.SpecialEffect
 import team.superfun.horrorpets.model.SpecialStyle
 import team.superfun.horrorpets.model.spec
 import kotlin.random.Random
+
+/** A random source that always rolls [roll] and always picks the first line. */
+private fun fixed(roll: Float) = object : Random() {
+    override fun nextBits(bitCount: Int) = 0
+    override fun nextFloat() = roll
+}
+
+/** Chucky (the player, who has lines) against Jason (who has none). */
+private val chuckyFight = FightState(
+    player = Fighter(PetId.CHUCKY, 1, 100, 100, 20.0, 50, 0),
+    cpu = Fighter(PetId.JASON, 1, 100, 100, 20.0, 50, 0),
+)
 
 class TurnPlanTest {
     @Test
@@ -293,16 +306,127 @@ class TurnSoundsTest {
         )
         assertEquals(listOf("miss", "hit_freddy"), s.sfx)
     }
+
+    @Test
+    fun theAnnouncerWinsTheTurn() {
+        // Jason's HEAVY lands on Chucky: the announcer calls it, and Chucky's HURT line is not said over him.
+        val heavy = FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false)
+        val alone = TurnSounds(chuckyFight, listOf(heavy), Callouts(fixed(0f)), Quips(fixed(0f))).of(heavy)
+        assertTrue(alone.voice.single() in Moment.HEAVY.lines)
+        assertNull(alone.quip)
+
+        // Chucky's own strike follows in the same turn: he has his say on that one instead.
+        val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
+        val turn = TurnSounds(chuckyFight, listOf(heavy, strike), Callouts(fixed(0f)), Quips(fixed(0f)))
+        val called = turn.of(heavy)
+        assertEquals(1, called.voice.size)
+        assertNull(called.quip)
+        val quipped = turn.of(strike)
+        assertTrue("the announcer has had his say", quipped.voice.isEmpty())
+        assertEquals("chucky_attack_1", quipped.quip)
+    }
+
+    @Test
+    fun atMostOneQuipATurn() {
+        // Every event of this turn is one Chucky has a line for, and every roll says yes: he says one, on the first.
+        val events = listOf(
+            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false),
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false),
+            FightEvent.Miss(Side.PLAYER, Move.HEAVY),
+            FightEvent.Blocked(Side.PLAYER),
+        )
+        val turn = TurnSounds(chuckyFight, events, quips = Quips(fixed(0f)))
+        assertEquals(listOf("chucky_attack_1", null, null, null), events.map { turn.of(it).quip })
+
+        // Over a whole seeded fight's worth of such turns, never two.
+        val quips = Quips(Random(11))
+        var said = 0
+        repeat(200) { n ->
+            val t = TurnSounds(chuckyFight, events, Callouts(Random(n)), quips)
+            val lines = events.mapNotNull { t.of(it).quip }
+            assertTrue("turn $n: $lines", lines.size <= 1)
+            said += lines.size
+        }
+        assertTrue("about half the turns: $said", said in 60..140)
+    }
+
+    @Test
+    fun aQuipRidesItsEvent() {
+        // Chucky strikes into Jason's guard and takes the counter: the block is Jason's (no lines), the counter Chucky's.
+        val block = FightEvent.Blocked(Side.CPU)
+        val counter = FightEvent.Hit(Side.CPU, Move.STRIKE, 5, crit = false, counter = true)
+        val turn = TurnSounds(chuckyFight, listOf(block, counter), quips = Quips(Random(5), chance = 1f))
+        assertEquals(FightSounds(listOf("block"), emptyList()), turn.of(block))
+        val hurt = turn.of(counter)
+        assertEquals("the hit's own sound still plays", listOf("hit_jason"), hurt.sfx)
+        assertTrue("Chucky is not the announcer", hurt.voice.isEmpty())
+        assertTrue(hurt.quip in listOf("chucky_hurt_1", "chucky_hurt_2"))
+        assertNull("said once", turn.of(counter).quip)
+    }
+}
+
+/** Chucky's lines in a fight: which event of a turn gets one, how often, and never the same line twice running. */
+class QuipsTest {
+    private val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
+    private val blocked = FightEvent.Blocked(Side.PLAYER)
+
+    @Test
+    fun halfTheTime() {
+        assertEquals(strike to "chucky_attack_1", Quips(fixed(0.49f)).pick(chuckyFight, listOf(strike), null))
+        assertNull(Quips(fixed(0.5f)).pick(chuckyFight, listOf(strike), null))
+    }
+
+    @Test
+    fun oneRollATurnForItsFirstChance() {
+        // A no for the turn's first line is a quiet turn, not a second try on the next event.
+        var rolls = 0
+        val no = object : Random() {
+            override fun nextBits(bitCount: Int) = 0
+            override fun nextFloat() = 0.9f.also { rolls++ }
+        }
+        assertNull(Quips(no).pick(chuckyFight, listOf(strike, blocked), null))
+        assertEquals(1, rolls)
+    }
+
+    @Test
+    fun onlyAKillerWithLinesSpeaksAndThePlayerFirst() {
+        // Jason's whiff is Jason's (no lines): Chucky's strike after it is the turn's line.
+        val whiff = FightEvent.Miss(Side.CPU, Move.STRIKE)
+        assertEquals(strike to "chucky_attack_1", Quips(fixed(0f)).pick(chuckyFight, listOf(whiff, strike), null))
+        // Chucky on the right: Jason's strike hurts him.
+        assertEquals(strike to "chucky_hurt_1", Quips(fixed(0f)).pick(chuckyFight.mirrored(), listOf(strike), null))
+        // Chucky against Chucky: the player's side speaks first, here the one who took the blow.
+        val chuckies = chuckyFight.copy(cpu = chuckyFight.player)
+        val cpuStrike = FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false)
+        assertEquals(cpuStrike to "chucky_hurt_1", Quips(fixed(0f)).pick(chuckies, listOf(cpuStrike), null))
+        // No one with lines, nothing said.
+        val quiet = FightState(chuckyFight.cpu, chuckyFight.cpu.copy(id = PetId.FREDDY))
+        assertNull(Quips(fixed(0f)).pick(quiet, listOf(strike, cpuStrike, blocked, whiff), null))
+    }
+
+    @Test
+    fun theKnockoutIsTheAnnouncers() {
+        val over = chuckyFight.copy(winner = Side.CPU)
+        val ko = FightEvent.Ko(Side.PLAYER)
+        assertNull(Quips(fixed(0f)).pick(over, listOf(ko), null))
+        // The blow that knocked him out is still his to curse.
+        val blow = FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false)
+        assertEquals(blow to "chucky_hurt_1", Quips(fixed(0f)).pick(over, listOf(blow, ko), null))
+    }
+
+    @Test
+    fun neverTheSameLineTwiceRunning() {
+        val quips = Quips(Random(42), chance = 1f)
+        val said = List(300) { quips.pick(chuckyFight, listOf(strike), null)!!.second }
+        said.zipWithNext().forEach { (a, b) -> assertFalse("$a twice", a == b) }
+        assertEquals(setOf("chucky_attack_1", "chucky_attack_2"), said.toSet())
+        // A beat with one line says it every time.
+        assertEquals(List(3) { "chucky_block" }, List(3) { quips.pick(chuckyFight, listOf(blocked), null)!!.second })
+    }
 }
 
 /** The announcer's reactions: which moment of a turn gets the call, how often, and never twice in a row. */
 class CalloutsTest {
-    /** A random source that always rolls [roll] and always picks the first line. */
-    private fun fixed(roll: Float) = object : Random() {
-        override fun nextBits(bitCount: Int) = 0
-        override fun nextFloat() = roll
-    }
-
     private val block = FightEvent.Blocked(Side.CPU)
     private val counter = FightEvent.Hit(Side.CPU, Move.STRIKE, 6, crit = false, counter = true)
     private val heavy = FightEvent.Hit(Side.PLAYER, Move.HEAVY, 18, crit = false)

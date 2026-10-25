@@ -67,8 +67,11 @@ internal fun beatsOf(events: List<FightEvent>, winner: Side?): List<Beat> = even
     }
 }
 
-/** Sound names to hand the [team.superfun.horrorpets.audio.SoundSink]: effects, then announcer lines. */
-internal data class FightSounds(val sfx: List<String>, val voice: List<String>)
+/**
+ * Sound names to hand the [team.superfun.horrorpets.audio.SoundSink]: effects, then announcer lines, then a killer's
+ * own line ([quip], said only if the announcer is quiet by then).
+ */
+internal data class FightSounds(val sfx: List<String>, val voice: List<String>, val quip: String? = null)
 
 private val Silent = FightSounds(emptyList(), emptyList())
 
@@ -79,7 +82,8 @@ private val Silent = FightSounds(emptyList(), emptyList())
  * crit is `crit` instead of any of them. A miss is `miss`, a block `block`, a potion or a drain `potion`, a
  * bleed the plain `hit` (no one swung), and a KO is the `ko` boom with the announcer saying `ko`.
  * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
- * one from [events], is said with the event it reacts to.
+ * one from [events], is said with the event it reacts to, and so is a killer's one line of the turn, if [quips]
+ * picks one (never on the announcer's event).
  *
  * Make one per turn, from the turn's [events]. [fight] is the state after the turn, used to tell which pet
  * a side is and whether the turn ended the fight.
@@ -88,8 +92,12 @@ internal class TurnSounds(
     private val fight: FightState,
     events: List<FightEvent> = emptyList(),
     callouts: Callouts? = null,
+    quips: Quips? = null,
 ) {
     private var callout = callouts?.pick(events, finishing = fight.winner != null)
+
+    // Picked after the callout, so the killer leaves the announcer's event to him.
+    private var quip = quips?.pick(fight, events, callout)
 
     fun of(event: FightEvent): FightSounds {
         val sfx = when (event) {
@@ -111,7 +119,9 @@ internal class TurnSounds(
         }
         val call = callout?.takeIf { it.event == event }
         if (call != null) callout = null
-        return FightSounds(listOf(sfx), listOfNotNull(call?.line))
+        val line = quip?.takeIf { it.first == event }
+        if (line != null) quip = null
+        return FightSounds(listOf(sfx), listOfNotNull(call?.line), line?.second)
     }
 }
 

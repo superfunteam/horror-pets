@@ -9,6 +9,12 @@ interface SoundSink {
     fun voice(names: List<String>)
 
     /**
+     * A killer's line in a fight, `audio/voice/<name>.wav`: said now if the announcer is quiet, else dropped (never
+     * queued behind him, never over him; see [VoiceQueue.quip]). A sink with no announcer ignores it.
+     */
+    fun quip(name: String) = Unit
+
+    /**
      * Make [lines] the announcer's next words, now: whatever an earlier screen left him saying is cut short and its
      * queued lines are dropped, while [lines] themselves (queued already, or about to be) are kept and start at once.
      * Lines already under way are left alone. See [VoiceQueue.skipTo]. A sink with no announcer ignores it.

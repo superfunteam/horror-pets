@@ -2212,6 +2212,65 @@ class GameViewModelTest {
         assertEquals(1, rig.store.last.pets.getValue(PetId.JASON).losses)
     }
 
+    /**
+     * Dice for a fight of up to [turns] turns in which the CPU always picks [cpuPick] (0 is a STRIKE, 40 a HEAVY) and
+     * every roll is 0.99: no attack misses or crits, and the CPU ignores the player's habit. Dice a short fight never
+     * reads are left over.
+     */
+    private fun plainScript(cpuPick: Int, turns: Int = 10) =
+        ScriptedRandom(List(turns * 7) { 0.99 }, ints = listOf(0, 0) + List(turns) { cpuPick })
+
+    /** Strong Jason's stats on Chucky, the one killer with lines of his own. */
+    private fun strongChucky() = gameOf(selected = PetId.CHUCKY, pets = arrayOf(jason(strength = 100.0).copy(id = PetId.CHUCKY)))
+
+    @Test
+    fun chuckyHasTheLastWord() {
+        // Chucky wins: the announcer calls it, then Chucky laughs.
+        val win = Rig(strongChucky(), rng = plainScript(cpuPick = 0)).started()
+        win.toFight(PetId.FREDDY)
+        win.vm.consumeSounds()
+        win.playOut(Move.STRIKE)
+        assertTrue((win.ui.screen as Screen.Results).won)
+        assertEquals(listOf("you_win", "chucky_win"), win.ui.voice)
+
+        // Losing to Chucky: the same laugh, his, after "You lose".
+        val loss = Rig(strongJason(), rng = plainScript(cpuPick = 40)).started()
+        loss.toFight(PetId.CHUCKY)
+        loss.vm.consumeSounds()
+        loss.playOut(Move.BLOCK)
+        assertFalse((loss.ui.screen as Screen.Results).won)
+        assertEquals(listOf("you_lose", "chucky_win"), loss.ui.voice)
+
+        // Running away says nothing at all.
+        val run = Rig(strongChucky(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
+        run.toFight(PetId.FREDDY)
+        run.vm.consumeSounds()
+        run.vm.onMove(Move.RUN)
+        run.finishAnim()
+        assertTrue((run.ui.screen as Screen.Results).ran)
+        assertTrue(run.ui.voice.isEmpty())
+    }
+
+    @Test
+    fun chuckyBeatenHasTheLastWordToo() {
+        // Chucky loses: "You lose", then his parting shot.
+        val loss = Rig(strongChucky(), rng = plainScript(cpuPick = 40)).started()
+        loss.toFight(PetId.FREDDY)
+        loss.vm.consumeSounds()
+        loss.playOut(Move.BLOCK)
+        assertFalse((loss.ui.screen as Screen.Results).won)
+        assertEquals(listOf("you_lose", "chucky_lose"), loss.ui.voice)
+
+        // Beating him when he was locked (Jason's strikes cut off every HEAVY): the unlock is the announcer's, then
+        // Chucky has his say.
+        val unlock = Rig(soloJason(), rng = plainScript(cpuPick = 40)).started()
+        unlock.toFight(PetId.CHUCKY)
+        unlock.vm.consumeSounds()
+        unlock.playOut(Move.STRIKE)
+        assertEquals(PetId.CHUCKY, (unlock.ui.screen as Screen.Unlocked).pet)
+        assertEquals(listOf("you_win", "unlocked", "chucky_lose"), unlock.ui.voice)
+    }
+
     @Test
     fun aWinThatLevelsThePetQueuesLevelupWithTheResult() {
         // 90 xp + the win's 40 crosses level 2's 100.

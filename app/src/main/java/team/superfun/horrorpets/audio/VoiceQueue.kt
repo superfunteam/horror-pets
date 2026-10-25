@@ -28,6 +28,17 @@ internal class VoiceQueue {
         waiting.addAll(names)
     }
 
+    /**
+     * A killer's line in a fight, [name], said only if no one is talking: queued (it goes [next]) and true when the
+     * queue is [idle]; else false and nothing changes. Unlike the announcer's lines it never waits its turn, because
+     * by then the blow it was about has passed, and it never talks over him.
+     */
+    fun quip(name: String): Boolean {
+        if (!idle) return false
+        waiting.addLast(name)
+        return true
+    }
+
     /** The [next] line starts: it is now [sounding]. Returns it. */
     fun start(): String = waiting.removeFirst().also { sounding = it }
 

@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import team.superfun.horrorpets.assets.Anim
+import team.superfun.horrorpets.audio.Beat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightState
@@ -95,8 +97,8 @@ import team.superfun.horrorpets.ui.fight.nearlyDone
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
  * @param pickRng picks the gag a play does, the game (and its mate) a train opens, what a visit to the pantry tops
- *   the shelf up with and what a killer woken in the night says. Kept apart from [rng], so caring for a pet never
- *   shifts a fight's rolls.
+ *   the shelf up with, what a killer woken in the night says and the killers' last words on a fight. Kept apart from
+ *   [rng], so caring for a pet never shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -735,7 +737,8 @@ class GameViewModel(
     /**
      * The turn's animation is over. A fight that goes on may turn intense now (see [playedOut]). A finished fight
      * turns into its results and the pet is paid; beating a killer the player did not have unlocks it (it joins the
-     * stable at its defaults) and shows that before the results.
+     * stable at its defaults) and shows that before the results. The announcer calls the result (and the unlock), then
+     * the killers have the [last word][lastWords].
      *
      * The stable's clock is brought up to now first (as the minute tick would), so the newcomer joins from this
      * moment and decays like the rest through the next absence, even one that starts before the next tick. Only
@@ -754,7 +757,7 @@ class GameViewModel(
             fight.playerRan -> emptyList()
             won -> listOf("you_win")
             else -> listOf("you_lose")
-        } + if (unlock != null) listOf("unlocked") else emptyList()
+        } + (if (unlock != null) listOf("unlocked") else emptyList()) + lastWords(fight)
         val game = if (unlock == null) {
             s.game.withPet(reward.pet)
         } else {
@@ -777,6 +780,21 @@ class GameViewModel(
      * music. The same on both apps of a PvP fight.
      */
     private fun Screen.Fight.playedOut(): Screen.Fight = copy(intense = intense || nearlyDone(fight))
+
+    /**
+     * What the killers say once [fight] is over, after the announcer's YOU WIN or YOU LOSE: the winner's WIN line, then
+     * the loser's LOSE line, each from its own killer, against the CPU and in PvP alike (nothing from a killer with no
+     * lines). The player running off says nothing, as the announcer does then. Queued like his lines, never dropped.
+     */
+    private fun lastWords(fight: FightState): List<String> {
+        val winner = fight.winner
+        if (winner == null || fight.playerRan) return emptyList()
+        val (champ, loser) = if (winner == Side.PLAYER) fight.player to fight.cpu else fight.cpu to fight.player
+        return listOfNotNull(
+            killerLines(champ.id, Beat.WIN).randomOrNull(pickRng),
+            killerLines(loser.id, Beat.LOSE).randomOrNull(pickRng),
+        )
+    }
 
     /** The unlock has been shown: on to the fight's results. */
     fun onUnlockedDone() {
@@ -1213,7 +1231,7 @@ class GameViewModel(
                 fight.playerRan -> emptyList()
                 won -> listOf("you_win")
                 else -> listOf("you_lose")
-            },
+            } + lastWords(fight),
         )
     }
 
