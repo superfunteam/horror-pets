@@ -30,6 +30,9 @@ fun localHour(nowMs: Long, zone: TimeZone): Int =
  * step runs on the epoch-ms axis to the next whole local hour, so a clock change (an hour that is gone, or one that
  * happens twice) counts for exactly the real time it took: the result is never negative and never more than the
  * stretch is long.
+ *
+ * It costs one step per local hour of the stretch, so callers bound it: [applyElapsed], the only one, caps the
+ * stretch at [Tuning.MAX_ELAPSED_MS] (30 days, some 720 steps).
  */
 fun sleepHoursBetween(fromMs: Long, toMs: Long, zone: TimeZone): Double {
     if (toMs <= fromMs) return 0.0

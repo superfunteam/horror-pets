@@ -2731,6 +2731,19 @@ class GameViewModelTest {
     }
 
     @Test
+    fun anUnlockAppliesTheTimeSinceTheLastTickByThePlayersClock() {
+        // The fight runs from 23:00 to 06:00 in Anchorage (T0 there, UTC-9 in January) with no tick, so the unlock
+        // brings the stable up to now: seven hours, all asleep at half pace (+14), on top of the win's own hunger.
+        val anchorage = TimeZone.getTimeZone("America/Anchorage")
+        val rig = Rig(soloJason(), rng = winningScript(), zone = anchorage).started()
+        rig.toFight(PetId.FREDDY)
+        rig.clock.now += 7 * HOUR
+        rig.playOut()
+        assertTrue(rig.ui.screen is Screen.Unlocked)
+        assertEquals(20.0 + FightTuning.FIGHT_HUNGER + 14.0, rig.jason.hunger, 1e-9)
+    }
+
+    @Test
     fun underAStaleClockAnUnlockedKillerWaitsForTheRealTime() {
         // Before the TV's clock has synced, no time can be applied, so the newcomer keeps the fresh-join mark and
         // sits out whatever gap the real clock turns out to be.

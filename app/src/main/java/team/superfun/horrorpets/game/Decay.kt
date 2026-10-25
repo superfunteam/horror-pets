@@ -75,13 +75,16 @@ private fun gapMs(nowMs: Long, lastSeenMs: Long): Long =
 /**
  * [p] after [hours] of time away, [sleepHours] of them (at most [hours]) asleep: hunger and fun move at
  * [Tuning.SLEEP_DECAY_SHARE] of their pace through the sleep, strength and the mood bonus at their full pace throughout.
+ *
+ * Internal rather than private so tests can give it more sleep than [applyElapsed] can: one night there holds at
+ * most seven sleep hours.
  */
 internal fun decay(p: PetState, hours: Double, sleepHours: Double): PetState {
-    // A sleeping hour counts for SLEEP_DECAY_SHARE of a waking one.
-    val hungerHours = hours - sleepHours * (1 - Tuning.SLEEP_DECAY_SHARE)
+    // Hunger and fun both run on these: a sleeping hour counts for SLEEP_DECAY_SHARE of a waking one.
+    val pacedHours = hours - sleepHours * (1 - Tuning.SLEEP_DECAY_SHARE)
     return p.copy(
-        hunger = clampStat(p.hunger + Tuning.HUNGER_PER_HOUR * hungerHours),
-        funLevel = clampStat(p.funLevel - Tuning.FUN_PER_HOUR * hungerHours),
+        hunger = clampStat(p.hunger + Tuning.HUNGER_PER_HOUR * pacedHours),
+        funLevel = clampStat(p.funLevel - Tuning.FUN_PER_HOUR * pacedHours),
         strength = clampStat(p.strength - Tuning.STRENGTH_PER_HOUR * hours),
         moodBonus = moveTowardZero(clampMoodBonus(p.moodBonus), Tuning.MOOD_BONUS_DECAY_PER_HOUR * hours),
     )
