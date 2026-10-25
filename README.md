@@ -23,7 +23,12 @@ nothing else.
 - **Unlock your stable:** beat a locked killer in a fight and it is UNLOCKED, joining your stable. Once you have
   more than one, the others take turns in the top-right corner of Home, their heads ringed by Fed, Fun, Strength
   and Mood; open the stable there (or with the remote's Menu key) to go see any of them.
-- **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them happy.
+- **Real-time care:** Hunger, Fun, Strength and Mood keep moving while you are away. Play, feed and train to keep them
+  happy. Home takes the day's light: warm at dawn (5 am), plain by day from 7, orange at dusk (6 pm) and deep blue at
+  night (9 pm), when the edges go darker still. From 11 pm to 6 am your killer sleeps on Home, slumped and snoring with
+  Zs rising over its head, and while it sleeps its hunger and fun run at half speed. Any press on Home wakes it and keeps
+  it up for ten minutes, after which it dozes off again if it is still night; a play, a walk or the stable draws a
+  sleepy word from it.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **The pantry:** FEED opens a horror kitchen where you cook two things at a time into snacks and meals (raw steak on
   the grill, a severed foot left in the sun, worms in the pot), using five ways to cook that get used up like any
@@ -149,6 +154,7 @@ adb -s emulator-5554 logcat -s Puppet Updates    # the update check, download an
 | `status` | Logs the screen, the active pet and whether autoplay and the HUD are on. |
 | `fake_version <x.y.z>\|off` | The update check takes this build to be that version (a dev build, `0.0.0-dev`, never updates otherwise); `off` goes back to the real one. It lasts until changed or the app is stopped. Send `check_update` after it. |
 | `check_update` | Checks GitHub for a newer release now, even after LATER, and offers it in the update window. The window only shows over the title, so send it from a cold start. The outcome is logged under `Updates`. A debug build cannot install a release over itself (they are signed with different keys): the installer refuses, and the window says so. |
+| `hour <0-23>\|off` | Home takes the hour of the day to be that one, for its light and the killers' sleep (`hour 23` puts the killer to sleep on Home); `off`, or a bare `hour`, goes back to the clock. It lasts until changed or the app is stopped. |
 
 Each command waits for the action playing (a turn, a play) to end first. A command that is refused (logged as
 `refused:` with the reason) drops the rest of its line, and a new line replaces one still waiting. Moves are picked

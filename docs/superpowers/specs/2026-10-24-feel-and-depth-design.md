@@ -3,15 +3,20 @@
 **Date:** 2026-10-24. **Status:** approved in chat; the tell is removed (open question 1 answered). Implemented in
 phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with the
 riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore) in
-the fights-that-hit plan, and A and G in the meal-perks plan. Tuned by eye: the intense join matches the plain track by
-speed (a plain seek landed 120–170 ms late) and the switch back after a fight keeps its place too; the intense track's
-tom fills every 4 bars; the knockout's slow motion holds the sprites and the stage's waits while the damage number and
-the marks keep their own pace (accepted after review); and the music hardens as the turn's playback ends, not as the
-move is picked, so a knockout from above 30% ends the fight on the plain track. Tuned by eye in the meal-perks plan:
-the HUD's meal chip shortens to one word (FEAST, IRON) or steps aside where even that will not fit, so COMBO, BLEED and
-DAZED always show whole; the VS card and the fight read the status at the moment the card opens; the flavor mark is a
-corner badge on the shelf label, with no text inset, so no name loses room; and a lit way-to-cook label runs three
-lines on TV, with the shelf 8 dp taller.
+the fights-that-hit plan, A and G in the meal-perks plan, and C in the living-home plan. Tuned by eye: the intense join
+matches the plain track by speed (a plain seek landed 120–170 ms late) and the switch back after a fight keeps its place
+too; the intense track's tom fills every 4 bars; the knockout's slow motion holds the sprites and the stage's waits
+while the damage number and the marks keep their own pace (accepted after review); and the music hardens as the turn's
+playback ends, not as the move is picked, so a knockout from above 30% ends the fight on the plain track. Tuned by eye
+in the meal-perks plan: the HUD's meal chip shortens to one word (FEAST, IRON) or steps aside where even that will not
+fit, so COMBO, BLEED and DAZED always show whole; the VS card and the fight read the status at the moment the card
+opens; the flavor mark is a corner badge on the shelf label, with no text inset, so no name loses room; and a lit
+way-to-cook label runs three lines on TV, with the shelf 8 dp taller. Tuned by eye in the living-home plan: the night
+vignette is drawn twice over; the light fades out in its own colour, never through black; the slump is a lean about the
+feet (`SpritePose.tilt`) with no sit-up animation (the LOOK_A sit-up was dropped: the killer snaps upright as the
+press's own animation starts); every press keeps the killer up ten minutes, so a press just before 23:00 carries it past
+bedtime; and the sleepy line is seen on PLAY, a walk or the stable, not on a refused press (its reason takes the bubble)
+nor on a press that changes the screen at once.
 
 ## Intent
 
@@ -135,23 +140,25 @@ Once the player has every killer, FIGHT becomes a run through the whole stable, 
 
 ## C. The living Home: light and sleep
 
-- **Light.** `lightOf(hour: Int): SceneLight` in `game/DayLight.kt`, by the device's local hour: 5–7 DAWN (warm,
-  `#FFB36B` at 0.16), 7–18 DAY (none), 18–21 DUSK (`#FF6A2A` at 0.22), 21–5 NIGHT (`#1B2A6B` at 0.38 with the vignette
-  doubled). Home draws it as a tinted layer over the scene and under the killer and the HUD, cross-faded over 2 s when
-  it changes (the hour is read on resume and once a minute with the tick). Only Home and the stable's badge: the
-  pantry, training and fights keep their own light. Debug: the puppet's `hour N` fakes the hour.
+- **Light.** `dayLightAt(hour: Int): DayLight` in `game/DayLight.kt` and `sceneLightFor(light: DayLight): SceneLight?`
+  in `ui/home/SceneLight.kt`, by the device's local hour: 5–7 DAWN (warm, `#FFB36B` at 0.16), 7–18 DAY (none), 18–21
+  DUSK (`#FF6A2A` at 0.22), 21–5 NIGHT (`#1B2A6B` at 0.38 with the vignette doubled). Home draws it as a tinted layer
+  over the scene and under the killer and the HUD, cross-faded over 2 s when it changes (the hour is read on resume and
+  once a minute with the tick). Only Home is lit (the HUD and the stable's badge sit above the light, unlit); the
+  pantry, training, fights, the VS card and the title are not. Debug: the puppet's `hour N` fakes the hour.
 - **Sleep.** From 23 to 6 local the killer is asleep unless something just woke it:
   - its idle holds on its first frame, slumped (rotated 12° toward the floor, lowered by 5% of its height), with Zzz
     rising from its head every 1.6 s (drawn text in the HUD's font, drifting up and fading) and a snore loop (new
     sound; silent until it exists);
   - the status tag reads ASLEEP (priority: STARVING > ASLEEP > GRUMPY > HUNGRY > BORED > CONTENT);
-  - hunger grows and fun falls at half speed for the hours asleep: `elapsedHours` in `game/Care.kt` splits an away
-    stretch into asleep and awake hours by the clock (`sleepHoursBetween(fromMs, toMs, zone)`, tested across midnight
-    and a stretch longer than a day);
-  - any press on the action bar, a walk, or opening the stable wakes it: it sits up (the LOOK_A animation), says a
-    sleepy line ("Five more minutes.", "...what time is it?", "I was dreaming about camp.") and stays awake for 10
-    minutes (`awakeUntilMs`, not saved), then dozes off again if it is still night. The press itself then goes
-    through as normal (FEED opens the pantry awake).
+  - hunger grows and fun falls at half speed for the hours asleep (the share is applied by `decay` in `game/Decay.kt`):
+    `applyElapsed` counts an away stretch's asleep hours by the clock (`sleepHoursBetween(fromMs, toMs, zone)` in
+    `game/DayLight.kt`, tested across midnight and a stretch longer than a day);
+  - any press on the action bar, a walk, or opening the stable wakes it: it sits up (its LOOK_A sit-up was dropped: it
+    snaps upright as the press's own animation starts), says a sleepy line ("Five more minutes.", "...what time is it?",
+    "I was dreaming about camp.", "Can't a killer sleep?") and stays awake for 10 minutes (`awakeUntilMs`, not saved),
+    then dozes off again if it is still night. The press itself then goes through as normal (FEED opens the pantry
+    awake).
 - The welcome-back card is unchanged; the title screen is unchanged.
 
 ## D. Fights like a classic RPG (open question 1)
