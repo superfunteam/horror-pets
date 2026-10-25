@@ -1399,8 +1399,9 @@ class GameViewModelTest {
         val saves = rig.store.saves.size
         rig.vm.onPantryFeed(session)
 
-        val paid = feed(before, STEAK)
+        val paid = feed(before, STEAK, rig.clock.now)
         assertEquals(paid.pet, rig.jason)
+        assertEquals("the meal is remembered, at the clock's time", STEAK.id to rig.clock.now, rig.jason.lastMeal to rig.jason.lastMealAtMs)
         assertEquals(25.0, rig.jason.hunger, 1e-9)
         assertEquals(10, rig.jason.xp)
         assertEquals(SHELF, rig.shelf)

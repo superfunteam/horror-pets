@@ -11,6 +11,7 @@ import team.superfun.horrorpets.game.clampMoodBonus
 import team.superfun.horrorpets.game.clampStat
 import team.superfun.horrorpets.game.pantry.DISHES
 import team.superfun.horrorpets.game.xpToNext
+import team.superfun.horrorpets.model.Flavor
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
@@ -71,7 +72,8 @@ object SaveCodec {
      * - hunger, fun and strength are in 0..100 and moodBonus in -30..30 (NaN becomes the field's default);
      * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative;
      * - trainingBest keeps only the training games this build knows (by name), and no score is negative;
-     *   trainedGames keeps only the names of those games.
+     *   trainedGames keeps only the names of those games;
+     * - lastMeal keeps only an item this build knows (by id), and tastesLearned only the names of flavors.
      */
     fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
@@ -136,6 +138,8 @@ object SaveCodec {
 
     private val trainingGameNames: Set<String> = TrainingGame.entries.map { it.name }.toSet()
 
+    private val flavorNames: Set<String> = Flavor.entries.map { it.name }.toSet()
+
     private fun petIdOrNull(e: JsonElement?): PetId? {
         val name = (e as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
         return PetId.entries.firstOrNull { it.name == name }
@@ -170,6 +174,8 @@ object SaveCodec {
             sceneIndex = p.sceneIndex.coerceIn(0, Tuning.SCENE_COUNT - 1),
             trainingBest = p.trainingBest.filterKeys { it in trainingGameNames }.mapValues { it.value.coerceAtLeast(0) },
             trainedGames = p.trainedGames.filter { it in trainingGameNames }.toSet(),
+            lastMeal = p.lastMeal?.takeIf { pantryItemById(it) != null },
+            tastesLearned = p.tastesLearned.filter { it in flavorNames }.toSet(),
         ).let { q ->
             // Attacks it may not have: another killer's, one past its level, or an id this build does not know.
             val known = q.known.filter { id -> attackById(id)?.let { it.pet == q.id && it.tier > 0 && it.level <= q.level } == true }.toSet()

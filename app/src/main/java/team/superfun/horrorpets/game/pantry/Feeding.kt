@@ -36,7 +36,8 @@ enum class Reaction {
  * paid and the levels that carried it past, and how far it actually moved [PetState.strength], [PetState.funLevel]
  * and [PetState.moodBonus] once clamped ([strengthGained], [funGained], [moodGained]: 0 where nothing moved, negative
  * for a loss). [firstFavorite] is true only the first time this killer is fed its favorite, which is when the game
- * remembers it ([PetState.favoriteFound]).
+ * remembers it ([PetState.favoriteFound]). [status] is the meal status this meal left, as [mealStatusOf] reads it
+ * from [pet] right after: null when it left none (a raw food, or a dish the killer hates).
  */
 data class FeedOutcome(
     val pet: PetState,
@@ -48,6 +49,7 @@ data class FeedOutcome(
     val strengthGained: Double,
     val funGained: Double,
     val moodGained: Double,
+    val status: MealStatus?,
 )
 
 /** What one item pays before it is applied: the hunger change, the XP, the flavor stat and the mood bonus. */
@@ -66,8 +68,13 @@ private class Payout(val hunger: Double, val xp: Int, val stat: Double, val mood
  * gross, so a gross dish adds its stat and its mood to the mood bonus together. Every stat is clamped as elsewhere,
  * and the XP goes through [addXp]. A killer that is too full to eat is the caller's to turn away (see
  * `Tuning.FEED_REFUSE_BELOW`); this feeds it anyway.
+ *
+ * Whatever it is fed becomes the killer's last meal, eaten at [nowMs] ([PetState.lastMeal] and
+ * [PetState.lastMealAtMs]), replacing the one before it, so the status of the last meal is always the status of this
+ * one (see [mealStatusOf]). A killer that loves or hates a dish's flavor, or is fed its favorite, shows what it thinks
+ * of the flavor, so that flavor joins [PetState.tastesLearned]; a shrug, a botch and "fine" teach nothing.
  */
-fun feed(pet: PetState, item: PantryItem): FeedOutcome {
+fun feed(pet: PetState, item: PantryItem, nowMs: Long): FeedOutcome {
     val p = payout(item, tasteOf(pet.id))
     val moodDelta = p.mood + if (item.flavor == Flavor.GROSS) p.stat else 0.0
     val base = pet.copy(
@@ -82,8 +89,15 @@ fun feed(pet: PetState, item: PantryItem): FeedOutcome {
     }
     val paid = addXp(fed, p.xp)
     val favorite = p.reaction == Reaction.FAVORITE
+    val shown = item.flavor?.takeIf { p.reaction in SHOWS_A_TASTE }
+    val after = paid.pet.copy(
+        favoriteFound = pet.favoriteFound || favorite,
+        lastMeal = item.id,
+        lastMealAtMs = nowMs,
+        tastesLearned = if (shown == null) pet.tastesLearned else pet.tastesLearned + shown.name,
+    )
     return FeedOutcome(
-        pet = paid.pet.copy(favoriteFound = pet.favoriteFound || favorite),
+        pet = after,
         reaction = p.reaction,
         line = p.line,
         xpGained = p.xp,
@@ -92,8 +106,12 @@ fun feed(pet: PetState, item: PantryItem): FeedOutcome {
         strengthGained = fed.strength - pet.strength,
         funGained = fed.funLevel - pet.funLevel,
         moodGained = fed.moodBonus - pet.moodBonus,
+        status = mealStatusOf(after, nowMs),
     )
 }
+
+/** The reactions that show the player what a killer thinks of a flavor. */
+private val SHOWS_A_TASTE = setOf(Reaction.LOVED, Reaction.HATED, Reaction.FAVORITE)
 
 private fun payout(item: PantryItem, taste: Taste): Payout = when {
     item.kind == ItemKind.METHOD -> Payout(0.0, 0, 0.0, Tuning.MOOD_RAW_METHOD, Reaction.YUCK, METHOD_LINES.getValue(item))

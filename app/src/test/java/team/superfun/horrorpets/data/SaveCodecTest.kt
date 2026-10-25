@@ -309,6 +309,34 @@ class SaveCodecTest {
     }
 
     @Test
+    fun mealFieldsRoundTripAndAreCleaned() {
+        val jason = PetState(PetId.JASON, lastMeal = "steak", lastMealAtMs = 1_760_000_000_000L, tastesLearned = setOf("SAVORY", "GROSS"))
+        val state = GameState(pets = mapOf(PetId.JASON to jason, PetId.FREDDY to PetState(PetId.FREDDY)), selected = PetId.JASON)
+        val back = SaveCodec.decode(SaveCodec.encode(state))
+        assertEquals(state, back)
+        assertEquals("steak", back.pets.getValue(PetId.JASON).lastMeal)
+        assertEquals(1_760_000_000_000L, back.pets.getValue(PetId.JASON).lastMealAtMs)
+        assertEquals(setOf("SAVORY", "GROSS"), back.pets.getValue(PetId.JASON).tastesLearned)
+        // A pet from 0.8.2 has none of the fields: it has eaten nothing and learned nothing.
+        val old = pet(PetId.JASON, """{"id":"JASON","level":5,"wins":2,"favoriteFound":true}""")
+        assertNull(old.lastMeal)
+        assertNull(old.lastMealAtMs)
+        assertEquals(emptySet<String>(), old.tastesLearned)
+        assertEquals(5, old.level)
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{}"""))
+        // A meal this build does not know (a later build's dish) is dropped; a real one, even a botch or a raw food, is kept.
+        assertNull(pet(PetId.JASON, """{"level":5,"lastMeal":"nonsense","lastMealAtMs":1760000000000}""").lastMeal)
+        assertEquals("pile_of_slop", pet(PetId.JASON, """{"lastMeal":"pile_of_slop"}""").lastMeal)
+        assertEquals("grill", pet(PetId.JASON, """{"lastMeal":"grill"}""").lastMeal)
+        // Only flavors this build knows are kept, by exact name.
+        assertEquals(setOf("SWEET"), pet(PetId.JASON, """{"tastesLearned":["SWEET","salty"]}""").tastesLearned)
+        assertEquals(setOf("SWEET"), pet(PetId.JASON, """{"tastesLearned":["SWEET","sweet","SOUR"]}""").tastesLearned)
+        // A wrongly typed field is one bad field: that pet resets to defaults and stays unlocked.
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"lastMeal":7}"""))
+        assertEquals(PetState(PetId.JASON), pet(PetId.JASON, """{"level":7,"tastesLearned":"SWEET"}"""))
+    }
+
+    @Test
     fun roundTripOfAFreshGame() {
         assertEquals(defaults, SaveCodec.decode(SaveCodec.encode(defaults)))
     }

@@ -44,6 +44,11 @@ val Starters: List<PetId> = PetId.entries.filterNot { it.secret }
  * killer needs both solo games here before its first fight (see `mustTrainBeforeFighting`).
  * [favoriteFound] is whether it has been fed its favorite dish; once it has, that dish wears a heart on the pantry
  * shelf while this killer is the one in the kitchen (see `feed`).
+ * [lastMeal] is the [PantryItem.id] of the last thing it was fed, and [lastMealAtMs] when (wall-clock milliseconds):
+ * together they are its meal status (see `mealStatusOf`), which fades a day after the meal. [tastesLearned] is the
+ * [Flavor] names it has reacted to by loving or hating them (or by eating its favorite), the only part of its taste
+ * the player has been shown (see `feed`). All three are ids and names, not items, so a save written by a later build
+ * that knows more still loads here.
  */
 @Serializable
 data class PetState(
@@ -64,6 +69,9 @@ data class PetState(
     val trainingBest: Map<String, Int> = emptyMap(),
     val trainedGames: Set<String> = emptySet(),
     val favoriteFound: Boolean = false,
+    val lastMeal: String? = null,
+    val lastMealAtMs: Long? = null,
+    val tastesLearned: Set<String> = emptySet(),
 )
 
 /**

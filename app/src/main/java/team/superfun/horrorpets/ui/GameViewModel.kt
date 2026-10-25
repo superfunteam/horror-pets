@@ -454,7 +454,7 @@ class GameViewModel(
         val shelf = s.game.pantryItems()
         val place = pantry.board.single()
         val item = shelf[place]
-        val outcome = feed(pet, item)
+        val outcome = feed(pet, item, clock.nowMs())
         val game = s.game.withPet(outcome.pet).copy(pantry = shelf.filterIndexed { i, _ -> i != place }.map { it.id })
         val fed = FedShow(
             item = item,

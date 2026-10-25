@@ -5,6 +5,7 @@ import kotlin.math.min
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.game.Tuning
@@ -39,6 +40,11 @@ class FeedingTest {
         xp = xp,
         favoriteFound = favoriteFound,
     )
+
+    /** The moment every meal here is eaten, unless a test says otherwise. */
+    private val ate = 1_760_000_000_000L
+
+    private fun feed(pet: PetState, item: PantryItem): FeedOutcome = feed(pet, item, ate)
 
     private fun assertStats(
         p: PetState,
@@ -356,12 +362,79 @@ class FeedingTest {
         }
     }
 
+    // The last meal and the tastes learned.
+
+    @Test
+    fun feedingRecordsTheMealAndTheTime() {
+        val steak = feed(pet(), STEAK, ate)
+        assertEquals(STEAK.id, steak.pet.lastMeal)
+        assertEquals(ate, steak.pet.lastMealAtMs)
+        // Jason loves savory: the dish leaves a status, and the outcome carries it.
+        assertEquals(MealStatus(MealPerk.BEEFED_UP), steak.status)
+        // The next meal replaces it, and the time with it.
+        val later = ate + 5 * 60_000L
+        val caramel = feed(steak.pet, CARAMEL, later)
+        assertEquals(CARAMEL.id, caramel.pet.lastMeal)
+        assertEquals(later, caramel.pet.lastMealAtMs)
+        assertEquals(MealStatus(MealPerk.SUGAR_RUSH), caramel.status)
+        // A botch is a meal too, with the status that follows it; the favorite is a feast.
+        assertEquals(MealStatus(MealPerk.HANGOVER), feed(pet(), PILE_OF_SLOP, ate).status)
+        assertEquals(MealStatus(MealPerk.BEEFED_UP, feast = true), feed(pet(), CAMP_CRYSTAL_FISH_FRY, ate).status)
+        // The status is whatever the pet that comes back has at that moment.
+        val rng = Random(29)
+        repeat(300) {
+            val out = feed(pet(id = PetId.entries.random(rng)), PantryItem.entries.random(rng), ate)
+            assertEquals(mealStatusOf(out.pet, ate), out.status)
+        }
+    }
+
+    @Test
+    fun aHatedDishOrARawFoodClearsAnOldStatus() {
+        val beefedUp = feed(pet(), STEAK, ate).pet
+        assertEquals(MealStatus(MealPerk.BEEFED_UP), mealStatusOf(beefedUp, ate))
+        // Jason hates gross: the dish is the last meal, and the beef-up is gone with it.
+        val hated = feed(beefedUp, GRILLED_FOOT, ate + 1_000)
+        assertEquals(Reaction.HATED, hated.reaction)
+        assertEquals(GRILLED_FOOT.id, hated.pet.lastMeal)
+        assertNull(hated.status)
+        assertNull(mealStatusOf(hated.pet, ate + 1_000))
+        // A raw food, and a way to cook eaten raw, do the same.
+        assertNull(feed(beefedUp, EGG, ate + 1_000).status)
+        assertNull(feed(beefedUp, GRILL, ate + 1_000).status)
+        assertEquals(EGG.id, feed(beefedUp, EGG, ate + 1_000).pet.lastMeal)
+    }
+
+    @Test
+    fun aLovedOrHatedFlavorIsLearnedAShruggedOneIsNot() {
+        // Jason loves savory, is fine with sweet and hates gross.
+        assertEquals(setOf("SAVORY"), feed(pet(), STEAK).pet.tastesLearned)
+        assertEquals(setOf("GROSS"), feed(pet(), GRILLED_FOOT).pet.tastesLearned)
+        // Being fine with a dish tells the player nothing.
+        assertEquals(emptySet<String>(), feed(pet(), CARAMEL).pet.tastesLearned)
+        // A raw food teaches nothing, even a gross one to a killer that hates gross; nor does a botch or a way to cook.
+        assertEquals(emptySet<String>(), feed(pet(), EYEBALL).pet.tastesLearned)
+        assertEquals(emptySet<String>(), feed(pet(), EGG).pet.tastesLearned)
+        assertEquals(emptySet<String>(), feed(pet(), PILE_OF_SLOP).pet.tastesLearned)
+        assertEquals(emptySet<String>(), feed(pet(), GRILL).pet.tastesLearned)
+        // The favorite teaches its flavor.
+        assertEquals(setOf("SAVORY"), feed(pet(), CAMP_CRYSTAL_FISH_FRY).pet.tastesLearned)
+        assertEquals(setOf("GROSS"), feed(pet(PetId.FREDDY), SPAGHETTI_AND_EYEBALLS).pet.tastesLearned)
+        assertEquals(setOf("SWEET"), feed(pet(PetId.CHUCKY), BIRTHDAY_CAKE).pet.tastesLearned)
+        // What is learned stays learned and grows: nothing a later meal does takes it away.
+        val both = feed(feed(pet(), STEAK).pet, GRILLED_FOOT).pet
+        assertEquals(setOf("SAVORY", "GROSS"), both.tastesLearned)
+        assertEquals(both.tastesLearned, feed(both, CARAMEL).pet.tastesLearned)
+        assertEquals(both.tastesLearned, feed(both, EGG).pet.tastesLearned)
+        assertEquals(both.tastesLearned, feed(both, STEAK).pet.tastesLearned)
+    }
+
     @Test
     fun feedingTouchesNothingButWhatItPays() {
         val before = pet(id = PetId.MICHAEL)
             .copy(wins = 4, losses = 2, sceneIndex = 1, known = setOf("michael_light_1"), trainingBest = mapOf("SLASH_SAYS" to 3))
         // Michael is fine with savory: a meal's base numbers.
-        assertEquals(before.copy(hunger = 5.0, strength = 56.0, xp = 15), feed(before, STEAK_DINNER).pet)
+        val meal = before.copy(hunger = 5.0, strength = 56.0, xp = 15, lastMeal = STEAK_DINNER.id, lastMealAtMs = ate)
+        assertEquals(meal, feed(before, STEAK_DINNER).pet)
     }
 
     // The top-up.

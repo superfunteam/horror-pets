@@ -93,6 +93,9 @@ object Tuning {
     const val MOOD_RAW_METHOD = -10.0
     const val MOOD_FAVORITE = 25.0
 
+    // Feeding: how long the last meal's status lasts (see `mealStatusOf`)
+    const val MEAL_PERK_HOURS = 24
+
     // The pantry: the most items a save keeps, and what the top-up brings the shelf to on every visit
     const val PANTRY_MAX = 40
     const val PANTRY_MIN_RAW = 4
