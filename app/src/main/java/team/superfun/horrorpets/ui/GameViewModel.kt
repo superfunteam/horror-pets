@@ -487,6 +487,7 @@ class GameViewModel(
         val outcome = feed(pet, item, now)
         val game = s.game.withPet(outcome.pet).copy(pantry = shelf.filterIndexed { i, _ -> i != place }.map { it.id })
         val fed = FedShow(
+            pet = pet.id,
             item = item,
             reaction = outcome.reaction,
             line = outcome.line,

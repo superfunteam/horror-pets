@@ -44,6 +44,8 @@ import team.superfun.horrorpets.assets.SpriteManifest
 import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
+import team.superfun.horrorpets.audio.VoiceBeat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.ui.FedShow
@@ -118,8 +120,9 @@ internal const val STATUS_LINE_AFTER_MS = 1_400L
  * How a reaction plays, as it starts (times in ms into it): its [sound], the killer's [anims], the favorite's
  * [hearts], when LEVEL UP! shows ([levelUpAtMs], null without a level-up) and whether it plays its sound
  * ([levelUpSound]), when the meal's status shows ([statusAtMs], null without one) and its sound ([statusSound]), when
- * OK or a tap may carry on ([carryOnAfterMs]), and the status's line ([statusLine]) and when the bubble swaps to it
- * ([statusLineAtMs]), both null without a status.
+ * OK or a tap may carry on ([carryOnAfterMs]), the status's line ([statusLine]) and when the bubble swaps to it
+ * ([statusLineAtMs]), both null without a status, and what the killer says over its sound as it starts ([voice], one
+ * of its FEED lines; null for a killer with no voice).
  */
 internal data class ReactionCue(
     val sound: String?,
@@ -132,6 +135,7 @@ internal data class ReactionCue(
     val statusSound: String? = null,
     val statusLine: String? = null,
     val statusLineAtMs: Long? = null,
+    val voice: String? = null,
 ) {
     /**
      * What the killer's bubble says [ms] into the reaction for a meal whose [taste] line ([FedShow.line]) it reacted
@@ -151,8 +155,11 @@ internal data class ReactionCue(
  * (the kitchen came back, its Activity made again, on a meal already eaten) is shown finished and silent: the line (the
  * status's, with one), the gains, LEVEL UP! and the status at once, with no sound, no hearts and no pose, and OK after
  * the guard as ever.
+ *
+ * Fresh, the killer also says one of its FEED lines (`killerLines`) as the reaction starts, picked with [rng]; a
+ * killer with no voice, or a replay (it was said the first time), says nothing.
  */
-internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
+internal fun reactionCue(fed: FedShow, replay: Boolean, rng: Random = Random): ReactionCue {
     val levelUp = fed.levelsGained > 0
     val status = fed.status
     if (replay) {
@@ -182,6 +189,7 @@ internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
         statusSound = status?.let(::statusSound),
         statusLine = status?.line,
         statusLineAtMs = if (status != null) STATUS_LINE_AFTER_MS else null,
+        voice = killerLines(fed.pet, VoiceBeat.FEED).takeIf { it.isNotEmpty() }?.random(rng),
     )
 }
 
@@ -263,10 +271,11 @@ internal class Meal(val image: ImageBitmap, val crumbs: List<Color>) {
  * - the meal's picture is read (and its crumbs' colors from it), then it is tossed from the board to the killer's feet
  *   with the `food_drop` whistle (the kitchen draws it from [FeedStage.meal], see [FoodDrop]);
  * - as it lands the killer munches it, [MUNCHES] times its feed animation, while it loses its bites;
- * - then the reaction, as [reactionCue] has it: its pose and sound, the line over its head, the gains over the board
- *   ([gainsOf]), the favorite's hearts, a level-up's words and sound a beat later, and the meal's status with its
- *   sound ([statusSound]) a beat after those, then the status's own line in the bubble in place of the taste line
- *   ([ReactionCue.lineAt]); OK or a tap carries on once [FeedStage.carryOn] says so;
+ * - then the reaction, as [reactionCue] has it: its pose and sound (and the killer's own line, queued behind anything
+ *   the announcer is saying), the line over its head, the gains over the board ([gainsOf]), the favorite's hearts, a
+ *   level-up's words and sound a beat later, and the meal's status with its sound ([statusSound]) a beat after those,
+ *   then the status's own line in the bubble in place of the taste line ([ReactionCue.lineAt]); OK or a tap carries
+ *   on once [FeedStage.carryOn] says so;
  * - and [REACTION_HOLD_MS] later the show is over ([onDone]): the kitchen carries on Home by itself, unless the killer
  *   could eat more, when it waits for OK (FEED again) or Back.
  *
@@ -311,6 +320,7 @@ internal suspend fun playFeedShow(
         stage.line = cue.lineAt(0L, fed.line)
         stage.gains = gainsOf(fed)
         cue.sound?.let(sounds::sfx)
+        cue.voice?.let { sounds.voice(listOf(it)) }
         if (cue.hearts) stage.hearts = true
         coroutineScope {
             launch { actOut(actor, cue.anims, manifest, clock) }

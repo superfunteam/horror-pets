@@ -36,6 +36,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.audio.VoiceBeat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
 import team.superfun.horrorpets.ui.common.LocalSoundSink
@@ -116,7 +118,8 @@ internal fun headHeight(loader: AssetLoader, pet: PetId): Float {
  * drawn [petH] tall, with a body [bodyHalf] wide each side of its middle; [fullH] is a full-size pet's height,
  * which sizes the glove. The glove comes in from the pet's roomier side ([handSide]) or from above, moves the pet
  * through [pose] (a poke squashes it, a tickle jiggles it, a shake lifts and swings it) and says one of the
- * gag's lines. [onReact] is when the pet's own happy reaction should start; [onDone], once the glove is gone.
+ * gag's lines. As the pet reacts it has its own say, one of its PLAY lines (none for a killer with no voice), queued
+ * behind the player's. [onReact] is when the pet's own happy reaction should start; [onDone], once the glove is gone.
  */
 @Composable
 internal fun PlayHand(
@@ -149,6 +152,10 @@ internal fun PlayHand(
     LaunchedEffect(gag) {
         val rng = Random.Default
         fun say() = sounds.voice(listOf(LINES.getValue(gag).random(rng)))
+        // The killer answers the player's line as it reacts: queued behind it, never dropped as a fight's quip is.
+        fun sayAsTheKiller() {
+            killerLines(pet, VoiceBeat.PLAY).takeIf { it.isNotEmpty() }?.let { sounds.voice(listOf(it.random(rng))) }
+        }
         fun offside(to: Offset) = Offset(if (side > 0) screenW + handPx else -handPx, to.y)
         fun above(to: Offset) = Offset(to.x, -handPx - keysLength)
         suspend fun moveTo(to: Offset, ms: Int) = coroutineScope {
@@ -186,6 +193,7 @@ internal fun PlayHand(
                     }
                     pose.reset()
                     react()
+                    sayAsTheKiller()
                     moveTo(offside(belly), 300)
                 }
                 PlayGag.POKE -> {
@@ -210,6 +218,7 @@ internal fun PlayHand(
                         delay(110)
                     }
                     react()
+                    sayAsTheKiller()
                     moveTo(offside(rest), 300)
                 }
                 PlayGag.KEYS -> {
@@ -235,6 +244,7 @@ internal fun PlayHand(
                     }
                     delay(650)
                     react() // the pet jumps for the keys
+                    sayAsTheKiller()
                     delay(450)
                     sounds.sfx("jingle")
                     delay(550)
@@ -274,6 +284,7 @@ internal fun PlayHand(
                         hand.y.animateTo(grab.y, tween(380, easing = FastOutSlowInEasing))
                     }
                     react()
+                    sayAsTheKiller()
                     moveTo(above(grab), 350)
                 }
             }

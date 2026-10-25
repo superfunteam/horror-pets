@@ -4,12 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import kotlin.random.Random
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
+import team.superfun.horrorpets.audio.VoiceBeat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.game.pantry.MealPerk
 import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.model.PantryItem.STEAK
+import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.PetId.CHUCKY
+import team.superfun.horrorpets.model.PetId.JASON
 import team.superfun.horrorpets.ui.FedShow
 import team.superfun.horrorpets.ui.common.OK_GUARD_MS
 
@@ -188,29 +194,64 @@ class ReactionTest {
     fun theGainsReadOutWhatTheMealGaveAndNeverAZero() {
         fun lines(fed: FedShow) = gainsOf(fed).map { it.text }
         // A loved snack: its XP, its stat and the mood it lifts.
-        assertEquals(listOf("+10 XP", "+6 STRENGTH", "+10 MOOD"), lines(FedShow(STEAK, Reaction.LOVED, "", 10, 0, strength = 6.0, mood = 10.0)))
+        assertEquals(listOf("+10 XP", "+6 STRENGTH", "+10 MOOD"), lines(FedShow(JASON, STEAK, Reaction.LOVED, "", 10, 0, strength = 6.0, mood = 10.0)))
         // Sweet goes to fun.
-        assertEquals(listOf("+5 XP", "+3 FUN"), lines(FedShow(STEAK, Reaction.CONTENT, "", 5, 0, funLevel = 3.0)))
+        assertEquals(listOf("+5 XP", "+3 FUN"), lines(FedShow(JASON, STEAK, Reaction.CONTENT, "", 5, 0, funLevel = 3.0)))
         // A botch: no XP, so no "+0 XP", only the mood it cost, as a loss.
-        val slop = gainsOf(FedShow(STEAK, Reaction.YUCK, "Ugh, slop.", 0, 0, mood = -15.0))
+        val slop = gainsOf(FedShow(JASON, STEAK, Reaction.YUCK, "Ugh, slop.", 0, 0, mood = -15.0))
         assertEquals(listOf("-15 MOOD"), slop.map { it.text })
         assertTrue(slop.single().loss)
-        assertFalse(gainsOf(FedShow(STEAK, Reaction.LOVED, "", 10, 0)).single().loss)
+        assertFalse(gainsOf(FedShow(JASON, STEAK, Reaction.LOVED, "", 10, 0)).single().loss)
         // Clamped to almost nothing rounds away; a clamped part still shows; nothing at all shows nothing.
-        assertEquals(listOf("+1 STRENGTH"), lines(FedShow(STEAK, Reaction.SHRUG, "", 0, 0, strength = 0.6, mood = 0.3)))
-        assertEquals(emptyList<String>(), lines(FedShow(STEAK, Reaction.HATED, "", 0, 0, strength = 0.2, mood = -0.4)))
-        assertEquals(listOf("+40 XP", "+10 STRENGTH", "+25 MOOD"), lines(FedShow(STEAK, Reaction.FAVORITE, "", 40, 1, strength = 10.0, mood = 25.0)))
+        assertEquals(listOf("+1 STRENGTH"), lines(FedShow(JASON, STEAK, Reaction.SHRUG, "", 0, 0, strength = 0.6, mood = 0.3)))
+        assertEquals(emptyList<String>(), lines(FedShow(JASON, STEAK, Reaction.HATED, "", 0, 0, strength = 0.2, mood = -0.4)))
+        assertEquals(listOf("+40 XP", "+10 STRENGTH", "+25 MOOD"), lines(FedShow(JASON, STEAK, Reaction.FAVORITE, "", 40, 1, strength = 10.0, mood = 25.0)))
         // No line of it is ever a zero.
-        for (fed in listOf(FedShow(STEAK, Reaction.HATED, "", 0, 0), FedShow(STEAK, Reaction.YUCK, "", 0, 0, mood = -0.49))) {
+        for (fed in listOf(FedShow(JASON, STEAK, Reaction.HATED, "", 0, 0), FedShow(JASON, STEAK, Reaction.YUCK, "", 0, 0, mood = -0.49))) {
             assertTrue(gainsOf(fed).none { it.text.startsWith("+0") || it.text.startsWith("-0") })
         }
 
-        assertNull(levelUpLine(FedShow(STEAK, Reaction.LOVED, "Mmm, savory!", 10, 0)))
-        assertEquals("LEVEL UP!", levelUpLine(FedShow(STEAK, Reaction.LOVED, "Mmm, savory!", 10, 1)))
-        assertEquals("LEVEL UP!", levelUpLine(FedShow(STEAK, Reaction.FAVORITE, "MY FAVORITE!!", 80, 2)))
+        assertNull(levelUpLine(FedShow(JASON, STEAK, Reaction.LOVED, "Mmm, savory!", 10, 0)))
+        assertEquals("LEVEL UP!", levelUpLine(FedShow(JASON, STEAK, Reaction.LOVED, "Mmm, savory!", 10, 1)))
+        assertEquals("LEVEL UP!", levelUpLine(FedShow(JASON, STEAK, Reaction.FAVORITE, "MY FAVORITE!!", 80, 2)))
         assertEquals("Too full!", TOO_FULL_LINE)
     }
 
-    private fun fed(reaction: Reaction = Reaction.LOVED, levels: Int, status: MealStatus? = null) =
-        FedShow(STEAK, reaction, "Mmm, savory!", 10, levels, status = status)
+    @Test
+    fun chuckySaysOneOfHisFeedLinesWithTheReaction() {
+        val lines = killerLines(CHUCKY, VoiceBeat.FEED)
+        assertEquals(listOf("chucky_feed_1", "chucky_feed_2"), lines)
+        // Whatever he made of it, one of his FEED lines comes with the reaction, picked by the cue's rng.
+        for (reaction in Reaction.entries) {
+            val cue = reactionCue(fed(reaction, levels = 0, pet = CHUCKY), replay = false, rng = Random(1))
+            assertTrue("$reaction: ${cue.voice}", cue.voice in lines)
+        }
+        val picks = (0 until 40).map { seed ->
+            reactionCue(fed(levels = 0, pet = CHUCKY), replay = false, rng = Random(seed)).voice
+        }
+        assertEquals("either line can come up", lines.toSet(), picks.toSet())
+        assertEquals(
+            "the same rng picks the same line",
+            reactionCue(fed(levels = 1, pet = CHUCKY), replay = false, rng = Random(9)).voice,
+            reactionCue(fed(levels = 1, pet = CHUCKY), replay = false, rng = Random(9)).voice,
+        )
+    }
+
+    @Test
+    fun aVoicelessKillerOrAReplaySaysNothing() {
+        // Every killer but Chucky has no lines yet: the reaction plays as ever, with no voice.
+        for (pet in PetId.entries.filter { it != CHUCKY }) {
+            for (reaction in Reaction.entries) {
+                val cue = reactionCue(fed(reaction, levels = 0, pet = pet), replay = false, rng = Random(1))
+                assertNull("$pet $reaction", cue.voice)
+            }
+        }
+        // Coming back to a meal already eaten is silent, Chucky's line included: it was said once already.
+        for (seed in 0 until 10) {
+            assertNull(reactionCue(fed(levels = 0, pet = CHUCKY), replay = true, rng = Random(seed)).voice)
+        }
+    }
+
+    private fun fed(reaction: Reaction = Reaction.LOVED, levels: Int, status: MealStatus? = null, pet: PetId = JASON) =
+        FedShow(pet, STEAK, reaction, "Mmm, savory!", 10, levels, status = status)
 }

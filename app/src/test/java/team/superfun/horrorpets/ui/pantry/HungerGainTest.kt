@@ -3,13 +3,14 @@ package team.superfun.horrorpets.ui.pantry
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import team.superfun.horrorpets.model.PantryItem
+import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.ui.FedShow
 
 /** The hunger a meal took off, read out first among its gains. */
 class HungerGainTest {
     private fun fed(before: Double, after: Double, xp: Int = 0) =
-        FedShow(PantryItem.RAW_STEAK, Reaction.SHRUG, "It's... raw.", xp = xp, levelsGained = 0, hungerBefore = before, hungerAfter = after)
+        FedShow(PetId.JASON, PantryItem.RAW_STEAK, Reaction.SHRUG, "It's... raw.", xp = xp, levelsGained = 0, hungerBefore = before, hungerAfter = after)
 
     @Test
     fun theHungerTakenOffComesFirstAndIsNoLoss() {

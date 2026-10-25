@@ -12,6 +12,7 @@ import team.superfun.horrorpets.model.PantryItem.FLOUR
 import team.superfun.horrorpets.model.PantryItem.FRIED_EGG
 import team.superfun.horrorpets.model.PantryItem.GRILL
 import team.superfun.horrorpets.model.PantryItem.RAW_STEAK
+import team.superfun.horrorpets.model.PetId.JASON
 import team.superfun.horrorpets.ui.CookShow
 import team.superfun.horrorpets.ui.FedShow
 import team.superfun.horrorpets.ui.Screen
@@ -146,7 +147,7 @@ class KitchenTest {
     @Test
     fun aMealEatenOffTheShelfKeepsTheFocusOnItsItem() {
         val c = cursor(board = listOf(1), focus = 3)
-        val fed = FedShow(GRILL, Reaction.YUCK, "That's a grill.", 0, 0)
+        val fed = FedShow(JASON, GRILL, Reaction.YUCK, "That's a grill.", 0, 0)
         c.follow(shelf - GRILL, Screen.Pantry(session = 1, fed = fed), listOf(null, null))
         assertEquals("FLOUR slid down a place", 2, c.focus)
     }

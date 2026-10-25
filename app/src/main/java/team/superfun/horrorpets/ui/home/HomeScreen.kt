@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.ui.home
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -84,6 +85,8 @@ import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.assets.spec
+import team.superfun.horrorpets.audio.VoiceBeat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.DayLight
 import team.superfun.horrorpets.game.RefuseReason
@@ -546,6 +549,26 @@ fun HomeScreen(
                     // Stopped (a view-model action, or the app went to the background): the pet stays put.
                     stroll = null
                     variety = null
+                }
+            }
+        }
+
+        // Now and then a killer with a voice says something of its own: every 25–45 s, drawn afresh each time, if it is
+        // quiet when the time comes. A stroll or a glance is quiet; a gag, a walk, a bubble or sleep is not, and a line
+        // missed to one is not said late. Only on the Home being shown (not one fading out on the way elsewhere), and
+        // only in the foreground: the timer starts over when the app comes back, so nothing piles up while it is away.
+        // Queued behind the announcer, never over him.
+        val quiet by rememberUpdatedState(
+            focusEntry != null && idle && playing == null && bubble == null && !asleep,
+        )
+        LaunchedEffect(petId, lifecycleOwner) {
+            val lines = killerLines(petId, VoiceBeat.IDLE)
+            if (lines.isEmpty()) return@LaunchedEffect
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    val nextAt = nextIdleLineAt(SystemClock.uptimeMillis(), Random)
+                    delay(nextAt - SystemClock.uptimeMillis())
+                    if (idleLineDue(SystemClock.uptimeMillis(), nextAt, quiet)) sounds.voice(listOf(lines.random()))
                 }
             }
         }

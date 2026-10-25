@@ -93,12 +93,13 @@ data class TrainingResult(
 data class CookShow(val result: PantryItem, val inputs: List<PantryItem>, val at: Int, val token: Long)
 
 /**
- * What the killer made of the meal it was just fed, for the pantry's screen to show: the [item] it ate, how it took it
- * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past, how far
- * it moved [strength], [funLevel] and the [mood] bonus (as clamped; negative for a loss), and the meal [status] it
+ * What the killer [pet] made of the meal it was just fed, for the pantry's screen to show: the [item] it ate, how it
+ * took it ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past, how
+ * far it moved [strength], [funLevel] and the [mood] bonus (as clamped; negative for a loss), and the meal [status] it
  * left (null for none). All of it is already paid and saved when this is set.
  */
 data class FedShow(
+    val pet: PetId,
     val item: PantryItem,
     val reaction: Reaction,
     val line: String,
