@@ -28,7 +28,8 @@ nothing else.
   night (9 pm), when the edges go darker still. From 11 pm to 6 am your killer sleeps on Home, slumped and snoring with
   Zs rising over its head, and while it sleeps its hunger and fun run at half speed. Any press on Home wakes it and keeps
   it up for ten minutes, after which it dozes off again if it is still night; a play, a walk or the stable draws a
-  sleepy word from it.
+  sleepy word from it. Chucky has things to say at Home too: an idle mutter now and then, and a word about his food and
+  about being played with.
 - **Playtime:** your big cartoon glove comes in to tickle, poke, dangle keys over or pick up and shake your killer, with baby talk to match.
 - **The pantry:** FEED opens a horror kitchen where you cook two things at a time into snacks and meals (raw steak on
   the grill, a severed foot left in the sun, worms in the pot), using five ways to cook that get used up like any
@@ -61,7 +62,10 @@ nothing else.
   arena drained of colour, a special turns the arena red under its own riff, and the music hardens when either
   fighter is nearly done. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all
   of its health back, in green (+34). On a phone, the hits buzz. Win XP, level up. A meal's status fights too, in CPU
-  fights only; PvP never uses it.
+  fights only; PvP never uses it. Strikes and heavies sound like the attacker's own weapon (a special has its own
+  sound), and Chucky talks in fights, in character and foul-mouthed. The announcer has new calls too: FIRST BLOOD on the
+  first hit, FINISH HIM when the CPU is nearly beaten (CPU fights only), LAST CHANCE when you are, FLAWLESS VICTORY for a
+  win without a scratch, and COMEBACK for a win from your last chance.
 - **Fight a friend:** PvP Battle, the last pick in FIGHT's opponent carousel, opens a room with a 4-digit code for a
   friend to type in, on a phone or a TV. On two phones it's simpler still: touch them back to back on Home and the
   fight starts, with no codes (both need NFC on and the same version of the game).
@@ -171,6 +175,8 @@ python3 -m venv tools/.venv && tools/.venv/bin/pip install -r tools/requirements
 tools/.venv/bin/python -I -m pytest tools/tests -q
 tools/.venv/bin/python -I tools/synth_audio.py                          # original music and sfx, no key needed
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_announcer.py   # announcer lines
+ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_killer_voice.py   # Chucky's lines (the "Angry Kid" voice, found by name)
+ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_game_sfx.py   # the training and pantry sounds, and the weapon impacts
 OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_scenes.py --n 2
 # tools/generate_food.py and tools/finalize_food.py made Home's old snack drop, which the pantry retired: the game no
 # longer ships sprites-final/food/, so don't run them. They stay because the other generators share their toy-art
@@ -180,7 +186,7 @@ OPENAI_API_KEY=... tools/.venv/bin/python -I tools/generate_potion.py --n 3  # t
 ELEVENLABS_API_KEY=... tools/.venv/bin/python -I tools/generate_player_voice.py
 ```
 
-The keys are read from the `OPENAI_API_KEY` (scenes, cover) and `ELEVENLABS_API_KEY` (announcer) environment variables only. Never write them to a file or commit them.
+The keys are read from the `OPENAI_API_KEY` (scenes, cover) and `ELEVENLABS_API_KEY` (announcer, Chucky, sound effects, player voice) environment variables only. Never write them to a file or commit them.
 
 ## Releasing
 
@@ -208,5 +214,5 @@ and only then tags that exact commit, pushes the tag and publishes. If the push 
 ## Credits and licenses
 
 - Fonts: Barlow Condensed and Inter, under the SIL Open Font License 1.1 (text in `app/src/main/assets/licenses/OFL.txt`).
-- Audio: music and sound effects are original and synthesized; the announcer is generated text-to-speech. Details in [`audio-final/CREDITS.md`](audio-final/CREDITS.md).
+- Audio: the music and the synthesized sound effects are original; the announcer, Chucky, the player's voice, the weapon impacts and the other generated sounds are made with ElevenLabs. Details in [`audio-final/CREDITS.md`](audio-final/CREDITS.md).
 - Virtual Pet Slasher 2 Turbo is a fan project. Jason (*Friday the 13th*), Freddy (*A Nightmare on Elm Street*), Pinhead (*Hellraiser*), Ghostface (*Scream*), Chucky (*Child's Play*), Michael (*Halloween*) and Leatherface (*The Texas Chain Saw Massacre*), and the films they come from, belong to their respective rights holders. It is not affiliated with or endorsed by any of them, and it is not for sale.

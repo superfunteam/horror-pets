@@ -3,20 +3,24 @@
 **Date:** 2026-10-24. **Status:** approved in chat; the tell is removed (open question 1 answered). Implemented in
 phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with the
 riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore) in
-the fights-that-hit plan, A and G in the meal-perks plan, and C in the living-home plan. Tuned by eye: the intense join
-matches the plain track by speed (a plain seek landed 120–170 ms late) and the switch back after a fight keeps its place
-too; the intense track's tom fills every 4 bars; the knockout's slow motion holds the sprites and the stage's waits
-while the damage number and the marks keep their own pace (accepted after review); and the music hardens as the turn's
-playback ends, not as the move is picked, so a knockout from above 30% ends the fight on the plain track. Tuned by eye
-in the meal-perks plan: the HUD's meal chip shortens to one word (FEAST, IRON) or steps aside where even that will not
-fit, so COMBO, BLEED and DAZED always show whole; the VS card and the fight read the status at the moment the card
-opens; the flavor mark is a corner badge on the shelf label, with no text inset, so no name loses room; and a lit
-way-to-cook label runs three lines on TV, with the shelf 8 dp taller. Tuned by eye in the living-home plan: the night
-vignette is drawn twice over; the light fades out in its own colour, never through black; the slump is a lean about the
-feet (`SpritePose.tilt`) with no sit-up animation (the LOOK_A sit-up was dropped: the killer snaps upright as the
-press's own animation starts); every press keeps the killer up ten minutes, so a press just before 23:00 carries it past
-bedtime; and the sleepy line is seen on PLAY, a walk or the stable, not on a refused press (its reason takes the bubble)
-nor on a press that changes the screen at once.
+the fights-that-hit plan, A and G in the meal-perks plan, and C in the living-home plan, and F's phase-2 parts (weapon
+impacts, Chucky, the announcer's calls) in the voices-and-weapons plan. Tuned by eye: the intense join matches the plain
+track by speed (a plain seek landed 120–170 ms late) and the switch back after a fight keeps its place too; the intense
+track's tom fills every 4 bars; the knockout's slow motion holds the sprites and the stage's waits while the damage
+number and the marks keep their own pace (accepted after review); and the music hardens as the turn's playback ends, not
+as the move is picked, so a knockout from above 30% ends the fight on the plain track. Tuned by eye in the meal-perks
+plan: the HUD's meal chip shortens to one word (FEAST, IRON) or steps aside where even that will not fit, so COMBO,
+BLEED and DAZED always show whole; the VS card and the fight read the status at the moment the card opens; the flavor
+mark is a corner badge on the shelf label, with no text inset, so no name loses room; and a lit way-to-cook label runs
+three lines on TV, with the shelf 8 dp taller. Tuned by eye in the living-home plan: the night vignette is drawn twice
+over; the light fades out in its own colour, never through black; the slump is a lean about the feet (`SpritePose.tilt`)
+with no sit-up animation (the LOOK_A sit-up was dropped: the killer snaps upright as the press's own animation starts);
+every press keeps the killer up ten minutes, so a press just before 23:00 carries it past bedtime; and the sleepy line
+is seen on PLAY, a walk or the stable, not on a refused press (its reason takes the bubble) nor on a press that changes
+the screen at once. Tuned by ear in the voices-and-weapons plan: Chucky's lines ride the announcer's queue (dropped in a
+fight when the announcer is talking, queued at Home); a turn the announcer calls in, and the knockout turn, get no quip;
+his last word comes with the results card's rank call; FINISH HIM is CPU-only; and the Gauntlet's bout calls are
+recorded but unused until phase 3.
 
 ## Intent
 
