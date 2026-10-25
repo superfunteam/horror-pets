@@ -32,6 +32,7 @@ import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
+import team.superfun.horrorpets.game.localHour
 import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
 import team.superfun.horrorpets.game.pantry.MealPerk
 import team.superfun.horrorpets.game.pantry.MealStatus
@@ -172,6 +173,8 @@ private class Rig(
     pickRng: Random = Random.Default,
     // UTC, so the sleep hours fall in the same place on every machine: T0 is 08:00 there, 15 hours before bedtime.
     zone: TimeZone = TimeZone.getTimeZone("UTC"),
+    // The hour on the clock in zone, as the app's own reads it when the puppet has not faked one.
+    hourOf: (Long) -> Int = { localHour(it, zone) },
 ) {
     val errors = mutableListOf<Throwable>()
     val scope = TestScope(StandardTestDispatcher())
@@ -186,6 +189,7 @@ private class Rig(
         clockFloorMs = clockFloorMs,
         pickRng = pickRng,
         zone = zone,
+        hourOf = hourOf,
     )
 
     val ui: UiState get() = vm.state.value
@@ -2397,19 +2401,23 @@ class GameViewModelTest {
         val rig = Rig(gameOf())
         rig.loaded()
         assertEquals(T0, rig.ui.nowMs)
+        assertEquals("and the hour of it (UTC)", 8, rig.ui.hour)
         rig.vm.onStart()
         rig.clock.now += 2 * HOUR
         rig.vm.onResume()
         assertEquals(rig.clock.now, rig.ui.nowMs)
+        assertEquals(10, rig.ui.hour)
         rig.clock.now += 3 * HOUR
         rig.vm.tick()
         assertEquals(rig.clock.now, rig.ui.nowMs)
+        assertEquals(13, rig.ui.hour)
         // Even a tick that changes nothing else (a clock set back counts as no time) follows it, and saves nothing.
         rig.settle()
         val saves = rig.store.saves.size
         rig.clock.now -= HOUR
         rig.vm.tick()
         assertEquals(rig.clock.now, rig.ui.nowMs)
+        assertEquals(12, rig.ui.hour)
         rig.settle()
         assertEquals(saves, rig.store.saves.size)
     }
@@ -2419,10 +2427,30 @@ class GameViewModelTest {
         // UiState.hour is what Home's light is read at. T0 is 08:00 on the rig's UTC clock.
         val rig = Rig(gameOf()).loaded()
         assertEquals(8, rig.ui.hour)
-        rig.vm.onStart()
         rig.clock.now += 15 * HOUR
         rig.vm.tick()
         assertEquals(23, rig.ui.hour)
+    }
+
+    @Test
+    fun theScreensReadTheHourWhereTheyAreTold() {
+        // As a debug build's puppet fakes it: whatever the clock says, the hour is the one given.
+        val rig = Rig(gameOf(), hourOf = { 3 }).started()
+        assertEquals(3, rig.ui.hour)
+        rig.clock.now += 5 * HOUR
+        rig.vm.tick()
+        assertEquals(3, rig.ui.hour)
+    }
+
+    @Test
+    fun theVsCardOpensOnTheHourItIs() {
+        val rig = Rig(gameOf()).started()
+        rig.clock.now += 2 * HOUR // no tick since: opening the card reads the clock
+        rig.vm.onFightPressed()
+        rig.vm.onSwitcherPick(PetId.FREDDY)
+        assertEquals(Screen.Versus(PetId.FREDDY), rig.ui.screen)
+        assertEquals(rig.clock.now, rig.ui.nowMs)
+        assertEquals(10, rig.ui.hour)
     }
 
     @Test
@@ -2434,6 +2462,7 @@ class GameViewModelTest {
         val fedAt = rig.clock.now
         rig.vm.onPantryFeed(session)
         assertEquals(fedAt, rig.ui.nowMs)
+        assertEquals("and the hour of it", 9, rig.ui.hour)
         rig.vm.onPantryDone(session)
         assertEquals(MealStatus(MealPerk.BEEFED_UP), mealStatusOf(rig.jason, rig.ui.nowMs))
         // A day from the meal, not from the last tick: a minute short of it, the ticks still show it; then it is gone.

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -47,6 +48,9 @@ private const val SCENE_FADE_MS = 450
  * scene covers the screen); when [scene] changes, the old image stays up until the new one is decoded
  * and then cross-fades into it.
  *
+ * [vignette] is how strongly the vignette darkens, read while drawing (so animating it only redraws): 1 as it is,
+ * 2 twice over (Home's night), anything between partway. Every other screen leaves it at 1.
+ *
  * [content] is drawn over the scene and receives the floor line in pixels from the top of this box
  * (where a pet's feet go). It is only composed once a scene is on screen, because the floor depends on
  * the image's size; keep HUD that must exist from the first frame outside this composable.
@@ -56,6 +60,7 @@ fun SceneBackdrop(
     loader: AssetLoader,
     scene: SceneSpec,
     modifier: Modifier = Modifier,
+    vignette: () -> Float = { 1f },
     content: @Composable BoxScope.(floorY: Float) -> Unit,
 ) {
     var current by remember { mutableStateOf<LoadedScene?>(null) }
@@ -88,12 +93,18 @@ fun SceneBackdrop(
                 .fillMaxSize()
                 .drawWithCache {
                     // The vignette only depends on the size: build its gradients once, not every frame.
-                    val vignette = Vignette(size)
+                    val edges = Vignette(size)
                     onDrawBehind {
                         if (prevNow != null && prevCrop != null) drawScene(prevNow.bitmap, prevCrop, 1f)
                         if (shownNow != null && crop != null) drawScene(shownNow.bitmap, crop, fade.value)
-                        drawRect(brush = vignette.lens)
-                        drawRect(brush = vignette.bands)
+                        // Laid on once per whole step of the strength, and a last part-strength layer for the rest.
+                        var strength = vignette()
+                        while (strength > 0f) {
+                            val alpha = min(strength, 1f)
+                            drawRect(brush = edges.lens, alpha = alpha)
+                            drawRect(brush = edges.bands, alpha = alpha)
+                            strength -= 1f
+                        }
                     }
                 },
         )

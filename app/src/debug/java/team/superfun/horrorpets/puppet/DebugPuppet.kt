@@ -417,9 +417,13 @@ private class Session(
                 DebugPuppet.fakeHour = command.hour
                 // The view model reads the hour only as it reads the clock: a tick now, so Home's light turns at once.
                 vm.tick()
-                val hour = state().hour
-                val light = dayLightAt(hour).name.lowercase()
-                Outcome.Done(if (command.hour == null) "the hour is the clock's own: $hour, $light" else "the game takes the hour for $hour: $light")
+                // What was set, not the state's hour: while the save is still loading, that has not been read yet.
+                val hour = command.hour
+                if (hour == null) {
+                    Outcome.Done("hour cleared: the game reads the clock's own")
+                } else {
+                    Outcome.Done("the game takes the hour for $hour: ${dayLightAt(hour).name.lowercase()}")
+                }
             }
 
             PuppetCommand.CheckUpdate -> {

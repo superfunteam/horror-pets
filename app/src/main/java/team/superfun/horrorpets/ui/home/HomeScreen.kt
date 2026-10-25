@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -80,6 +81,7 @@ import team.superfun.horrorpets.assets.bodyScale
 import team.superfun.horrorpets.assets.has
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
+import team.superfun.horrorpets.game.DayLight
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.dayLightAt
@@ -163,6 +165,9 @@ private const val SCENE_TITLE_MS = 3_200L
 /** The light over the scene cross-fades over this long when the hour brings another part of the day. */
 private const val SCENE_LIGHT_FADE_MS = 2_000
 
+/** At night the scene's vignette darkens this many times over (see `SceneBackdrop`'s vignette). */
+private const val NIGHT_VIGNETTE = 2f
+
 /**
  * Home: the selected pet standing in its current scene, with the stat card, scene dots, welcome toast
  * and the action bar over it (the spec's layout A).
@@ -205,11 +210,22 @@ fun HomeScreen(
     val sceneTint = remember(scene) { hexColor(scene.tint) }
     // The light of the player's hour over the scene (see sceneLightFor). Read only inside the backdrop's content, so a
     // cross-fade redraws the scene and the killer, not the whole screen.
-    val hourLight = sceneLightFor(dayLightAt(state.hour))
+    val dayLight = dayLightAt(state.hour)
+    val hourLight = sceneLightFor(dayLight)
+    // The last light Home was in, which the day fades out in its own colour (see sceneLightTarget). Kept after each
+    // composition, so the one that brings the day still has the light it is leaving.
+    var lastLightColor by remember { mutableStateOf(hourLight?.color) }
+    SideEffect { if (hourLight != null) lastLightColor = hourLight.color }
     val light by animateColorAsState(
-        targetValue = hourLight?.let { it.color.copy(alpha = it.alpha) } ?: Color.Transparent,
+        targetValue = sceneLightTarget(hourLight, lastLightColor),
         animationSpec = tween(SCENE_LIGHT_FADE_MS),
         label = "sceneLight",
+    )
+    // Night darkens the scene's edges more, on the light's own fade; read only while the backdrop draws.
+    val vignette = animateFloatAsState(
+        targetValue = if (dayLight == DayLight.NIGHT) NIGHT_VIGNETTE else 1f,
+        animationSpec = tween(SCENE_LIGHT_FADE_MS),
+        label = "sceneVignette",
     )
 
     val playFocus = remember { FocusRequester() }
@@ -495,7 +511,7 @@ fun HomeScreen(
             }
         }
 
-        SceneBackdrop(loader = loader, scene = scene) { floorY ->
+        SceneBackdrop(loader = loader, scene = scene, vignette = { vignette.value }) { floorY ->
             // The hour's light over the scene and under the killer; the bubble and the HUD come after it, unlit.
             Spacer(Modifier.fillMaxSize().drawBehind { drawRect(light) })
             // The killer, and a play's glove, stand in the same light.
