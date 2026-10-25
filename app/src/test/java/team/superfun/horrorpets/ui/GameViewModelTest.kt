@@ -80,6 +80,9 @@ private const val DAY = Tuning.DAY_MS
 private const val MINUTE = Tuning.MINUTE_MS
 private const val SECOND = 1_000L
 
+/** 23:30 on the rig's UTC clock: the killers' bedtime has come (see isSleepHour). */
+private const val BEDTIME = T0 + 15 * HOUR + 30 * MINUTE
+
 /**
  * The training games a new player has to finish before their first fight (see mustTrainBeforeFighting). The fixtures
  * below have all done them, so FIGHT is open unless a test builds a new player's stable to see it shut.
@@ -2619,6 +2622,108 @@ class GameViewModelTest {
 
         rig.vm.onSwitcherBack()
         assertEquals(Screen.FakeDeath(PetId.JASON), rig.ui.screen)
+    }
+
+    // ---- sleep -------------------------------------------------------------------------------
+
+    /** At Home at 23:30 on the rig's UTC clock, seen there last at that moment (so no time away decays anything). */
+    private fun bedtimeRig(pet: PetState = jason()): Rig =
+        Rig(gameOf(PetId.JASON, BEDTIME, pet), clock = FakeClock(BEDTIME)).started()
+
+    @Test
+    fun aPressWakesTheKillerForTenMinutes() {
+        val rig = bedtimeRig()
+        assertTrue("23:30 is a sleep hour", rig.ui.asleep())
+        assertNull(rig.ui.wakeLine)
+
+        rig.vm.onCare(CareAction.PLAY)
+        assertFalse(rig.ui.asleep())
+        assertEquals(BEDTIME + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
+        val line = rig.ui.wakeLine!!
+        assertTrue(line.first, line.first in SLEEPY_LINES)
+        assertNotNull("the press then goes through: the play starts", rig.ui.petAnim?.gag)
+        rig.finishAllAnims()
+
+        rig.clock.now = BEDTIME + 10 * MINUTE - SECOND
+        rig.vm.tick()
+        assertFalse("awake at 23:39:59", rig.ui.asleep())
+        rig.clock.now = BEDTIME + 11 * MINUTE
+        rig.vm.tick()
+        assertTrue("and asleep again by 23:41", rig.ui.asleep())
+        assertEquals("dozing off says nothing", line, rig.ui.wakeLine)
+
+        // The next press wakes it again, with a line of its own.
+        rig.vm.onCare(CareAction.PLAY)
+        assertFalse(rig.ui.asleep())
+        assertNotEquals(line.second, rig.ui.wakeLine!!.second)
+    }
+
+    @Test
+    fun atSixItWakesByItself() {
+        val dawn = T0 - 2 * HOUR - 30 * MINUTE // 05:30
+        val rig = Rig(gameOf(lastSeenMs = dawn), clock = FakeClock(dawn)).started()
+        assertTrue(rig.ui.asleep())
+
+        rig.clock.now = T0 - 2 * HOUR // 06:00
+        rig.vm.tick()
+        assertFalse(rig.ui.asleep())
+        assertNull("nobody woke it, so it says nothing", rig.ui.wakeLine)
+        assertEquals(0L, rig.ui.awakeUntilMs)
+    }
+
+    @Test
+    fun everyPressOnHomeWakesTheKillerAndGoesThrough() {
+        // Each press, and what it does once the killer is up.
+        val presses: List<Triple<String, (GameViewModel) -> Unit, (UiState) -> Boolean>> = listOf(
+            Triple("FEED opens the pantry", { it.onCare(CareAction.FEED) }, { it.screen is Screen.Pantry }),
+            Triple("TRAIN opens a game", { it.onCare(CareAction.TRAIN) }, { it.screen is Screen.Training }),
+            Triple("PLAY plays", { it.onCare(CareAction.PLAY) }, { it.petAnim?.gag != null }),
+            Triple("a walk runs", { it.onWalk(1) }, { it.petAnim?.anim == Anim.RUN_RIGHT }),
+            Triple("FIGHT opens the switcher", { it.onFightPressed() }, { it.screen == Screen.Switcher(SwitcherMode.OPPONENT) }),
+            Triple("MOVES opens the moves", { it.onMovesPressed() }, { it.screen == Screen.Moves }),
+            Triple("the stable opens", { it.openStable() }, { it.stableOpen }),
+        )
+        for ((what, press, wentThrough) in presses) {
+            val rig = bedtimeRig()
+            press(rig.vm)
+            assertFalse(what, rig.ui.asleep())
+            assertNotNull(what, rig.ui.wakeLine)
+            assertTrue(what, wentThrough(rig.ui))
+        }
+    }
+
+    @Test
+    fun aRefusedPressStillWakesTheKiller() {
+        val rig = bedtimeRig(jason(hunger = 90.0))
+        rig.vm.onCare(CareAction.TRAIN)
+        assertEquals(RefuseReason.TOO_HUNGRY, rig.ui.refuse)
+        assertFalse(rig.ui.asleep())
+        assertNotNull(rig.ui.wakeLine)
+    }
+
+    @Test
+    fun byDayAPressSaysNothing() {
+        val rig = Rig(gameOf()).started() // 08:00
+        rig.vm.onCare(CareAction.PLAY)
+        assertNull(rig.ui.wakeLine)
+        assertEquals(0L, rig.ui.awakeUntilMs)
+    }
+
+    @Test
+    fun aPressHomeTurnsDownWakesNobody() {
+        // Busy with a play from 22:59:30, the killer's bedtime comes with a tick: a walk pressed now is turned down
+        // (the play is still on), so it does not wake it either.
+        val lateEvening = BEDTIME - 30 * MINUTE - 30 * SECOND
+        val rig = Rig(gameOf(lastSeenMs = lateEvening), clock = FakeClock(lateEvening)).started()
+        rig.vm.onCare(CareAction.PLAY)
+        rig.clock.now = BEDTIME - 30 * MINUTE
+        rig.vm.tick()
+        assertTrue(rig.ui.busy)
+        assertTrue(rig.ui.asleep())
+
+        rig.vm.onWalk(1)
+        assertNull(rig.ui.wakeLine)
+        assertEquals(0L, rig.ui.awakeUntilMs)
     }
 
     // ---- saving ------------------------------------------------------------------------------

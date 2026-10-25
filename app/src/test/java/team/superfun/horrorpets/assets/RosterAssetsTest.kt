@@ -17,6 +17,7 @@ import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.fight.Moment
 import team.superfun.horrorpets.ui.home.PLAY_HAND_ART
 import team.superfun.horrorpets.ui.home.PLAY_VOICE_LINES
+import team.superfun.horrorpets.ui.home.SNORE_SFX
 import team.superfun.horrorpets.ui.training.ORGAN_ART
 import team.superfun.horrorpets.ui.training.TOMBSTONE_ART
 import team.superfun.horrorpets.ui.training.TRAINING_SFX
@@ -235,6 +236,12 @@ class RosterAssetsTest {
         for (sfx in listOf("hand_whoosh", "boop", "tickle", "jingle", "boing")) {
             assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
         }
+    }
+
+    @Test
+    fun theSnoreIsShipped() {
+        // A sleeping killer snores on Home (HomeScreen plays it every 4 s): an sfx, loaded like any other by its name.
+        assertTrue(file("audio-final/sfx/$SNORE_SFX.wav").isFile)
     }
 
     @Test

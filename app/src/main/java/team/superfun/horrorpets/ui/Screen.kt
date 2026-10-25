@@ -6,6 +6,8 @@ import team.superfun.horrorpets.fight.FightReward
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.RefuseReason
+import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.isSleepHour
 import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.model.GameState
@@ -253,6 +255,10 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = n
  *   the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
  * - [hour] is the hour of the player's day (0..23) at [nowMs], read with it: what Home's light is chosen by
  *   (`dayLightAt`). Noon, in the day's light, until the clock is first read.
+ * - [awakeUntilMs] is when the killer a press woke in the night (see [asleep]) dozes off again, on the [nowMs] clock.
+ *   Not saved: a restart in the night finds it asleep.
+ * - [wakeLine] is the sleepy line the last waking press got out of the killer, with a fresh token each time (so the
+ *   same line twice still shows twice); Home shows it in the killer's bubble when the token changes.
  */
 data class UiState(
     val screen: Screen = Screen.Loading,
@@ -266,4 +272,12 @@ data class UiState(
     val stableOpen: Boolean = false,
     val nowMs: Long = 0L,
     val hour: Int = 12,
+    val awakeUntilMs: Long = 0L,
+    val wakeLine: Pair<String, Long>? = null,
 )
+
+/**
+ * Whether the killer is asleep on Home: in the sleep hours (see [isSleepHour]) unless a press woke it less than
+ * [Tuning.AWAKE_MS] ago ([UiState.awakeUntilMs]). Only Home sleeps; every other screen ignores this.
+ */
+fun UiState.asleep(): Boolean = isSleepHour(hour) && nowMs >= awakeUntilMs

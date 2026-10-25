@@ -52,14 +52,15 @@ private const val SQUASH_Y = 0.12f
 /**
  * Extra motion for a [SpriteView], read while drawing, so it never recomposes: [lift] raises the pet off the floor
  * (px, up), [shiftX] slides it (px), [swing] turns it (degrees) about the top of its cell, as if held up by the
- * head, and [squash] (0..1) flattens it onto its feet. Its shadow stays on the floor, following only the slide and
- * shrinking as the pet rises.
+ * head, [tilt] leans it (degrees, clockwise) about its feet, as a sleeper slumps, and [squash] (0..1) flattens it onto
+ * its feet. Its shadow stays on the floor, following only the slide and shrinking as the pet rises.
  */
 @Stable
 class SpritePose {
     val lift = Animatable(0f)
     val shiftX = Animatable(0f)
     val swing = Animatable(0f)
+    val tilt = Animatable(0f)
     val squash = Animatable(0f)
 
     /** Back to standing still on the floor. */
@@ -67,6 +68,7 @@ class SpritePose {
         lift.snapTo(0f)
         shiftX.snapTo(0f)
         swing.snapTo(0f)
+        tilt.snapTo(0f)
         squash.snapTo(0f)
     }
 }
@@ -211,6 +213,7 @@ fun SpriteView(
                     val lift = pose?.lift?.value ?: 0f
                     val shift = pose?.shiftX?.value ?: 0f
                     val swing = pose?.swing?.value ?: 0f
+                    val tilt = pose?.tilt?.value ?: 0f
                     val squash = pose?.squash?.value ?: 0f
                     if (shadowBrush != null) {
                         val fade = (1f - lift / size.height).coerceIn(0.25f, 1f)
@@ -223,6 +226,8 @@ fun SpriteView(
                     val index = frame.coerceIn(0, (s.spec.frames - 1).coerceAtLeast(0))
                     withTransform({
                         translate(shift, -lift)
+                        // About the feet, so a lean keeps them on their shadow.
+                        if (tilt != 0f) rotate(tilt, pivot = feet)
                         if (swing != 0f) rotate(swing, pivot = Offset(feet.x, top.toFloat()))
                         if (squash != 0f) scale(1f + SQUASH_X * squash, 1f - SQUASH_Y * squash, pivot = feet)
                     }) {

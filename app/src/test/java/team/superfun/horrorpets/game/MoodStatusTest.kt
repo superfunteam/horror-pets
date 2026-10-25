@@ -84,4 +84,17 @@ class MoodStatusTest {
         // hunger 65, fun 30 -> mood 14 + 18 = 32 (not grumpy); hungry outranks bored.
         assertEquals(StatusTag.HUNGRY, statusOf(pet(hunger = 65.0, fn = 30.0)))
     }
+
+    @Test
+    fun asleepRanksUnderStarvingAndOverTheRest() {
+        // STARVING > ASLEEP > GRUMPY > HUNGRY > BORED > CONTENT: a starving killer is never left to sleep it off.
+        assertEquals(StatusTag.STARVING, statusOf(pet(hunger = 90.0, fn = 0.0), asleep = true))
+        // Each of these is what the killer would be awake (see the tests above).
+        assertEquals(StatusTag.ASLEEP, statusOf(pet(hunger = 70.0, fn = 0.0), asleep = true)) // grumpy
+        assertEquals(StatusTag.ASLEEP, statusOf(pet(hunger = 65.0, fn = 30.0), asleep = true)) // hungry
+        assertEquals(StatusTag.ASLEEP, statusOf(pet(hunger = 20.0, fn = 30.0), asleep = true)) // bored
+        assertEquals(StatusTag.ASLEEP, statusOf(pet(hunger = 20.0, fn = 80.0), asleep = true)) // content
+        // Awake unless told otherwise: the switcher's chips never say ASLEEP.
+        assertEquals(StatusTag.CONTENT, statusOf(pet(hunger = 20.0, fn = 80.0)))
+    }
 }

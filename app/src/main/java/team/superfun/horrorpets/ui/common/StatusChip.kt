@@ -22,12 +22,14 @@ import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.Ink
 import team.superfun.horrorpets.ui.theme.IronGreen
+import team.superfun.horrorpets.ui.theme.SleepBlue
 import team.superfun.horrorpets.ui.theme.SugarPink
 import team.superfun.horrorpets.ui.theme.TextHi
 
 /**
- * A pet's headline status as a small solid tag: CONTENT grey, BORED/HUNGRY Amber, STARVING/GRUMPY Blood.
- * The pet switcher's; the stat card outlines its own in a [TagBox].
+ * A pet's headline status as a small solid tag: CONTENT grey, BORED/HUNGRY Amber, STARVING/GRUMPY Blood, ASLEEP a cool
+ * blue-grey (which the switcher never shows: only Home sleeps). The pet switcher's; the stat card outlines its own in a
+ * [TagBox].
  */
 @Composable
 fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
@@ -35,6 +37,7 @@ fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
         StatusTag.CONTENT -> Color.White.copy(alpha = 0.16f) to TextHi
         StatusTag.BORED, StatusTag.HUNGRY -> Amber to Ink
         StatusTag.STARVING, StatusTag.GRUMPY -> Blood to TextHi
+        StatusTag.ASLEEP -> SleepBlue to Ink
     }
     Box(
         modifier

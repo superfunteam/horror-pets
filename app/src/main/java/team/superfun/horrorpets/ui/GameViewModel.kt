@@ -94,8 +94,9 @@ import team.superfun.horrorpets.ui.fight.nearlyDone
  * @param onError receives every failed save, and a load that failed twice. The game keeps running from memory.
  * @param clockFloorMs the earliest believable wall-clock time (see [applyElapsed]); the app passes its
  *   first-install time, so a stale boot clock can neither decay the pets nor stamp the save.
- * @param pickRng picks the gag a play does, the game (and its mate) a train opens and what a visit to the pantry tops
- *   the shelf up with. Kept apart from [rng], so caring for a pet never shifts a fight's rolls.
+ * @param pickRng picks the gag a play does, the game (and its mate) a train opens, what a visit to the pantry tops
+ *   the shelf up with and what a killer woken in the night says. Kept apart from [rng], so caring for a pet never
+ *   shifts a fight's rolls.
  */
 class GameViewModel(
     private val store: SaveStore,
@@ -248,11 +249,12 @@ class GameViewModel(
 
     /**
      * PLAY acts on the selected pet at once. FEED opens the pantry, where the pet is fed and cooking is done (see
-     * [onPantryFeed]); TRAIN opens a training game, which pays when it ends (see [onTrainingOver]).
+     * [onPantryFeed]); TRAIN opens a training game, which pays when it ends (see [onTrainingOver]). A sleeping killer
+     * is woken first (see [woken]).
      */
     fun onCare(a: CareAction) {
-        val s = _state.value
-        val pet = s.homePet() ?: return
+        val pet = _state.value.homePet() ?: return
+        val s = _state.value.woken()
         when (a) {
             CareAction.FEED -> openPantry(s)
             CareAction.TRAIN -> openTraining(s, pet)
@@ -296,11 +298,14 @@ class GameViewModel(
         _state.value = s.copy(screen = training, refuse = null)
     }
 
-    /** Walks to the neighbouring scene: -1 is left, +1 is right, wrapping around. The scene changes after the run. */
+    /**
+     * Walks to the neighbouring scene: -1 is left, +1 is right, wrapping around. The scene changes after the run. A
+     * sleeping killer is woken first (see [woken]).
+     */
     fun onWalk(dir: Int) {
         if (dir != -1 && dir != 1) return
-        val s = _state.value
-        if (s.homePet() == null) return
+        if (_state.value.homePet() == null) return
+        val s = _state.value.woken()
         val anim = if (dir > 0) Anim.RUN_RIGHT else Anim.RUN_LEFT
         _state.value = s.copy(refuse = null).beginAction(listOf(anim)) { done ->
             val id = done.game.selected
@@ -552,11 +557,11 @@ class GameViewModel(
 
     // ---- the stable, the carousel, versus, fake death -----------------------------------------
 
-    /** Opens the stable over Home, when there is someone else in it to go see. */
+    /** Opens the stable over Home, when there is someone else in it to go see, waking a sleeping killer (see [woken]). */
     fun openStable() {
         val s = _state.value
         if (s.homePet() == null || s.game.pets.size < 2) return
-        _state.value = s.copy(stableOpen = true, refuse = null)
+        _state.value = s.woken().copy(stableOpen = true, refuse = null)
     }
 
     fun closeStable() {
@@ -581,10 +586,12 @@ class GameViewModel(
      * A FIGHT that is not refused while a secret killer is due (see [challengerDue]: every other killer is in the
      * stable) is his instead: he is revealed and saved at once, so his entrance plays only this once whatever happens
      * next, and [Screen.Challenger] plays it. [onChallengerDone] then takes the player to his VS card.
+     *
+     * A sleeping killer is woken first (see [woken]), refused or not.
      */
     fun onFightPressed() {
-        val s = _state.value
-        val pet = s.homePet() ?: return
+        val pet = _state.value.homePet() ?: return
+        val s = _state.value.woken()
         if (!canFight(pet)) {
             refuse(s, RefuseReason.TOO_HUNGRY)
             return
@@ -1298,6 +1305,19 @@ class GameViewModel(
         return game.selected?.let { game.pets[it] }
     }
 
+    /**
+     * This state with the killer woken, if it is asleep (see [asleep]): up until [Tuning.AWAKE_MS] from the last
+     * clock reading, and with a sleepy line to say ([UiState.wakeLine]). An awake killer, by day or woken already, is
+     * left as it is: it has nothing sleepy to say, and its ten minutes run from the press that woke it.
+     *
+     * Every press Home takes calls this first and then goes through as it would by day (a FEED opens the pantry with
+     * the killer up), so it is only ever called once the press is known to be taken (see [homePet]).
+     */
+    private fun UiState.woken(): UiState {
+        if (!asleep()) return this
+        return copy(awakeUntilMs = nowMs + Tuning.AWAKE_MS, wakeLine = SLEEPY_LINES.random(pickRng) to nextToken++)
+    }
+
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */
     private fun UiState.beginAction(
         anims: List<Anim>,
@@ -1357,11 +1377,11 @@ class GameViewModel(
         _state.value = s.goHome()
     }
 
-    /** MOVES on Home: the selected pet's attacks. */
+    /** MOVES on Home: the selected pet's attacks, after waking it if it sleeps (see [woken]). */
     fun onMovesPressed() {
         val s = _state.value
         s.homePet() ?: return
-        _state.value = s.copy(screen = Screen.Moves, refuse = null)
+        _state.value = s.woken().copy(screen = Screen.Moves, refuse = null)
     }
 
     /**
@@ -1485,6 +1505,10 @@ private const val LOCK_IN_TRIES = 5
 
 /** A pet's name as the announcer audio files spell it ("jason", "freddy", ...). */
 private fun PetId.soundName(): String = name.lowercase()
+
+/** What a killer says when a press wakes it in the night, one picked at random each time (see `UiState.wakeLine`). */
+internal val SLEEPY_LINES =
+    listOf("Five more minutes.", "...what time is it?", "I was dreaming about camp.", "Can't a killer sleep?")
 
 /**
  * The welcome-back toast: `"Away 2d 4h · Hunger +80"`, with the days left out when there are none,

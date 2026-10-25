@@ -47,6 +47,7 @@ import team.superfun.horrorpets.ui.GameViewModel
 import team.superfun.horrorpets.ui.Screen
 import team.superfun.horrorpets.ui.SwitcherMode
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.asleep
 
 /** The broadcast that carries commands to the running game, in its [EXTRA_CMD]. */
 const val PUPPET_ACTION = "team.superfun.horrorpets.PUPPET"
@@ -403,7 +404,9 @@ private class Session(
                 val hud = if (DebugPuppet.hud.value) "on" else "off"
                 // The last meal's status, as the screens show it, when it has one.
                 val meal = s.game.selected?.let { s.game.pets[it] }?.let { mealStatusOf(it, s.nowMs) }?.let { "; ${it.title}" }.orEmpty()
-                Outcome.Done("${describe(s)}; ${petLine(s)}$meal; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
+                // Whether the killer sleeps on Home, as the clock (or `hour`) has it.
+                val sleep = if (s.asleep()) "; asleep" else ""
+                Outcome.Done("${describe(s)}; ${petLine(s)}$meal$sleep; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
             }
 
             is PuppetCommand.FakeVersion -> {

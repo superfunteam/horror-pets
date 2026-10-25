@@ -54,6 +54,7 @@ import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.SleepBlue
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.theme.TextLo
 
@@ -75,13 +76,13 @@ private val Warn = Color(0xFFFFB347)
 enum class BarLevel { OK, WARN, CRITICAL }
 
 /**
- * The status window, top-left: the pet's name, its level (with progress to the next) and status, the status of its
- * last [meal] under that while it has one, then Hunger, Fun, Strength and Mood as segmented gauges, in a gold-framed
- * window like the fight's command windows. It only shows: the stable badge (top right) is where the player switches
- * killers.
+ * The status window, top-left: the pet's name, its level (with progress to the next) and status (ASLEEP while Home
+ * shows it [asleep], see [statusOf]), the status of its last [meal] under that while it has one, then Hunger, Fun,
+ * Strength and Mood as segmented gauges, in a gold-framed window like the fight's command windows. It only shows: the
+ * stable badge (top right) is where the player switches killers.
  */
 @Composable
-fun StatCard(pet: PetState, meal: MealStatus?, width: Dp, modifier: Modifier = Modifier) {
+fun StatCard(pet: PetState, meal: MealStatus?, asleep: Boolean, width: Dp, modifier: Modifier = Modifier) {
     Column(
         modifier
             .width(width)
@@ -101,7 +102,7 @@ fun StatCard(pet: PetState, meal: MealStatus?, width: Dp, modifier: Modifier = M
             Spacer(Modifier.width(8.dp))
             XpBar((pet.xp.toFloat() / xpToNext(pet.level)).coerceIn(0f, 1f), Modifier.size(54.dp, 5.dp))
             Spacer(Modifier.weight(1f))
-            StatusTagBox(statusOf(pet))
+            StatusTagBox(statusOf(pet, asleep))
         }
         if (meal != null) {
             Spacer(Modifier.height(4.dp))
@@ -155,13 +156,17 @@ internal fun XpBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
-/** The status as an outlined tag with clipped corners: CONTENT grey, BORED/HUNGRY orange, STARVING/GRUMPY red. */
+/**
+ * The status as an outlined tag with clipped corners: CONTENT grey, BORED/HUNGRY orange, STARVING/GRUMPY red, ASLEEP a
+ * cool blue-grey.
+ */
 @Composable
 private fun StatusTagBox(tag: StatusTag) {
     val color = when (tag) {
         StatusTag.CONTENT -> TextLo
         StatusTag.BORED, StatusTag.HUNGRY -> Warn
         StatusTag.STARVING, StatusTag.GRUMPY -> BloodGlow
+        StatusTag.ASLEEP -> SleepBlue
     }
     TagBox(tag.name, color)
 }

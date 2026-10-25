@@ -63,6 +63,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Text
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -70,6 +71,8 @@ import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -94,9 +97,11 @@ import team.superfun.horrorpets.model.TrainingGame
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.model.visiblePets
 import team.superfun.horrorpets.ui.UiState
+import team.superfun.horrorpets.ui.asleep
 import team.superfun.horrorpets.ui.common.BUBBLE_ABOVE_FEET
 import team.superfun.horrorpets.ui.common.BUBBLE_MS
 import team.superfun.horrorpets.ui.common.GameBackHandler
+import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SceneBackdrop
 import team.superfun.horrorpets.ui.common.SpeechBubble
@@ -154,6 +159,15 @@ private const val WALK_STUCK_MS = 1_500L
 private const val HANGOVER_SWAY_DEG = 3f
 private const val HANGOVER_SWAY_MS = 2_400f
 
+/** Asleep, the killer leans this many degrees toward the floor and sinks this share of its height, over this long. */
+private const val SLUMP_DEG = 12f
+private const val SLUMP_SINK = 0.05f
+private const val SLUMP_MS = 600
+
+/** A sleeping killer's snore, again every this long: about the clip's own length, so one breath follows another. */
+internal const val SNORE_SFX = "snore"
+private const val SNORE_EVERY_MS = 4_000L
+
 /**
  * Strips decoded ahead of time on Home, with its PLAY: its DANCE when it has one, else JUMP and WAVE (so at most 7 of
  * the loader's 12 slots, with IDLE). The feed animation is the pantry's to warm.
@@ -182,7 +196,8 @@ private const val NIGHT_VIGNETTE = 2f
  *
  * The view model drives the pet through [UiState.petAnim]; this screen plays each request and reports
  * it with [onAnimFinished]. Everything else the pet does is local: idle glances, running out of one
- * scene and into the next, and the refusal bubble.
+ * scene and into the next, the refusal bubble, and sleeping through the night (see [UiState.asleep]): slumped and
+ * held still, with Zs rising and a snore, until a press wakes it with a sleepy line ([UiState.wakeLine]).
  */
 @Composable
 fun HomeScreen(
@@ -376,9 +391,12 @@ fun HomeScreen(
 
     val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
+    // Asleep as the clock has it, once nothing else is on: bedtime coming in the middle of a play or a walk lets it
+    // finish first (a held sprite would never report it over). Any press wakes it at once (see GameViewModel.woken).
+    val asleep = state.asleep() && idle && playing == null
     // A hangover rocks the killer slowly from the head through its idle life (its glances and strolls too); a gag or a
-    // walk stands it upright at once.
-    val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null
+    // walk stands it upright at once, and sleep stills it.
+    val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null && !asleep
     LaunchedEffect(swaying) {
         if (!swaying) return@LaunchedEffect
         try {
@@ -391,10 +409,27 @@ fun HomeScreen(
             withContext(NonCancellable) { pose.swing.snapTo(0f) }
         }
     }
+    // A press that woke the killer gets a sleepy line out of it, as a refusal gets its reason; when the same press is
+    // refused, the reason says more and keeps the bubble. A line the killer said before this Home came up (the FEED
+    // that woke it on the way to the pantry) is not said again on the way back.
+    val wakeLineAtEntry = remember { state.wakeLine?.second }
+    LaunchedEffect(state.wakeLine?.second) {
+        val line = state.wakeLine ?: return@LaunchedEffect
+        if (line.second == wakeLineAtEntry || state.refuse != null) return@LaunchedEffect
+        bubble = Bubble(line.first)
+    }
     LaunchedEffect(bubble) {
         if (bubble != null) {
             delay(BUBBLE_MS)
             bubble = null
+        }
+    }
+    // Asleep, it snores, once a breath, until it wakes. The audio drops it while the app is in the background.
+    val sounds = LocalSoundSink.current
+    LaunchedEffect(asleep) {
+        while (asleep) {
+            sounds.sfx(SNORE_SFX)
+            delay(SNORE_EVERY_MS)
         }
     }
 
@@ -410,7 +445,11 @@ fun HomeScreen(
         holding -> Anim.IDLE
         else -> request?.anim ?: walk?.anim ?: stroll?.anim ?: variety?.anim ?: Anim.IDLE
     }
-    val playKey: Any = if (holding) HoldKey else request?.token ?: walk?.key ?: stroll ?: variety ?: IdleKey
+    val playKey: Any = if (holding) {
+        HoldKey
+    } else {
+        request?.token ?: walk?.key ?: stroll ?: variety ?: if (asleep) SleepKey else IdleKey
+    }
     val currentVariety = variety
     val onShownFinished: (() -> Unit)? = when {
         holding -> null
@@ -466,13 +505,14 @@ fun HomeScreen(
 
         // The pet's life while nothing else is going on: it idles, glances about (or waits, when hungry)
         // every 12–20 s, and every 8–15 s strolls a little way along the floor and stops. Anything the view
-        // model asks for cancels this at once, leaving the pet wherever it got to.
+        // model asks for cancels this at once, leaving the pet wherever it got to; so does dropping off to sleep, and
+        // the timers start afresh when it wakes.
         val latestRange by rememberUpdatedState(range)
         val latestScreenW by rememberUpdatedState(screenW)
         val latestDrawnHeight by rememberUpdatedState(drawnHeightPx)
         val lifecycleOwner = LocalLifecycleOwner.current
-        LaunchedEffect(idle, petId, lifecycleOwner) {
-            if (!idle) return@LaunchedEffect
+        LaunchedEffect(idle, asleep, petId, lifecycleOwner) {
+            if (!idle || asleep) return@LaunchedEffect
             // Only while the app is in the foreground. In the background the frame clock stops, so a stroll
             // left running would jump to its end on return; instead it stops where it is, and the pet's idle
             // life starts over (fresh timers) when the app comes back.
@@ -511,6 +551,25 @@ fun HomeScreen(
             }
         }
 
+        // Asleep, the killer slumps: it leans toward the floor about its feet and sinks a little, easing down, and
+        // sits straight up the moment it wakes. It leans with tilt, not the hangover's swing, and the sway stands
+        // aside while it sleeps (see swaying), so the two never pull at the pose together.
+        LaunchedEffect(asleep) {
+            if (!asleep) return@LaunchedEffect
+            try {
+                coroutineScope {
+                    launch { pose.tilt.animateTo(SLUMP_DEG, tween(SLUMP_MS)) }
+                    pose.lift.animateTo(-SLUMP_SINK * latestDrawnHeight, tween(SLUMP_MS))
+                }
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    pose.tilt.snapTo(0f)
+                    pose.lift.snapTo(0f)
+                }
+            }
+        }
+
         SceneBackdrop(loader = loader, scene = scene, vignette = { vignette.value }) { floorY ->
             // The hour's light over the scene and under the killer; the bubble and the HUD come after it, unlit.
             Spacer(Modifier.fillMaxSize().drawBehind { drawRect(light) })
@@ -525,12 +584,22 @@ fun HomeScreen(
                 tintStrength = scene.tintStrength,
                 shadowOpacity = scene.shadowOpacity,
                 pose = pose,
+                // Asleep, its idle holds on the first frame (the playback starts over under SleepKey): out cold.
+                timeScale = { if (asleep) 0f else 1f },
                 playKey = playKey,
                 onFinished = onShownFinished,
                 modifier = Modifier
                     .placeAt(x = { (homeX.value + walkX.value) * screenW }, y = { floorY })
                     .graphicsLayer { alpha = walkAlpha.value },
             )
+            if (asleep) {
+                // Just over the head, where the bubble points, as the slump leans it about the feet and sinks it.
+                val headAbove = drawnHeightPx * BUBBLE_ABOVE_FEET
+                SleepZs(
+                    headX = { (homeX.value + walkX.value) * screenW + headAbove * sin(pose.tilt.value.toRadians()) },
+                    headY = { floorY - headAbove * cos(pose.tilt.value.toRadians()) - pose.lift.value },
+                )
+            }
             playing?.let { p ->
                 key(p.token) {
                     val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
@@ -564,6 +633,7 @@ fun HomeScreen(
             StatCard(
                 pet = pet,
                 meal = meal,
+                asleep = asleep,
                 width = cardWidth,
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -693,6 +763,12 @@ private object IdleKey
 
 /** The playback key while a play's gag is on: the pet idles (or flails), and its own animation starts fresh after. */
 private object HoldKey
+
+/** The playback key while the killer sleeps: its idle starts over as it drops off, so it holds the first frame. */
+private object SleepKey
+
+/** These degrees in radians. */
+private fun Float.toRadians(): Float = this * PI.toFloat() / 180f
 
 /** The [gag] a play started with its first request ([token]), showing until the glove has gone. */
 @Immutable
