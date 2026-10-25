@@ -251,13 +251,15 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = n
  *   same reason can repeat.
  * - [sfx] and [voice] are queues of audio file base names; the UI plays them and calls `consumeSounds()`.
  * - [stableOpen] is whether the stable menu is up over Home (Home takes no other input meanwhile).
- * - [nowMs] is the view model's clock as of its last look (the save's load, a resume, the minute's tick, a meal): what
- *   the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
+ * - [nowMs] is the view model's clock as of its last look (the save's load, a resume, the minute's tick, a meal, a
+ *   press Home took): what the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
  * - [hour] is the hour of the player's day (0..23) at [nowMs], read with it: what Home's light is chosen by
- *   (`dayLightAt`). Noon, in the day's light, until the clock is first read.
+ *   (`dayLightAt`). Noon, in the day's light, until the clock is first read; a reading before the clock's floor (a
+ *   boot clock not yet set) keeps the hour as it was.
  * - [awakeUntilMs] is when the killer dozes off again (see [asleep]), on the [nowMs] clock: [Tuning.AWAKE_MS] after
- *   the last press Home took, at any hour, so a press keeps it up ten minutes more and one just before bedtime keeps
- *   it up past it. Not saved: a restart in the night finds it asleep.
+ *   the last press Home took (the stable's included), as the clock read at the press, at any hour, so a press keeps it
+ *   up ten minutes more and one just before bedtime keeps it up past it. Not saved: a restart in the night finds it
+ *   asleep.
  * - [wakeLine] is the sleepy line the last waking press got out of the killer, with a fresh token each time (so the
  *   same line twice still shows twice); Home shows it in the killer's bubble when the token changes.
  */

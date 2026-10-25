@@ -165,7 +165,8 @@ class DecayTest {
     fun clockFloorIsJanuaryFirst2024() {
         assertEquals(1_704_067_200_000L, Tuning.MIN_VALID_EPOCH_MS)
         // Exactly at the floor is valid (first run records it); one ms below is not.
-        assertEquals(Tuning.MIN_VALID_EPOCH_MS, applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS, zone = utc).first.lastSeenMs)
+        val atTheFloor = applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS, zone = utc).first
+        assertEquals(Tuning.MIN_VALID_EPOCH_MS, atTheFloor.lastSeenMs)
         assertNull(applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS - 1, zone = utc).first.lastSeenMs)
     }
 

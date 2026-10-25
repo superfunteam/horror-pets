@@ -396,8 +396,9 @@ fun HomeScreen(
     val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
     // Asleep as the clock has it, once nothing else is on: bedtime coming in the middle of a play or a walk lets it
-    // finish first (a held sprite would never report it over). Any press wakes it at once (see GameViewModel.woken).
-    val asleep = state.asleep() && idle && playing == null
+    // finish first (a held sprite would never report it over), and it never nods off under the stable's menu (closing
+    // or picking there is a press). Any press wakes it at once (see GameViewModel.woken).
+    val asleep = state.asleep() && idle && playing == null && !state.stableOpen
     // A hangover rocks the killer slowly from the head through its idle life (its glances and strolls too); a gag or a
     // walk stands it upright at once, and sleep stills it.
     val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null && !asleep
@@ -414,12 +415,13 @@ fun HomeScreen(
         }
     }
     // A press that woke the killer gets a sleepy line out of it, as a refusal gets its reason; when the same press is
-    // refused, the reason says more and keeps the bubble. A line the killer said before this Home came up (the FEED
-    // that woke it on the way to the pantry) is not said again on the way back.
+    // refused, the reason says more and keeps the bubble. Only a Home that stays says it (a play, a walk, the stable):
+    // one fading out (the FEED that woke it on the way to the pantry) does not, and that line is not said on the way
+    // back either.
     val wakeLineAtEntry = remember { state.wakeLine?.second }
     LaunchedEffect(state.wakeLine?.second) {
         val line = state.wakeLine ?: return@LaunchedEffect
-        if (line.second == wakeLineAtEntry || state.refuse != null) return@LaunchedEffect
+        if (focusEntry == null || line.second == wakeLineAtEntry || state.refuse != null) return@LaunchedEffect
         bubble = Bubble(line.first)
     }
     LaunchedEffect(bubble) {

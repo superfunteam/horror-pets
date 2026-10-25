@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.ui
 
+import java.util.TimeZone
 import kotlin.random.Random
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -141,6 +142,7 @@ private class App(pet: PetState, relay: PvpRelay?) {
         pvpRelay = relay,
         onHostCode = { hostCodes += it },
         uptimeMs = { scope.testScheduler.currentTime },
+        zone = TimeZone.getTimeZone("UTC"), // the same hours on every machine
     )
 
     val ui: UiState get() = vm.state.value

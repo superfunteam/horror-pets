@@ -2446,6 +2446,24 @@ class GameViewModelTest {
     }
 
     @Test
+    fun aClockBeforeItsFloorLeavesTheHourAsItWas() {
+        // A TV stick boots on its firmware's date, 03:00 the day before the floor: the hour is not read off it, so Home
+        // stays in the day's light and the killer awake until the clock is set.
+        val bootClock = T0 - 5 * HOUR // 03:00 UTC
+        val rig = Rig(gameOf(lastSeenMs = null), clock = FakeClock(bootClock), clockFloorMs = T0).loaded()
+        assertEquals("noon, as before any reading", 12, rig.ui.hour)
+        assertEquals(bootClock, rig.ui.nowMs)
+        assertFalse(rig.ui.asleep())
+
+        rig.clock.now = T0 // set: 08:00
+        rig.vm.tick()
+        assertEquals(8, rig.ui.hour)
+        rig.clock.now = bootClock // and if it goes back, the last good hour stands
+        rig.vm.tick()
+        assertEquals(8, rig.ui.hour)
+    }
+
+    @Test
     fun theVsCardOpensOnTheHourItIs() {
         val rig = Rig(gameOf()).started()
         rig.clock.now += 2 * HOUR // no tick since: opening the card reads the clock
@@ -2701,7 +2719,11 @@ class GameViewModelTest {
             Triple("TRAIN opens a game", { it.onCare(CareAction.TRAIN) }, { it.screen is Screen.Training }),
             Triple("PLAY plays", { it.onCare(CareAction.PLAY) }, { it.petAnim?.gag != null }),
             Triple("a walk runs", { it.onWalk(1) }, { it.petAnim?.anim == Anim.RUN_RIGHT }),
-            Triple("FIGHT opens the switcher", { it.onFightPressed() }, { it.screen == Screen.Switcher(SwitcherMode.OPPONENT) }),
+            Triple(
+                "FIGHT opens the switcher",
+                { it.onFightPressed() },
+                { it.screen == Screen.Switcher(SwitcherMode.OPPONENT) },
+            ),
             Triple("MOVES opens the moves", { it.onMovesPressed() }, { it.screen == Screen.Moves }),
             Triple("the stable opens", { it.openStable() }, { it.stableOpen }),
         )
@@ -2765,6 +2787,58 @@ class GameViewModelTest {
         assertEquals(lateEvening + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
     }
 
+    @Test
+    fun theTenMinutesRunFromThePressNotTheLastTick() {
+        // The last look at the clock was the tick at 22:59:40; the press comes 40 s later, after bedtime, with no tick
+        // between. The press reads the clock itself: its hour, its time, and ten minutes from it.
+        val lastTick = BEDTIME - 30 * MINUTE - 20 * SECOND
+        val rig = Rig(gameOf(lastSeenMs = lastTick), clock = FakeClock(lastTick)).started()
+        assertEquals(22, rig.ui.hour)
+        val press = lastTick + 40 * SECOND
+        rig.clock.now = press
+        rig.vm.onCare(CareAction.PLAY)
+        assertEquals(press + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
+        assertEquals(press, rig.ui.nowMs)
+        assertEquals(23, rig.ui.hour)
+        assertNotNull("23:00:20 found it asleep", rig.ui.wakeLine)
+    }
+
+    @Test
+    fun aStablePickKeepsTheKillerUpTenMinutesHoweverLongTheStableWasOpen() {
+        // Opened at 23:10 (up until 23:20), left open over the minute's ticks, and a killer picked at 23:30.
+        val opened = BEDTIME - 20 * MINUTE
+        val rig = Rig(gameOf(lastSeenMs = opened), clock = FakeClock(opened)).started()
+        rig.vm.openStable()
+        for (minute in 1..20) {
+            rig.clock.now = opened + minute * MINUTE
+            rig.vm.tick()
+        }
+        assertTrue(rig.ui.stableOpen)
+        rig.vm.onStablePick(PetId.FREDDY)
+        assertEquals(PetId.FREDDY, rig.game.selected)
+        assertEquals(BEDTIME + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
+        assertFalse(rig.ui.asleep())
+        rig.clock.now = BEDTIME + 10 * MINUTE - SECOND
+        rig.vm.tick()
+        assertFalse("up at 23:39:59", rig.ui.asleep())
+        rig.clock.now = BEDTIME + 10 * MINUTE
+        rig.vm.tick()
+        assertTrue("and asleep at 23:40", rig.ui.asleep())
+    }
+
+    @Test
+    fun closingTheStableKeepsTheKillerUpTenMinutes() {
+        val opened = BEDTIME - 20 * MINUTE
+        val rig = Rig(gameOf(lastSeenMs = opened), clock = FakeClock(opened)).started()
+        rig.vm.openStable()
+        rig.clock.now = BEDTIME
+        rig.vm.tick()
+        rig.vm.closeStable()
+        assertFalse(rig.ui.stableOpen)
+        assertEquals(BEDTIME + Tuning.AWAKE_MS, rig.ui.awakeUntilMs)
+        assertFalse(rig.ui.asleep())
+    }
+
     // ---- saving ------------------------------------------------------------------------------
 
     @Test
@@ -2811,7 +2885,7 @@ class GameViewModelTest {
     fun savesLandInTheOrderTheStateChanged() {
         val store = SlowFirstSaveStore(gameOf(pets = arrayOf(jason(hunger = 60.0))))
         val scope = TestScope(StandardTestDispatcher())
-        val vm = GameViewModel(store, FakeClock(T0), Random(1), scope)
+        val vm = GameViewModel(store, FakeClock(T0), Random(1), scope, zone = TimeZone.getTimeZone("UTC"))
         vm.start()
         scope.runCurrent() // the first save is now in flight and slow
         vm.onStart()

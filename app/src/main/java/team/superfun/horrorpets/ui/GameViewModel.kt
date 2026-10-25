@@ -235,8 +235,12 @@ class GameViewModel(
         persist(game)
     }
 
-    /** This state as of the clock reading [now]: the screens' [UiState.nowMs], and the [UiState.hour] it falls in. */
-    private fun UiState.at(now: Long): UiState = copy(nowMs = now, hour = hourOf(now))
+    /**
+     * This state as of the clock reading [now]: the screens' [UiState.nowMs], and the [UiState.hour] it falls in. A
+     * reading before [clockFloorMs] (a TV stick's boot clock, before it syncs) keeps the hour it had, so a wrong date
+     * can neither light Home for the wrong part of the day nor put the killer to sleep.
+     */
+    private fun UiState.at(now: Long): UiState = copy(nowMs = now, hour = if (now < clockFloorMs) hour else hourOf(now))
 
     /** Shows the welcome-back toast for [away] when Home is on screen and the absence is worth one (see [awayToast]). */
     private fun UiState.withAwayToast(away: AwaySummary): UiState {
@@ -557,25 +561,31 @@ class GameViewModel(
 
     // ---- the stable, the carousel, versus, fake death -----------------------------------------
 
-    /** Opens the stable over Home, when there is someone else in it to go see, waking a sleeping killer (see [woken]). */
+    /**
+     * Opens the stable over Home, when there is someone else in it to go see, waking a sleeping killer (see [woken]).
+     */
     fun openStable() {
         val s = _state.value
         if (s.homePet() == null || s.game.pets.size < 2) return
         _state.value = s.woken().copy(stableOpen = true, refuse = null)
     }
 
+    /** Closes the stable, back to Home; a press like any other there, so it keeps the killer up (see [woken]). */
     fun closeStable() {
         val s = _state.value
         if (!s.stableOpen) return
-        _state.value = s.copy(stableOpen = false)
+        _state.value = s.woken().copy(stableOpen = false)
     }
 
-    /** Goes to see [p], a killer in the stable (a locked one is ignored), and closes the stable. */
+    /**
+     * Goes to see [p], a killer in the stable (a locked one is ignored), and closes the stable: a press Home took, so
+     * [p] is up for the next ten minutes however long the stable was open (see [woken]).
+     */
     fun onStablePick(p: PetId) {
         val s = _state.value
         if (!s.stableOpen || !s.game.isUnlocked(p)) return
         val game = s.game.copy(selected = p)
-        _state.value = s.copy(game = game, stableOpen = false).routeHome()
+        _state.value = s.woken().copy(game = game, stableOpen = false).routeHome()
         if (game != s.game) persist(game)
     }
 
@@ -1307,17 +1317,19 @@ class GameViewModel(
     }
 
     /**
-     * This state after a press Home took: the killer is up until [Tuning.AWAKE_MS] from the last clock reading, at any
-     * hour, so each press keeps it up ten minutes more and one just before bedtime keeps it up past it (by day nothing
-     * shows: [asleep] reads the hour first). Only a press that found it asleep gets a sleepy line out of it
-     * ([UiState.wakeLine]); the rest leave the last line as it was.
+     * This state after a press Home took, as of the press: the clock is read first (see [at]), and the killer is up
+     * until [Tuning.AWAKE_MS] after it, at any hour, so each press keeps it up ten minutes more and one just before
+     * bedtime keeps it up past it (by day nothing shows: [asleep] reads the hour first). Only a press that found it
+     * asleep gets a sleepy line out of it ([UiState.wakeLine]); the rest leave the last line as it was.
      *
      * Every press Home takes calls this first and then goes through as it would by day (a FEED opens the pantry with
-     * the killer up), so it is only ever called once the press is known to be taken (see [homePet]).
+     * the killer up), so it is only ever called once the press is known to be taken (see [homePet]; the stable's own
+     * presses, once the stable is known to be open).
      */
     private fun UiState.woken(): UiState {
-        val line = if (asleep()) SLEEPY_LINES.random(pickRng) to nextToken++ else wakeLine
-        return copy(awakeUntilMs = nowMs + Tuning.AWAKE_MS, wakeLine = line)
+        val pressed = at(clock.nowMs())
+        val line = if (pressed.asleep()) SLEEPY_LINES.random(pickRng) to nextToken++ else wakeLine
+        return pressed.copy(awakeUntilMs = pressed.nowMs + Tuning.AWAKE_MS, wakeLine = line)
     }
 
     /** Starts an action: [anims] play one after another, then [finish] produces the final state. */

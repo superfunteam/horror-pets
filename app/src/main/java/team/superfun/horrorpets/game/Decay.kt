@@ -74,7 +74,8 @@ private fun gapMs(nowMs: Long, lastSeenMs: Long): Long =
 
 /**
  * [p] after [hours] of time away, [sleepHours] of them (at most [hours]) asleep: hunger and fun move at
- * [Tuning.SLEEP_DECAY_SHARE] of their pace through the sleep, strength and the mood bonus at their full pace throughout.
+ * [Tuning.SLEEP_DECAY_SHARE] of their pace through the sleep, strength and the mood bonus at their full pace
+ * throughout.
  *
  * Internal rather than private so tests can give it more sleep than [applyElapsed] can: one night there holds at
  * most seven sleep hours.

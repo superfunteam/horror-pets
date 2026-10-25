@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.ui
 
+import java.util.TimeZone
 import kotlin.random.Random
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -36,6 +37,7 @@ class AttacksFlowTest {
             },
             rng = Random(1),
             scope = scope,
+            zone = TimeZone.getTimeZone("UTC"), // the same hours on every machine
         )
 
         val ui: UiState get() = vm.state.value

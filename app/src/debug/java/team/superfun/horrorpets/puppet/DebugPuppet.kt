@@ -238,7 +238,8 @@ private class Session(
     private suspend fun execute(command: PuppetCommand): Outcome {
         val immediate = command is PuppetCommand.Autoplay || command is PuppetCommand.Hud || command is PuppetCommand.Status ||
             command is PuppetCommand.Wait || command is PuppetCommand.WaitHome || command is PuppetCommand.Invalid ||
-            command is PuppetCommand.FakeVersion || command is PuppetCommand.FakeHour || command is PuppetCommand.CheckUpdate
+            command is PuppetCommand.FakeVersion || command is PuppetCommand.FakeHour ||
+            command is PuppetCommand.CheckUpdate
         if (!immediate && !awaitIdle()) return Outcome.Refused("the game was still busy after ${IDLE_WAIT_MS / 1000} s")
         return when (command) {
             PuppetCommand.UnlockAll -> {
@@ -406,7 +407,8 @@ private class Session(
                 val meal = s.game.selected?.let { s.game.pets[it] }?.let { mealStatusOf(it, s.nowMs) }?.let { "; ${it.title}" }.orEmpty()
                 // Whether the killer sleeps on Home, as the clock (or `hour`) has it.
                 val sleep = if (s.asleep()) "; asleep" else ""
-                Outcome.Done("${describe(s)}; ${petLine(s)}$meal$sleep; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
+                val autoplay = if (DebugPuppet.autoplay) "on" else "off"
+                Outcome.Done("${describe(s)}; ${petLine(s)}$meal$sleep; autoplay $autoplay; hud $hud")
             }
 
             is PuppetCommand.FakeVersion -> {
