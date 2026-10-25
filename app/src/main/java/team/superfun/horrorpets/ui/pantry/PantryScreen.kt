@@ -417,13 +417,19 @@ private fun PantryVisit(
                 modifier = Modifier.graphicsLayer { alpha = recipesShown },
             )
             // What the killer has shown of its taste so far (nothing until it loves or hates a flavor): out of the
-            // bubble's way too.
-            tastesLine(pet)?.let {
+            // bubble's way too, and gone from the moment it is fed until the visit is over, as the meal may teach it a
+            // taste (learned as FEED is pressed) that must not show before the killer has reacted. It fades out
+            // reading as it did before the meal.
+            val tastes = tastesLine(pet)
+            val tastesBefore = remember { arrayOf(tastes) }
+            SideEffect { if (fed == null) tastesBefore[0] = tastes }
+            val tastesShown by animateFloatAsState(if (bubbleUp || fed != null) 0f else 1f, tween(200), label = "tastesShown")
+            (if (fed == null) tastes else tastesBefore[0])?.let {
                 BasicText(
                     it,
                     style = statusStyle,
                     maxLines = 1,
-                    modifier = Modifier.graphicsLayer { alpha = recipesShown },
+                    modifier = Modifier.graphicsLayer { alpha = tastesShown },
                 )
             }
         }

@@ -109,10 +109,17 @@ internal const val LEVEL_UP_READ_MS = 500L
 internal const val STATUS_AFTER_MS = 400L
 
 /**
+ * A meal that left a status has the killer's bubble swap its taste line for the status's own ([MealStatus.line]) this
+ * long into the reaction, once the banner has landed; it says that until the reaction ends.
+ */
+internal const val STATUS_LINE_AFTER_MS = 1_400L
+
+/**
  * How a reaction plays, as it starts (times in ms into it): its [sound], the killer's [anims], the favorite's
  * [hearts], when LEVEL UP! shows ([levelUpAtMs], null without a level-up) and whether it plays its sound
- * ([levelUpSound]), when the meal's status shows ([statusAtMs], null without one) and its sound ([statusSound]), and
- * when OK or a tap may carry on ([carryOnAfterMs]).
+ * ([levelUpSound]), when the meal's status shows ([statusAtMs], null without one) and its sound ([statusSound]), when
+ * OK or a tap may carry on ([carryOnAfterMs]), and the status's line ([statusLine]) and when the bubble swaps to it
+ * ([statusLineAtMs]), both null without a status.
  */
 internal data class ReactionCue(
     val sound: String?,
@@ -123,15 +130,27 @@ internal data class ReactionCue(
     val carryOnAfterMs: Long,
     val statusAtMs: Long? = null,
     val statusSound: String? = null,
-)
+    val statusLine: String? = null,
+    val statusLineAtMs: Long? = null,
+) {
+    /**
+     * What the killer's bubble says [ms] into the reaction for a meal whose [taste] line ([FedShow.line]) it reacted
+     * with: that line, then the status's own from [statusLineAtMs] on; only ever the taste line without a status.
+     */
+    fun lineAt(ms: Long, taste: String): String {
+        val at = statusLineAtMs
+        return if (statusLine != null && at != null && ms >= at) statusLine else taste
+    }
+}
 
 /**
- * How [fed]'s reaction plays. Fresh, it plays in full: LEVEL UP! comes [LEVEL_UP_AFTER_MS] in, and the meal's status
- * [STATUS_AFTER_MS] after the gains (after LEVEL UP!, with both). OK or a tap counts only after [OK_GUARD_MS] (presses
- * mashed through the munch can't skip it the frame it shows), and after the last of LEVEL UP! and the status has been
- * up [LEVEL_UP_READ_MS]. A [replay] (the kitchen came back, its Activity made again, on a meal already eaten) is shown
- * finished and silent: the line, the gains, LEVEL UP! and the status at once, with no sound, no hearts and no pose, and
- * OK after the guard as ever.
+ * How [fed]'s reaction plays. Fresh, it plays in full: LEVEL UP! comes [LEVEL_UP_AFTER_MS] in, the meal's status
+ * [STATUS_AFTER_MS] after the gains (after LEVEL UP!, with both), and the status's line in the bubble
+ * [STATUS_LINE_AFTER_MS] in. OK or a tap counts only after [OK_GUARD_MS] (presses mashed through the munch can't skip
+ * it the frame it shows), and after the last of LEVEL UP! and the status has been up [LEVEL_UP_READ_MS]. A [replay]
+ * (the kitchen came back, its Activity made again, on a meal already eaten) is shown finished and silent: the line (the
+ * status's, with one), the gains, LEVEL UP! and the status at once, with no sound, no hearts and no pose, and OK after
+ * the guard as ever.
  */
 internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
     val levelUp = fed.levelsGained > 0
@@ -145,6 +164,8 @@ internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
             levelUpSound = false,
             carryOnAfterMs = OK_GUARD_MS,
             statusAtMs = if (status != null) 0L else null,
+            statusLine = status?.line,
+            statusLineAtMs = if (status != null) 0L else null,
         )
     }
     val levelUpAt = if (levelUp) LEVEL_UP_AFTER_MS else null
@@ -159,6 +180,8 @@ internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
         carryOnAfterMs = if (lastWords != null) maxOf(OK_GUARD_MS, lastWords + LEVEL_UP_READ_MS) else OK_GUARD_MS,
         statusAtMs = statusAt,
         statusSound = status?.let(::statusSound),
+        statusLine = status?.line,
+        statusLineAtMs = if (status != null) STATUS_LINE_AFTER_MS else null,
     )
 }
 
@@ -242,7 +265,8 @@ internal class Meal(val image: ImageBitmap, val crumbs: List<Color>) {
  * - as it lands the killer munches it, [MUNCHES] times its feed animation, while it loses its bites;
  * - then the reaction, as [reactionCue] has it: its pose and sound, the line over its head, the gains over the board
  *   ([gainsOf]), the favorite's hearts, a level-up's words and sound a beat later, and the meal's status with its
- *   sound ([statusSound]) a beat after those; OK or a tap carries on once [FeedStage.carryOn] says so;
+ *   sound ([statusSound]) a beat after those, then the status's own line in the bubble in place of the taste line
+ *   ([ReactionCue.lineAt]); OK or a tap carries on once [FeedStage.carryOn] says so;
  * - and [REACTION_HOLD_MS] later the show is over ([onDone]): the kitchen carries on Home by itself, unless the killer
  *   could eat more, when it waits for OK (FEED again) or Back.
  *
@@ -284,7 +308,7 @@ internal suspend fun playFeedShow(
             }
             actOut(actor, List(MUNCHES) { munch }, manifest, clock)
         }
-        stage.line = fed.line
+        stage.line = cue.lineAt(0L, fed.line)
         stage.gains = gainsOf(fed)
         cue.sound?.let(sounds::sfx)
         if (cue.hearts) stage.hearts = true
@@ -310,6 +334,13 @@ internal suspend fun playFeedShow(
                     clock.waitMs(statusAt)
                     stage.status = status
                     cue.statusSound?.let(sounds::sfx)
+                }
+            }
+            val statusLineAt = cue.statusLineAtMs
+            if (statusLineAt != null && statusLineAt > 0L) {
+                launch {
+                    clock.waitMs(statusLineAt)
+                    stage.line = cue.lineAt(statusLineAt, fed.line)
                 }
             }
             clock.waitMs(timeline.doneMs - timeline.reactMs)

@@ -147,5 +147,13 @@ class MealStatusTest {
         assertEquals("Misses more, hits softer", MealPerk.HANGOVER.meaning)
         assertEquals("Hangover", MealStatus(MealPerk.HANGOVER).title)
         assertEquals("Favorite feast", MealStatus(MealPerk.SUGAR_RUSH, feast = true).title)
+        // What the killer says of each in the pantry's bubble; the favorite says its own whatever its flavor.
+        assertEquals("Now I'm strong!", MealStatus(MealPerk.BEEFED_UP).line)
+        assertEquals("I could run through a wall!", MealStatus(MealPerk.SUGAR_RUSH).line)
+        assertEquals("Nothing can hurt me.", MealStatus(MealPerk.IRON_STOMACH).line)
+        assertEquals("Ugh... my head.", MealStatus(MealPerk.HANGOVER).line)
+        for (perk in listOf(MealPerk.BEEFED_UP, MealPerk.SUGAR_RUSH, MealPerk.IRON_STOMACH)) {
+            assertEquals("$perk feast", "My favorite. I'm unstoppable.", MealStatus(perk, feast = true).line)
+        }
     }
 }

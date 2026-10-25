@@ -6,18 +6,24 @@ import team.superfun.horrorpets.model.ItemKind
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.pantryItemById
 
-/** What a meal does to the next fights: the [title] on its chip and, in a line, what it does ([meaning]). */
-enum class MealPerk(val title: String, val meaning: String) {
-    BEEFED_UP("Beefed up", "+15% damage"),
-    SUGAR_RUSH("Sugar rush", "Meter starts half full"),
-    IRON_STOMACH("Iron stomach", "+10% crit chance"),
-    HANGOVER("Hangover", "Misses more, hits softer"),
+/**
+ * What a meal does to the next fights: the [title] on its chip, in a line what it does ([meaning]), and what the
+ * killer says of it in the pantry's bubble ([line]; a favorite feast says its own, see [MealStatus.line]).
+ */
+enum class MealPerk(val title: String, val meaning: String, val line: String) {
+    BEEFED_UP("Beefed up", "+15% damage", "Now I'm strong!"),
+    SUGAR_RUSH("Sugar rush", "Meter starts half full", "I could run through a wall!"),
+    IRON_STOMACH("Iron stomach", "+10% crit chance", "Nothing can hurt me."),
+    HANGOVER("Hangover", "Misses more, hits softer", "Ugh... my head."),
 }
 
 /** [perk], and whether it was the killer's favorite dish ([feast]: a third potion on top). */
 data class MealStatus(val perk: MealPerk, val feast: Boolean = false) {
     /** What the chip says: the perk's name, or "Favorite feast" for the killer's favorite dish. */
     val title: String get() = if (feast) "Favorite feast" else perk.title
+
+    /** What the killer says of it in the pantry's bubble: the perk's line, or its own for the killer's favorite dish. */
+    val line: String get() = if (feast) "My favorite. I'm unstoppable." else perk.line
 }
 
 /**

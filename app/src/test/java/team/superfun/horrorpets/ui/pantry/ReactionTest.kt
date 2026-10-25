@@ -90,6 +90,58 @@ class ReactionTest {
     }
 
     @Test
+    fun theBubbleSaysTheStatusLineAfterTheTasteLine() {
+        val taste = "Mmm, savory!"
+        // The taste line as the reaction comes, then, once the banner has landed, what the status does for the killer,
+        // kept until the reaction ends.
+        assertEquals(1_400L, STATUS_LINE_AFTER_MS)
+        val beefed = reactionCue(fed(levels = 0, status = MealStatus(MealPerk.BEEFED_UP)), replay = false)
+        assertEquals("Now I'm strong!", beefed.statusLine)
+        assertEquals(STATUS_LINE_AFTER_MS, beefed.statusLineAtMs)
+        assertEquals(taste, beefed.lineAt(0, taste))
+        assertEquals(taste, beefed.lineAt(STATUS_LINE_AFTER_MS - 1, taste))
+        assertEquals("Now I'm strong!", beefed.lineAt(STATUS_LINE_AFTER_MS, taste))
+        assertEquals("Now I'm strong!", beefed.lineAt(REACTION_HOLD_MS, taste))
+        assertTrue("after the banner", STATUS_LINE_AFTER_MS > beefed.statusAtMs!!)
+        assertTrue("well before the reaction ends", STATUS_LINE_AFTER_MS + 1_000 < REACTION_HOLD_MS)
+        // With a level-up too: still after the banner, which comes after LEVEL UP!.
+        val up = reactionCue(fed(levels = 1, status = MealStatus(MealPerk.HANGOVER)), replay = false)
+        assertEquals(STATUS_LINE_AFTER_MS, up.statusLineAtMs)
+        assertTrue(STATUS_LINE_AFTER_MS > up.statusAtMs!!)
+        assertEquals("Ugh... my head.", up.lineAt(STATUS_LINE_AFTER_MS, taste))
+        // Each status says its own; the favorite says its own whatever its flavor.
+        val lines = mapOf(
+            MealStatus(MealPerk.BEEFED_UP) to "Now I'm strong!",
+            MealStatus(MealPerk.SUGAR_RUSH) to "I could run through a wall!",
+            MealStatus(MealPerk.IRON_STOMACH) to "Nothing can hurt me.",
+            MealStatus(MealPerk.HANGOVER) to "Ugh... my head.",
+            MealStatus(MealPerk.BEEFED_UP, feast = true) to "My favorite. I'm unstoppable.",
+            MealStatus(MealPerk.SUGAR_RUSH, feast = true) to "My favorite. I'm unstoppable.",
+            MealStatus(MealPerk.IRON_STOMACH, feast = true) to "My favorite. I'm unstoppable.",
+        )
+        for ((status, line) in lines) {
+            val cue = reactionCue(fed(levels = 0, status = status), replay = false)
+            assertEquals("$status", taste, cue.lineAt(STATUS_LINE_AFTER_MS - 1, taste))
+            assertEquals("$status", line, cue.lineAt(STATUS_LINE_AFTER_MS, taste))
+        }
+
+        // A meal that left no status never swaps: the taste line from start to end, fresh or coming back.
+        for (replay in listOf(false, true)) {
+            for (levels in 0..1) {
+                val plain = reactionCue(fed(levels = levels), replay = replay)
+                assertNull(plain.statusLine)
+                assertNull(plain.statusLineAtMs)
+                for (ms in 0L..REACTION_HOLD_MS + 1_000 step 50) assertEquals("$ms", taste, plain.lineAt(ms, taste))
+            }
+        }
+
+        // Coming back to a meal already eaten: finished, so the status's line at once.
+        val back = reactionCue(fed(levels = 0, status = MealStatus(MealPerk.SUGAR_RUSH, feast = true)), replay = true)
+        assertEquals(0L, back.statusLineAtMs)
+        assertEquals("My favorite. I'm unstoppable.", back.lineAt(0, taste))
+    }
+
+    @Test
     fun aReactionComingBackIsShownFinishedAndSilent() {
         // The kitchen came back (the Activity was made again) on a meal already eaten: the line, the gains and the
         // LEVEL UP are up at once, with no sound, no hearts and no pose; OK still carries on, after the guard.
