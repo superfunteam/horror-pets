@@ -272,9 +272,10 @@ private class Session(
                 val me = activePet()?.id ?: return Outcome.Refused(NO_PET)
                 if (me == command.opponent) return Outcome.Refused("${me.displayName} cannot fight itself")
                 edit({ "VS card: ${me.displayName} vs ${command.opponent.displayName}" }) {
-                    // The VS card's announcer, as picking the opponent queues it.
-                    val voice = listOf(me.name.lowercase(), "versus", command.opponent.name.lowercase())
-                    it.copy(screen = Screen.Versus(command.opponent), stableOpen = false, refuse = null, voice = it.voice + voice)
+                    // As picking the opponent opens it: the announcer queued, and on the clock as it is now (the card
+                    // shows the last meal's status as of then).
+                    val versus = with(vm) { it.versusAgainst(command.opponent) } ?: it
+                    versus.copy(stableOpen = false, refuse = null)
                 }
             }
 

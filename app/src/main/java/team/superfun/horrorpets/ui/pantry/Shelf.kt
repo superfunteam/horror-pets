@@ -79,9 +79,7 @@ import team.superfun.horrorpets.game.pantry.FlavorMark
 import team.superfun.horrorpets.game.pantry.flavorMark
 import team.superfun.horrorpets.game.pantry.methodHint
 import team.superfun.horrorpets.model.PantryItem
-import team.superfun.horrorpets.ui.common.IronGreen
 import team.superfun.horrorpets.ui.common.MAX_FONT_SCALE
-import team.superfun.horrorpets.ui.common.SugarPink
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.common.spriteFilter
@@ -89,6 +87,8 @@ import team.superfun.horrorpets.ui.switcher.carouselDragRow
 import team.superfun.horrorpets.ui.switcher.carouselFlingTarget
 import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.IronGreen
+import team.superfun.horrorpets.ui.theme.SugarPink
 import team.superfun.horrorpets.ui.theme.TextHi
 import team.superfun.horrorpets.ui.training.TrainingGold
 
@@ -344,7 +344,8 @@ private fun ShelfBody(
 /**
  * One item on the shelf, standing at its slot's centre ([x] of the slot pitch), in its cursor when [focused], and its
  * name under it on a label (its top [labelTopPx] down the shelf, its name [labelSize]). A dish's label wears its
- * flavor's mark; a way to cook's says what it does while the remote is on it.
+ * flavor's mark; a way to cook's says what it does once the remote lands on it, until its label's light has faded
+ * out after the remote leaves (it outlasts the focus by that fade).
  */
 @Composable
 private fun ShelfSlot(

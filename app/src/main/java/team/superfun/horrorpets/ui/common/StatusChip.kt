@@ -21,6 +21,8 @@ import team.superfun.horrorpets.ui.theme.Amber
 import team.superfun.horrorpets.ui.theme.Blood
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.Ink
+import team.superfun.horrorpets.ui.theme.IronGreen
+import team.superfun.horrorpets.ui.theme.SugarPink
 import team.superfun.horrorpets.ui.theme.TextHi
 
 /**
@@ -43,14 +45,8 @@ fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
     }
 }
 
-/** A sugar rush's pink (a sweet dish's flavor mark wears it too). */
-internal val SugarPink = Color(0xFFFF7AB8)
-
-/** An iron stomach's green (a gross dish's flavor mark wears it too). */
-internal val IronGreen = Color(0xFF8BE37A)
-
 /** A meal status's colour, the same everywhere it shows: gold for a feast or beefed up, pink, green, and a hangover's red. */
-fun statusChipColor(status: MealStatus): Color = if (status.feast) {
+fun mealChipColor(status: MealStatus): Color = if (status.feast) {
     Amber
 } else {
     when (status.perk) {
@@ -79,12 +75,12 @@ fun statusShortTitle(status: MealStatus): String =
     if (status.feast) "FEAST" else status.perk.title.substringBefore(' ').uppercase()
 
 /**
- * A meal's [status] as an outlined tag in its colour ([statusChipColor]), as Home's stat card, the VS card and the HUD
+ * A meal's [status] as an outlined tag in its colour ([mealChipColor]), as Home's stat card, the VS card and the HUD
  * show it: its title, or in a word ([statusShortTitle]) when [short].
  */
 @Composable
-fun StatusChip(status: MealStatus, modifier: Modifier = Modifier, short: Boolean = false) {
-    TagBox(if (short) statusShortTitle(status) else status.title.uppercase(), statusChipColor(status), modifier)
+fun MealChip(status: MealStatus, modifier: Modifier = Modifier, short: Boolean = false) {
+    TagBox(if (short) statusShortTitle(status) else status.title.uppercase(), mealChipColor(status), modifier)
 }
 
 /**

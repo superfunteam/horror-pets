@@ -57,7 +57,7 @@ import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SpriteView
-import team.superfun.horrorpets.ui.common.StatusChip
+import team.superfun.horrorpets.ui.common.MealChip
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.mirrorToFace
@@ -432,7 +432,7 @@ fun VersusScreen(
         if (status != null && name != null) {
             val place = remember(name, w, h, safeX, safeY) { nameRect(name, w, h, safeX, safeY, w * VS_PLAYER_X) }
             val gap = with(density) { 6.dp.toPx() }
-            StatusChip(
+            MealChip(
                 status,
                 Modifier
                     .placeAt(x = { place.left + place.width * CHIP_IN }, y = { place.bottom + gap }, pivotX = 0f, pivotY = 0f)

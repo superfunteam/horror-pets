@@ -47,7 +47,7 @@ import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.PetState
-import team.superfun.horrorpets.ui.common.StatusChip
+import team.superfun.horrorpets.ui.common.MealChip
 import team.superfun.horrorpets.ui.common.TagBox
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
@@ -105,7 +105,7 @@ fun StatCard(pet: PetState, meal: MealStatus?, width: Dp, modifier: Modifier = M
         }
         if (meal != null) {
             Spacer(Modifier.height(4.dp))
-            StatusChip(meal, Modifier.align(Alignment.End))
+            MealChip(meal, Modifier.align(Alignment.End))
         }
         Box(
             Modifier

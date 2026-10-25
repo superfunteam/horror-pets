@@ -12,13 +12,13 @@ import team.superfun.horrorpets.ui.theme.BloodGlow
 class StatusChipTest {
     @Test
     fun eachStatusHasItsColour() {
-        assertEquals(Amber, statusChipColor(MealStatus(MealPerk.BEEFED_UP)))
-        assertEquals(Color(0xFFFF7AB8), statusChipColor(MealStatus(MealPerk.SUGAR_RUSH)))
-        assertEquals(Color(0xFF8BE37A), statusChipColor(MealStatus(MealPerk.IRON_STOMACH)))
-        assertEquals("a hangover reads in red", BloodGlow, statusChipColor(MealStatus(MealPerk.HANGOVER)))
+        assertEquals(Amber, mealChipColor(MealStatus(MealPerk.BEEFED_UP)))
+        assertEquals(Color(0xFFFF7AB8), mealChipColor(MealStatus(MealPerk.SUGAR_RUSH)))
+        assertEquals(Color(0xFF8BE37A), mealChipColor(MealStatus(MealPerk.IRON_STOMACH)))
+        assertEquals("a hangover reads in red", BloodGlow, mealChipColor(MealStatus(MealPerk.HANGOVER)))
         // A feast is gold whatever its flavor.
         for (perk in listOf(MealPerk.BEEFED_UP, MealPerk.SUGAR_RUSH, MealPerk.IRON_STOMACH)) {
-            assertEquals("$perk feast", Amber, statusChipColor(MealStatus(perk, feast = true)))
+            assertEquals("$perk feast", Amber, mealChipColor(MealStatus(perk, feast = true)))
         }
     }
 

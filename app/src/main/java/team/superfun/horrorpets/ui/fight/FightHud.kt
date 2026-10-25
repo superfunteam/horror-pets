@@ -48,7 +48,7 @@ import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.ui.common.GlassCorner
-import team.superfun.horrorpets.ui.common.StatusChip
+import team.superfun.horrorpets.ui.common.MealChip
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
@@ -225,8 +225,8 @@ private fun StatusRow(status: HudStatus, meal: MealStatus?, mirrored: Boolean) {
     Layout(
         content = {
             if (meal != null) {
-                StatusChip(meal)
-                StatusChip(meal, short = true)
+                MealChip(meal)
+                MealChip(meal, short = true)
             }
             for ((text, fill, ink) in if (mirrored) chips.reversed() else chips) HudChip(text, fill, ink, mirrored)
         },

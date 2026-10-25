@@ -51,7 +51,7 @@ import team.superfun.horrorpets.ui.common.OK_GUARD_MS
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.placeAt
 import team.superfun.horrorpets.ui.common.statusBanner
-import team.superfun.horrorpets.ui.common.statusChipColor
+import team.superfun.horrorpets.ui.common.mealChipColor
 import team.superfun.horrorpets.ui.common.statusSound
 import team.superfun.horrorpets.ui.theme.BloodGlow
 import team.superfun.horrorpets.ui.theme.TextLo
@@ -457,7 +457,7 @@ internal fun GainsReadout(stage: FeedStage, centerX: Float, y: Float) {
 }
 
 /**
- * The meal's [status] called out, popping in as LEVEL UP! does: its title big in its colour ([statusChipColor]), with
+ * The meal's [status] called out, popping in as LEVEL UP! does: its title big in its colour ([mealChipColor]), with
  * the glow LEVEL UP! has, and what it does in the next fights small under it ([statusBanner]).
  */
 @Composable
@@ -476,7 +476,7 @@ private fun StatusBanner(status: MealStatus) {
     ) {
         GlowText(
             title,
-            displayStyle(34.sp, FontWeight.ExtraBold, color = statusChipColor(status), tracking = 0.06f, lineHeight = 36.sp),
+            displayStyle(34.sp, FontWeight.ExtraBold, color = mealChipColor(status), tracking = 0.06f, lineHeight = 36.sp),
             glow = BloodGlow,
         )
         BasicText(

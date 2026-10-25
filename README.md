@@ -32,10 +32,11 @@ nothing else.
   into something good, and every item wears its name. The shelf keeps its kinds together (ways to cook, raw foods,
   snacks, meals, then slop), and the pantry says how hungry your killer is and how many of the recipes you have found;
   put one item on the board and anything you have already made a dish with wears a check. Each way to cook says what
-  it does, on the board and on the shelf (the grill grills, fries and sears), and dishes wear a flavor mark (a red drop
-  for savory, a pink star for sweet, a green blot for gross). Feed one to your killer and it reacts to its taste: better
-  food pays more, and every killer has a secret favorite to find. The pantry's header remembers the flavors it has
-  loved or hated ("LOVES SAVORY · HATES GROSS"), never one it is merely fine with. What a meal leaves lasts a day, or
+  it does (the grill grills, fries and sears) on the board, and on the shelf under the TV remote (a finger never
+  lights a shelf label), and dishes wear a flavor mark (a red drop for savory, a pink star for sweet, a green blot for
+  gross). Feed one to your killer and it reacts to its taste: better food pays more, and every killer has a secret
+  favorite to find. The pantry's header remembers the flavors it has loved or hated ("LOVES SAVORY · HATES GROSS"),
+  never one it is merely fine with. What a meal leaves lasts a day, or
   until it eats again, and shows in the pantry's reaction, on Home, on the VS card and in the fight HUD: a savory dish
   leaves BEEFED UP (+15% damage), a sweet one SUGAR RUSH (meter starts half full), a gross one IRON STOMACH (+10% crit
   chance), a botched dish HANGOVER (misses more, hits softer), and the killer's favorite dish FAVORITE FEAST (its
