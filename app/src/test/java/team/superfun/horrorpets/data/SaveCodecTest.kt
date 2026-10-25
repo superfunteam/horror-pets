@@ -328,6 +328,16 @@ class SaveCodecTest {
         assertNull(pet(PetId.JASON, """{"level":5,"lastMeal":"nonsense","lastMealAtMs":1760000000000}""").lastMeal)
         assertEquals("pile_of_slop", pet(PetId.JASON, """{"lastMeal":"pile_of_slop"}""").lastMeal)
         assertEquals("grill", pet(PetId.JASON, """{"lastMeal":"grill"}""").lastMeal)
+        // A meal eaten before any real clock could say so is no meal at all: both fields go, as a save with none.
+        for (at in listOf(Long.MIN_VALUE, -1L, 0L, Tuning.MIN_VALID_EPOCH_MS - 1)) {
+            val bad = pet(PetId.JASON, """{"level":5,"lastMeal":"steak","lastMealAtMs":$at}""")
+            assertNull("$at", bad.lastMeal)
+            assertNull("$at", bad.lastMealAtMs)
+            assertEquals(5, bad.level)
+        }
+        val earliest = pet(PetId.JASON, """{"lastMeal":"steak","lastMealAtMs":${Tuning.MIN_VALID_EPOCH_MS}}""")
+        assertEquals("steak", earliest.lastMeal)
+        assertEquals(Tuning.MIN_VALID_EPOCH_MS, earliest.lastMealAtMs)
         // Only flavors this build knows are kept, by exact name.
         assertEquals(setOf("SWEET"), pet(PetId.JASON, """{"tastesLearned":["SWEET","salty"]}""").tastesLearned)
         assertEquals(setOf("SWEET"), pet(PetId.JASON, """{"tastesLearned":["SWEET","sweet","SOUR"]}""").tastesLearned)

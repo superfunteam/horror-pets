@@ -247,10 +247,18 @@ fun resolveTurn(s: FightState, playerMove: Move, cpuMove: Move, rng: Random): Tu
 
 /**
  * A PvP fight between two players' fighters: the host as PLAYER and the guest as CPU (the guest's app
- * [mirrors][FightState.mirrored] it), each with its potions.
+ * [mirrors][FightState.mirrored] it), each with its potions. Neither brings a meal's status, whatever it comes with:
+ * it is stripped here ([withoutMeal]), so [FightState.potionsUsed] counts from the potions both really start with.
  */
-fun startPvp(host: Fighter, guest: Fighter): FightState =
-    FightState(player = host, cpu = guest, playerPotions = FightTuning.POTIONS_PER_FIGHT, cpuPotions = FightTuning.POTIONS_PER_FIGHT)
+fun startPvp(host: Fighter, guest: Fighter): FightState = FightState(
+    player = host.withoutMeal(),
+    cpu = guest.withoutMeal(),
+    playerPotions = FightTuning.POTIONS_PER_FIGHT,
+    cpuPotions = FightTuning.POTIONS_PER_FIGHT,
+)
+
+/** [this] fighter as [buildFighter] makes it without a meal's status: no status, and no SUGAR RUSH head start on the meter. */
+private fun Fighter.withoutMeal(): Fighter = if (status == null) this else copy(status = null, meter = 0)
 
 /** [s] with [side] forfeiting: the other side wins at once, nothing else changes. */
 fun forfeit(s: FightState, side: Side): FightState {

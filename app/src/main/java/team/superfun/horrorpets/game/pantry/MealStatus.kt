@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.game.pantry
 
+import kotlin.math.max
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.model.Flavor
 import team.superfun.horrorpets.model.ItemKind
@@ -28,8 +29,8 @@ data class MealStatus(val perk: MealPerk, val feast: Boolean = false) {
 
 /**
  * The status [pet]'s last meal gives at [nowMs], or null when it gives none:
- * - no meal on record, a meal older than [Tuning.MEAL_PERK_HOURS] (a status lasts a day, and not a millisecond more),
- *   or an item this build does not know;
+ * - no meal on record, a meal older than [Tuning.MEAL_PERK_HOURS] (a status lasts a day, and not a millisecond more;
+ *   a time so far off the gap overflows counts as older), or an item this build does not know;
  * - a raw food or a way to cook eaten raw, which is no meal at all;
  * - a dish in the flavor the killer hates, which wipes out any status it had before (it is the last meal now).
  *
@@ -39,7 +40,7 @@ data class MealStatus(val perk: MealPerk, val feast: Boolean = false) {
 fun mealStatusOf(pet: PetState, nowMs: Long): MealStatus? {
     val item = pet.lastMeal?.let(::pantryItemById) ?: return null
     val ateAtMs = pet.lastMealAtMs ?: return null
-    if (nowMs - ateAtMs >= Tuning.MEAL_PERK_HOURS * Tuning.HOUR_MS) return null
+    if (sinceMs(nowMs, ateAtMs) >= Tuning.MEAL_PERK_HOURS * Tuning.HOUR_MS) return null
     return when (item.kind) {
         ItemKind.METHOD, ItemKind.FOOD -> null
         ItemKind.BOTCHED -> MealStatus(MealPerk.HANGOVER)
@@ -54,6 +55,14 @@ fun mealStatusOf(pet: PetState, nowMs: Long): MealStatus? {
         }
     }
 }
+
+/** now - ateAt, floored at 0 and saturating instead of overflowing on a corrupt time, so a status still runs out. */
+private fun sinceMs(nowMs: Long, ateAtMs: Long): Long =
+    try {
+        max(0L, Math.subtractExact(nowMs, ateAtMs))
+    } catch (_: ArithmeticException) {
+        Long.MAX_VALUE
+    }
 
 private fun perkOf(flavor: Flavor): MealPerk = when (flavor) {
     Flavor.SAVORY -> MealPerk.BEEFED_UP

@@ -11,7 +11,10 @@ import team.superfun.horrorpets.fight.FightEvent.Heal
 import team.superfun.horrorpets.fight.FightEvent.Hit
 import team.superfun.horrorpets.fight.FightEvent.Interrupted
 import team.superfun.horrorpets.fight.FightEvent.Ko
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.model.PetId
+import team.superfun.horrorpets.model.PetState
 
 /** What a PvP fight needs from the engine: potions on both sides, either side forfeiting, and the mirror. */
 class TwoPlayerTest {
@@ -25,6 +28,23 @@ class TwoPlayerTest {
         assertEquals(guest, s.cpu)
         assertEquals(FightTuning.POTIONS_PER_FIGHT, s.playerPotions)
         assertEquals(FightTuning.POTIONS_PER_FIGHT, s.cpuPotions)
+    }
+
+    @Test
+    fun aPvpFightStripsAMealsStatusItself() {
+        // Even from a caller that did not strip it (as pvpFighter does): no status, the usual potions, none of them
+        // counted as drunk, and an empty meter, not a SUGAR RUSH's head start or a feast's third potion.
+        val fed = buildFighter(PetState(PetId.JASON), MealStatus(MealPerk.SUGAR_RUSH, feast = true))
+        assertEquals(FightTuning.PERK_START_METER, fed.meter)
+        val s = startPvp(fed, guest.copy(status = MealStatus(MealPerk.BEEFED_UP)))
+        assertNull(s.player.status)
+        assertNull(s.cpu.status)
+        assertEquals(FightTuning.POTIONS_PER_FIGHT, s.playerPotions)
+        assertEquals(FightTuning.POTIONS_PER_FIGHT, s.cpuPotions)
+        assertEquals(0, s.potionsUsed)
+        assertEquals(0, s.player.meter)
+        assertEquals(0, s.mirrored().potionsUsed)
+        assertEquals(buildFighter(PetState(PetId.JASON)), s.player)
     }
 
     @Test

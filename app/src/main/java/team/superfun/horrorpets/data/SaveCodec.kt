@@ -73,7 +73,9 @@ object SaveCodec {
      * - sceneIndex is in 0 until [Tuning.SCENE_COUNT]; wins and losses are not negative;
      * - trainingBest keeps only the training games this build knows (by name), and no score is negative;
      *   trainedGames keeps only the names of those games;
-     * - lastMeal keeps only an item this build knows (by id), and tastesLearned only the names of flavors.
+     * - lastMeal keeps only an item this build knows (by id), and tastesLearned only the names of flavors; a meal
+     *   eaten before [Tuning.MIN_VALID_EPOCH_MS] (no real clock says so) is no meal at all: lastMeal and lastMealAtMs
+     *   are both cleared.
      */
     fun decodeOrNull(json: String?): GameState? {
         if (json.isNullOrBlank()) return GameState()
@@ -162,6 +164,8 @@ object SaveCodec {
     private fun sanitize(p: PetState): PetState {
         val fresh = PetState(p.id)
         val level = p.level.coerceIn(1, Tuning.MAX_LEVEL)
+        // A meal at a time no real clock gives (a corrupt or hand-made save) is dropped whole, as a save with no meal.
+        val mealTimeBad = p.lastMealAtMs.let { it != null && it < Tuning.MIN_VALID_EPOCH_MS }
         return p.copy(
             hunger = clampOrDefault(fresh.hunger, p.hunger, ::clampStat),
             funLevel = clampOrDefault(fresh.funLevel, p.funLevel, ::clampStat),
@@ -174,7 +178,8 @@ object SaveCodec {
             sceneIndex = p.sceneIndex.coerceIn(0, Tuning.SCENE_COUNT - 1),
             trainingBest = p.trainingBest.filterKeys { it in trainingGameNames }.mapValues { it.value.coerceAtLeast(0) },
             trainedGames = p.trainedGames.filter { it in trainingGameNames }.toSet(),
-            lastMeal = p.lastMeal?.takeIf { pantryItemById(it) != null },
+            lastMeal = p.lastMeal?.takeIf { !mealTimeBad && pantryItemById(it) != null },
+            lastMealAtMs = p.lastMealAtMs.takeUnless { mealTimeBad },
             tastesLearned = p.tastesLearned.filter { it in flavorNames }.toSet(),
         ).let { q ->
             // Attacks it may not have: another killer's, one past its level, or an id this build does not know.

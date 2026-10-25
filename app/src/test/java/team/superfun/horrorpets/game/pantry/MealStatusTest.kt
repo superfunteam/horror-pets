@@ -104,6 +104,17 @@ class MealStatusTest {
     }
 
     @Test
+    fun aMealAtACorruptTimeHasRunOut() {
+        // The gap would overflow (and come out negative, a meal just eaten): it saturates instead, long run out.
+        assertNull(mealStatusOf(after(STEAK, at = Long.MIN_VALUE), ate))
+        assertNull(mealStatusOf(after(STEAK, at = Long.MIN_VALUE + 1), ate))
+        assertNull(mealStatusOf(after(PILE_OF_SLOP, at = Long.MIN_VALUE), 0L))
+        assertNull(mealStatusOf(after(STEAK, at = Long.MAX_VALUE), Long.MIN_VALUE))
+        // A time merely long ago runs out as ever.
+        assertNull(mealStatusOf(after(STEAK, at = 0L), ate))
+    }
+
+    @Test
     fun noMealNoStatus() {
         assertNull(mealStatusOf(PetState(PetId.JASON), ate))
         // Half a record is no record: a meal with no time, or a time with no meal.
