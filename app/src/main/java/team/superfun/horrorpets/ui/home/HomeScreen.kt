@@ -581,15 +581,16 @@ fun HomeScreen(
         SceneBackdrop(loader = loader, scene = scene, vignette = { vignette.value }) { floorY ->
             // The hour's light over the scene and under the killer; the bubble and the HUD come after it, unlit.
             Spacer(Modifier.fillMaxSize().drawBehind { drawRect(light) })
-            // The killer, and a play's glove, stand in the same light.
-            val tint = litTint(sceneTint, light)
+            // The killer, and a play's glove, stand in the same light: its tint grows stronger and goes toward the
+            // light's colour as the light does (see litSprite).
+            val lit = litSprite(sceneTint, scene.tintStrength, light)
             SpriteView(
                 loader = loader,
                 pet = petId,
                 anim = shownAnim,
                 heightPx = petHeightPx,
-                tint = tint,
-                tintStrength = scene.tintStrength,
+                tint = lit.tint,
+                tintStrength = lit.strength,
                 shadowOpacity = scene.shadowOpacity,
                 pose = pose,
                 // Asleep, its idle holds on the first frame (the playback starts over under SleepKey): out cold.
@@ -616,7 +617,7 @@ fun HomeScreen(
             }
             playing?.let { p ->
                 key(p.token) {
-                    val filter = remember(tint, scene.tintStrength) { spriteFilter(tint, scene.tintStrength, 0f, 1f, 0f) }
+                    val filter = remember(lit) { spriteFilter(lit.tint, lit.strength, 0f, 1f, 0f) }
                     PlayHand(
                         gag = p.gag,
                         pet = petId,
