@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
@@ -41,12 +44,17 @@ import team.superfun.horrorpets.assets.SpriteManifest
 import team.superfun.horrorpets.assets.feedAnim
 import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.audio.SoundSink
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.ui.FedShow
 import team.superfun.horrorpets.ui.common.OK_GUARD_MS
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.placeAt
+import team.superfun.horrorpets.ui.common.statusBanner
+import team.superfun.horrorpets.ui.common.statusChipColor
+import team.superfun.horrorpets.ui.common.statusSound
 import team.superfun.horrorpets.ui.theme.BloodGlow
+import team.superfun.horrorpets.ui.theme.TextLo
 import team.superfun.horrorpets.ui.training.GameClock
 import team.superfun.horrorpets.ui.training.GlowText
 import team.superfun.horrorpets.ui.training.TrainingActor
@@ -94,13 +102,17 @@ internal fun feedTimeline(munchMs: Long, carryOnAfterMs: Long): FeedTimeline {
     return FeedTimeline(land, react, react + carryOnAfterMs, react + REACTION_HOLD_MS)
 }
 
-/** Once LEVEL UP! is up, it stays this long before OK or a tap may carry on past it. */
+/** Once LEVEL UP! (or the meal's status) is up, it stays this long before OK or a tap may carry on past it. */
 internal const val LEVEL_UP_READ_MS = 500L
+
+/** The meal's status ([statusBanner]) comes this long after the gains, or after LEVEL UP! when the meal levelled up. */
+internal const val STATUS_AFTER_MS = 400L
 
 /**
  * How a reaction plays, as it starts (times in ms into it): its [sound], the killer's [anims], the favorite's
  * [hearts], when LEVEL UP! shows ([levelUpAtMs], null without a level-up) and whether it plays its sound
- * ([levelUpSound]), and when OK or a tap may carry on ([carryOnAfterMs]).
+ * ([levelUpSound]), when the meal's status shows ([statusAtMs], null without one) and its sound ([statusSound]), and
+ * when OK or a tap may carry on ([carryOnAfterMs]).
  */
 internal data class ReactionCue(
     val sound: String?,
@@ -109,27 +121,44 @@ internal data class ReactionCue(
     val levelUpAtMs: Long?,
     val levelUpSound: Boolean,
     val carryOnAfterMs: Long,
+    val statusAtMs: Long? = null,
+    val statusSound: String? = null,
 )
 
 /**
- * How [fed]'s reaction plays. Fresh, it plays in full, and OK or a tap counts only after [OK_GUARD_MS] (presses mashed
- * through the munch can't skip it the frame it shows), or after a level-up's LEVEL UP! has been up
- * [LEVEL_UP_READ_MS]. A [replay] (the kitchen came back, its Activity made again, on a meal already eaten) is shown
- * finished and silent: the line, the gains and LEVEL UP! at once, with no sound, no hearts and no pose, and OK after
- * the guard as ever.
+ * How [fed]'s reaction plays. Fresh, it plays in full: LEVEL UP! comes [LEVEL_UP_AFTER_MS] in, and the meal's status
+ * [STATUS_AFTER_MS] after the gains (after LEVEL UP!, with both). OK or a tap counts only after [OK_GUARD_MS] (presses
+ * mashed through the munch can't skip it the frame it shows), and after the last of LEVEL UP! and the status has been
+ * up [LEVEL_UP_READ_MS]. A [replay] (the kitchen came back, its Activity made again, on a meal already eaten) is shown
+ * finished and silent: the line, the gains, LEVEL UP! and the status at once, with no sound, no hearts and no pose, and
+ * OK after the guard as ever.
  */
 internal fun reactionCue(fed: FedShow, replay: Boolean): ReactionCue {
     val levelUp = fed.levelsGained > 0
+    val status = fed.status
     if (replay) {
-        return ReactionCue(null, emptyList(), false, if (levelUp) 0L else null, levelUpSound = false, carryOnAfterMs = OK_GUARD_MS)
+        return ReactionCue(
+            sound = null,
+            anims = emptyList(),
+            hearts = false,
+            levelUpAtMs = if (levelUp) 0L else null,
+            levelUpSound = false,
+            carryOnAfterMs = OK_GUARD_MS,
+            statusAtMs = if (status != null) 0L else null,
+        )
     }
+    val levelUpAt = if (levelUp) LEVEL_UP_AFTER_MS else null
+    val statusAt = if (status != null) (levelUpAt ?: 0L) + STATUS_AFTER_MS else null
+    val lastWords = statusAt ?: levelUpAt
     return ReactionCue(
         sound = reactionSound(fed.reaction),
         anims = reactionAnims(fed.reaction),
         hearts = hasHearts(fed.reaction),
-        levelUpAtMs = if (levelUp) LEVEL_UP_AFTER_MS else null,
+        levelUpAtMs = levelUpAt,
         levelUpSound = levelUp,
-        carryOnAfterMs = if (levelUp) maxOf(OK_GUARD_MS, LEVEL_UP_AFTER_MS + LEVEL_UP_READ_MS) else OK_GUARD_MS,
+        carryOnAfterMs = if (lastWords != null) maxOf(OK_GUARD_MS, lastWords + LEVEL_UP_READ_MS) else OK_GUARD_MS,
+        statusAtMs = statusAt,
+        statusSound = status?.let(::statusSound),
     )
 }
 
@@ -183,8 +212,8 @@ internal fun SpriteManifest.lengthMs(anim: Anim): Long = spec(anim).durationsMs.
 /**
  * The pantry's feed show as it plays, for the kitchen to draw from: the meal in the air or on the floor ([meal], from
  * its toss to its last crumb), the line over the killer's head ([line]), the gains read out over the board ([gains],
- * and [levelUp] once it has come), the favorite's [hearts], and whether OK or a tap carries on Home yet ([carryOn]).
- * Main thread only.
+ * and [levelUp] and the meal's [status] once each has come), the favorite's [hearts], and whether OK or a tap carries
+ * on Home yet ([carryOn]). Main thread only.
  */
 @Stable
 internal class FeedStage {
@@ -192,6 +221,7 @@ internal class FeedStage {
     var line by mutableStateOf<String?>(null)
     var gains by mutableStateOf<List<Gain>?>(null)
     var levelUp by mutableStateOf<String?>(null)
+    var status by mutableStateOf<MealStatus?>(null)
     var hearts by mutableStateOf(false)
     var carryOn by mutableStateOf(false)
 
@@ -211,8 +241,8 @@ internal class Meal(val image: ImageBitmap, val crumbs: List<Color>) {
  *   with the `food_drop` whistle (the kitchen draws it from [FeedStage.meal], see [FoodDrop]);
  * - as it lands the killer munches it, [MUNCHES] times its feed animation, while it loses its bites;
  * - then the reaction, as [reactionCue] has it: its pose and sound, the line over its head, the gains over the board
- *   ([gainsOf]), the favorite's hearts, and a level-up's words and sound a beat later; OK or a tap carries on once
- *   [FeedStage.carryOn] says so;
+ *   ([gainsOf]), the favorite's hearts, a level-up's words and sound a beat later, and the meal's status with its
+ *   sound ([statusSound]) a beat after those; OK or a tap carries on once [FeedStage.carryOn] says so;
  * - and [REACTION_HOLD_MS] later the show is over ([onDone]): the kitchen carries on Home by itself, unless the killer
  *   could eat more, when it waits for OK (FEED again) or Back.
  *
@@ -271,6 +301,15 @@ internal suspend fun playFeedShow(
                     clock.waitMs(at)
                     stage.levelUp = words
                     if (cue.levelUpSound) sounds.sfx("levelup")
+                }
+            }
+            val status = fed.status
+            val statusAt = cue.statusAtMs
+            if (status != null && statusAt != null) {
+                launch {
+                    clock.waitMs(statusAt)
+                    stage.status = status
+                    cue.statusSound?.let(sounds::sfx)
                 }
             }
             clock.waitMs(timeline.doneMs - timeline.reactMs)
@@ -340,14 +379,16 @@ private val LossRed = Color(0xFFFF8F8F)
 
 /**
  * The meal's gains over the board, centred on [centerX] at [y] (px): what it gave ([gainsOf]), the first line big and
- * the rest under it, gold for a gain and red for a loss, popping up together; and a level-up's "LEVEL UP!" under them
- * when that comes. Nothing at all for a meal that gave nothing.
+ * the rest under it, gold for a gain and red for a loss, popping up together; a level-up's "LEVEL UP!" under them
+ * when that comes, and the meal's status under that when it comes ([StatusBanner]). Nothing at all for a meal that
+ * gave nothing.
  */
 @Composable
 internal fun GainsReadout(stage: FeedStage, centerX: Float, y: Float) {
     val gains = stage.gains ?: return
     val levelUp = stage.levelUp
-    if (gains.isEmpty() && levelUp == null) return
+    val status = stage.status
+    if (gains.isEmpty() && levelUp == null && status == null) return
     val pop = remember { Animatable(0.5f) }
     LaunchedEffect(Unit) { pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 420f)) }
     Column(
@@ -380,6 +421,38 @@ internal fun GainsReadout(stage: FeedStage, centerX: Float, y: Float) {
                 glow = BloodGlow,
             )
         }
+        status?.let { StatusBanner(it) }
+    }
+}
+
+/**
+ * The meal's [status] called out, popping in as LEVEL UP! does: its title big in its colour ([statusChipColor]), with
+ * the glow LEVEL UP! has, and what it does in the next fights small under it ([statusBanner]).
+ */
+@Composable
+private fun StatusBanner(status: MealStatus) {
+    val (title, meaning) = statusBanner(status)
+    val pop = remember { Animatable(0.4f) }
+    LaunchedEffect(Unit) { pop.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = 380f)) }
+    Column(
+        Modifier
+            .padding(top = 4.dp)
+            .graphicsLayer {
+                scaleX = pop.value
+                scaleY = pop.value
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        GlowText(
+            title,
+            displayStyle(34.sp, FontWeight.ExtraBold, color = statusChipColor(status), tracking = 0.06f, lineHeight = 36.sp),
+            glow = BloodGlow,
+        )
+        BasicText(
+            meaning,
+            style = displayStyle(16.sp, color = TextLo, tracking = 0.1f, halo = true, lineHeight = 18.sp),
+            maxLines = 1,
+        )
     }
 }
 

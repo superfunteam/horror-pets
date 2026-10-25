@@ -6,6 +6,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.model.PantryItem.STEAK
 import team.superfun.horrorpets.ui.FedShow
@@ -55,6 +57,36 @@ class ReactionTest {
         assertFalse(u.carriesOn(u.reactMs + LEVEL_UP_AFTER_MS))
         assertTrue(u.carriesOn(u.reactMs + up.carryOnAfterMs))
         assertTrue("and before it carries on by itself", u.reactMs + up.carryOnAfterMs < u.doneMs)
+    }
+
+    @Test
+    fun theMealsStatusComesAfterTheGainsAndAfterALevelUp() {
+        // A meal that left no status shows no banner.
+        val none = reactionCue(fed(levels = 0), replay = false)
+        assertNull(none.statusAtMs)
+        assertNull(none.statusSound)
+
+        // A beat after the gains, with its chime; OK waits until it has been up a moment, as for LEVEL UP!.
+        val beefed = reactionCue(fed(levels = 0, status = MealStatus(MealPerk.BEEFED_UP)), replay = false)
+        assertEquals(400L, STATUS_AFTER_MS)
+        assertEquals(STATUS_AFTER_MS, beefed.statusAtMs)
+        assertEquals("perk_up", beefed.statusSound)
+        assertEquals(STATUS_AFTER_MS + LEVEL_UP_READ_MS, beefed.carryOnAfterMs)
+
+        // With a level-up, LEVEL UP! first and the status a beat after it, still before the show carries on by itself.
+        val up = reactionCue(fed(levels = 1, status = MealStatus(MealPerk.HANGOVER)), replay = false)
+        assertEquals(LEVEL_UP_AFTER_MS, up.levelUpAtMs)
+        assertEquals(LEVEL_UP_AFTER_MS + STATUS_AFTER_MS, up.statusAtMs)
+        assertEquals("a hangover sounds sour", "hangover", up.statusSound)
+        assertEquals(LEVEL_UP_AFTER_MS + STATUS_AFTER_MS + LEVEL_UP_READ_MS, up.carryOnAfterMs)
+        val u = feedTimeline(munch, up.carryOnAfterMs)
+        assertTrue(u.reactMs + up.carryOnAfterMs < u.doneMs)
+
+        // Coming back to a meal already eaten: up at once, and silent.
+        val back = reactionCue(fed(levels = 1, status = MealStatus(MealPerk.BEEFED_UP, feast = true)), replay = true)
+        assertEquals(0L, back.statusAtMs)
+        assertNull(back.statusSound)
+        assertEquals(OK_GUARD_MS, back.carryOnAfterMs)
     }
 
     @Test
@@ -127,5 +159,6 @@ class ReactionTest {
         assertEquals("Too full!", TOO_FULL_LINE)
     }
 
-    private fun fed(reaction: Reaction = Reaction.LOVED, levels: Int) = FedShow(STEAK, reaction, "Mmm, savory!", 10, levels)
+    private fun fed(reaction: Reaction = Reaction.LOVED, levels: Int, status: MealStatus? = null) =
+        FedShow(STEAK, reaction, "Mmm, savory!", 10, levels, status = status)
 }

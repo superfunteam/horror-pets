@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.ui.common.GlassCorner
+import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.bodyStyle
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
@@ -79,7 +81,8 @@ private val StatusRowHeight = 22.dp
 /**
  * The Street-Fighter-style top bar, inside the safe inset: the player's name, HP bar and special meter
  * on the left (filling from the left edge), the CPU's mirrored on the right (filling from the right
- * edge), and the turn number in a badge between them.
+ * edge), and the turn number in a badge between them. The player's last meal's status ([Fighter.status]) leads
+ * its row of lasting states; the CPU's side never has one.
  */
 @Composable
 internal fun FightHud(
@@ -93,9 +96,9 @@ internal fun FightHud(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        SideHud(player, playerValues, playerStatus, mirrored = false, modifier = Modifier.weight(1f))
+        SideHud(player, playerValues, playerStatus, meal = player.status, mirrored = false, modifier = Modifier.weight(1f))
         TurnBadge(turn, Modifier.padding(horizontal = 14.dp).padding(top = 22.dp))
-        SideHud(cpu, cpuValues, cpuStatus, mirrored = true, modifier = Modifier.weight(1f))
+        SideHud(cpu, cpuValues, cpuStatus, meal = null, mirrored = true, modifier = Modifier.weight(1f))
     }
 }
 
@@ -109,8 +112,9 @@ internal fun hpCountCandidates(maxHp: Int): List<String> {
     return (0..9).map { d -> "$d".repeat(digits) + "/$maxHp" } + "$maxHp/$maxHp"
 }
 
+/** One side's HUD: [f]'s name, HP bar and meter, and its row of lasting states, led by its [meal] status if any. */
 @Composable
-private fun SideHud(f: Fighter, values: HudValues, status: HudStatus, mirrored: Boolean, modifier: Modifier = Modifier) {
+private fun SideHud(f: Fighter, values: HudValues, status: HudStatus, meal: MealStatus?, mirrored: Boolean, modifier: Modifier = Modifier) {
     val hpShown by remember(values) { derivedStateOf { values.hp().roundToInt().coerceAtLeast(0) } }
     val full by remember(values) { derivedStateOf { values.meter() >= FightTuning.METER_MAX - 0.5f } }
     val pulse = rememberInfiniteTransition(label = "hudPulse").animateFloat(
@@ -193,7 +197,7 @@ private fun SideHud(f: Fighter, values: HudValues, status: HudStatus, mirrored: 
             }
         }
         Spacer(Modifier.height(6.dp))
-        StatusRow(status, mirrored)
+        StatusRow(status, meal, mirrored)
     }
 }
 
@@ -201,9 +205,12 @@ private val ComboFill = Brush.verticalGradient(listOf(Color(0xFFFFE08A), Color(0
 private val BleedFill = Brush.verticalGradient(listOf(Color(0xFFFF6A72), Color(0xFFC1121F), Color(0xFF6E0710)))
 private val DazedFill = Brush.verticalGradient(listOf(Color(0xFFE3C8FF), Color(0xFF9B5CFF), Color(0xFF4B1E9A)))
 
-/** A side's lasting states as small slanted chips, from the outer edge in: COMBO ×N, BLEED N, DAZED. */
+/**
+ * A side's lasting states as small chips, from the outer edge in: the player's [meal] status (the stat card's outlined
+ * chip; the CPU's side, [mirrored], never has one), then COMBO ×N, BLEED N and DAZED, slanted.
+ */
 @Composable
-private fun StatusRow(status: HudStatus, mirrored: Boolean) {
+private fun StatusRow(status: HudStatus, meal: MealStatus?, mirrored: Boolean) {
     val chips = buildList {
         val combo = status.combo()
         if (combo >= 2) add(Triple("COMBO \u00d7$combo", ComboFill, Color(0xFF2A1405)))
@@ -216,6 +223,7 @@ private fun StatusRow(status: HudStatus, mirrored: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        meal?.let { StatusChip(it) }
         for ((text, fill, ink) in if (mirrored) chips.reversed() else chips) HudChip(text, fill, ink, mirrored)
     }
 }

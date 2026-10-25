@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -58,12 +59,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Text
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -77,6 +81,8 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.gamesStillToTrain
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PlayGag
@@ -140,6 +146,10 @@ private const val BODY_HALF_OF_CELL = 0.3f
 /** A run-out still waiting for its scene change after this long is abandoned (it never should be). */
 private const val WALK_STUCK_MS = 1_500L
 
+/** A hungover killer's idle sway: this many degrees each way, rocking from the head, once over this long. */
+private const val HANGOVER_SWAY_DEG = 3f
+private const val HANGOVER_SWAY_MS = 2_400f
+
 /**
  * Strips decoded ahead of time on Home, with its PLAY: its DANCE when it has one, else JUMP and WAVE (so at most 7 of
  * the loader's 12 slots, with IDLE). The feed animation is the pantry's to warm.
@@ -182,6 +192,7 @@ fun HomeScreen(
 ) {
     val petId = state.game.selected ?: return
     val pet = state.game.pets[petId] ?: return
+    val meal = mealStatusOf(pet, state.nowMs)
     val scenes = remember(loader, petId) { loader.scenes().getValue(petId) }
     val sceneIndex = pet.sceneIndex.mod(scenes.size)
     val scene = scenes[sceneIndex]
@@ -336,6 +347,21 @@ fun HomeScreen(
 
     val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
+    // A hangover rocks the killer slowly from the head while it idles where it stands; a gag, a walk or a stroll
+    // stands it upright at once.
+    val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null && stroll == null
+    LaunchedEffect(swaying) {
+        if (!swaying) return@LaunchedEffect
+        try {
+            val start = withFrameMillis { it }
+            while (true) {
+                val t = withFrameMillis { it } - start
+                pose.swing.snapTo(HANGOVER_SWAY_DEG * sin(2f * PI.toFloat() * t / HANGOVER_SWAY_MS))
+            }
+        } finally {
+            withContext(NonCancellable) { pose.swing.snapTo(0f) }
+        }
+    }
     LaunchedEffect(bubble) {
         if (bubble != null) {
             delay(BUBBLE_MS)
@@ -504,6 +530,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().padding(inset)) {
             StatCard(
                 pet = pet,
+                meal = meal,
                 width = cardWidth,
                 modifier = Modifier
                     .align(Alignment.TopStart)

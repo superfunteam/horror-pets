@@ -50,12 +50,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AssetLoader
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.spec
 import team.superfun.horrorpets.ui.common.GameBackHandler
 import team.superfun.horrorpets.ui.common.LocalSoundSink
 import team.superfun.horrorpets.ui.common.RequestFocusOnEntry
 import team.superfun.horrorpets.ui.common.SpriteView
+import team.superfun.horrorpets.ui.common.StatusChip
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.hash01
 import team.superfun.horrorpets.ui.common.mirrorToFace
@@ -238,6 +240,9 @@ private const val NAME_MAX_H = 0.25f
 /** A name slams down from this big. */
 private const val NAME_FROM = 2.2f
 
+/** The player's meal status chip starts this far in under its name (a fraction of the name's width). */
+private const val CHIP_IN = 0.06f
+
 /** The VS logo fits a box this big, of the screen's width and height, around the middle of the seam. */
 private const val LOGO_W = 0.27f
 private const val LOGO_W_BY_H = 0.5f
@@ -260,7 +265,9 @@ private val FightFill = Brush.verticalGradient(listOf(Color(0xFFFF8A90), BloodGl
  *   fighter, with speed streaks racing across it and halftone dots thickening toward a white-hot seam ([VsBackdrop]);
  * - both fighters slide in idle from their sides at 70% of the screen height (Jaws, side-on, turned to face his
  *   opponent when he is the player's);
- * - each killer's name lettering slams in at the top of its half, tilted toward the middle, the player's first;
+ * - each killer's name lettering slams in at the top of its half, tilted toward the middle, the player's first, with
+ *   the player's meal [status] under it when there is one (never the opponent's, and none in PvP: the caller's to
+ *   leave null);
  * - the opponent's VS logo (in PvP, the other player's) slams into the centre with a jolt, a flash and shock rings,
  *   as the announcer says "versus";
  * - then FIGHT! (with the announcer's `fight`) and [onDone].
@@ -288,6 +295,7 @@ fun VersusScreen(
     onDone: () -> Unit,
     onBack: () -> Unit,
     focusEntry: Any? = Unit,
+    status: MealStatus? = null,
 ) {
     val sounds = LocalSoundSink.current
     val focus = remember { FocusRequester() }
@@ -418,6 +426,25 @@ fun VersusScreen(
                     onDrawBehind { if (words != null) drawWords(clock.longValue, words) }
                 },
         )
+        // The player's meal status under its name, from the name's outer end (clear of the fighter's head under its
+        // middle), landing with it.
+        val name = art?.leftName
+        if (status != null && name != null) {
+            val place = remember(name, w, h, safeX, safeY) { nameRect(name, w, h, safeX, safeY, w * VS_PLAYER_X) }
+            val gap = with(density) { 6.dp.toPx() }
+            StatusChip(
+                status,
+                Modifier
+                    .placeAt(x = { place.left + place.width * CHIP_IN }, y = { place.bottom + gap }, pivotX = 0f, pivotY = 0f)
+                    .graphicsLayer {
+                        val since = clock.longValue - VsTimeline.PLAYER_NAME_AT
+                        val s = VsTimeline.slamScale(since, VsTimeline.NAME_SLAM_MS, NAME_FROM)
+                        scaleX = s
+                        scaleY = s
+                        alpha = (since / (VsTimeline.NAME_SLAM_MS * 0.4f)).coerceIn(0f, 1f)
+                    },
+            )
+        }
         if (fightShown) {
             Box(Modifier.fillMaxSize().padding(horizontal = safe.horizontal), contentAlignment = Alignment.Center) {
                 Box(
@@ -502,20 +529,18 @@ private class Words(val art: VsArt, w: Float, h: Float, safeX: Float, safeY: Flo
             radius = lw * 0.85f,
         )
     }
+}
 
-    private companion object {
-        /** A name's place: over its fighter, as big as fits, at the top of the safe area even when tilted. */
-        fun nameRect(img: ImageBitmap, w: Float, h: Float, safeX: Float, safeY: Float, centreX: Float): Rect {
-            val aspect = img.height / img.width.toFloat()
-            var nw = min(min(w * NAME_W, h * NAME_W_BY_H), w / 2f - safeX)
-            if (nw * aspect > h * NAME_MAX_H) nw = h * NAME_MAX_H / aspect
-            val nh = nw * aspect
-            val cx = centreX.coerceIn(safeX + nw / 2f, w - safeX - nw / 2f)
-            // Tilted, its inner end rises this much above where it would be level.
-            val top = safeY + nw / 2f * sin(NAME_TILT * PI.toFloat() / 180f)
-            return Rect(cx - nw / 2f, top, cx + nw / 2f, top + nh)
-        }
-    }
+/** A name's place: over its fighter, as big as fits, at the top of the safe area even when tilted. */
+private fun nameRect(img: ImageBitmap, w: Float, h: Float, safeX: Float, safeY: Float, centreX: Float): Rect {
+    val aspect = img.height / img.width.toFloat()
+    var nw = min(min(w * NAME_W, h * NAME_W_BY_H), w / 2f - safeX)
+    if (nw * aspect > h * NAME_MAX_H) nw = h * NAME_MAX_H / aspect
+    val nh = nw * aspect
+    val cx = centreX.coerceIn(safeX + nw / 2f, w - safeX - nw / 2f)
+    // Tilted, its inner end rises this much above where it would be level.
+    val top = safeY + nw / 2f * sin(NAME_TILT * PI.toFloat() / 180f)
+    return Rect(cx - nw / 2f, top, cx + nw / 2f, top + nh)
 }
 
 private fun DrawScope.drawWords(t: Long, k: Words) {

@@ -26,14 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -45,9 +43,12 @@ import kotlin.math.roundToInt
 import team.superfun.horrorpets.game.StatusTag
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.mood
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.statusOf
 import team.superfun.horrorpets.game.xpToNext
 import team.superfun.horrorpets.model.PetState
+import team.superfun.horrorpets.ui.common.StatusChip
+import team.superfun.horrorpets.ui.common.TagBox
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.gameFrame
 import team.superfun.horrorpets.ui.common.softGlow
@@ -74,12 +75,13 @@ private val Warn = Color(0xFFFFB347)
 enum class BarLevel { OK, WARN, CRITICAL }
 
 /**
- * The status window, top-left: the pet's name, its level (with progress to the next) and status, then Hunger,
- * Fun, Strength and Mood as segmented gauges, in a gold-framed window like the fight's command windows. It only
- * shows: the stable badge (top right) is where the player switches killers.
+ * The status window, top-left: the pet's name, its level (with progress to the next) and status, the status of its
+ * last [meal] under that while it has one, then Hunger, Fun, Strength and Mood as segmented gauges, in a gold-framed
+ * window like the fight's command windows. It only shows: the stable badge (top right) is where the player switches
+ * killers.
  */
 @Composable
-fun StatCard(pet: PetState, width: Dp, modifier: Modifier = Modifier) {
+fun StatCard(pet: PetState, meal: MealStatus?, width: Dp, modifier: Modifier = Modifier) {
     Column(
         modifier
             .width(width)
@@ -100,6 +102,10 @@ fun StatCard(pet: PetState, width: Dp, modifier: Modifier = Modifier) {
             XpBar((pet.xp.toFloat() / xpToNext(pet.level)).coerceIn(0f, 1f), Modifier.size(54.dp, 5.dp))
             Spacer(Modifier.weight(1f))
             StatusTagBox(statusOf(pet))
+        }
+        if (meal != null) {
+            Spacer(Modifier.height(4.dp))
+            StatusChip(meal, Modifier.align(Alignment.End))
         }
         Box(
             Modifier
@@ -157,26 +163,7 @@ private fun StatusTagBox(tag: StatusTag) {
         StatusTag.BORED, StatusTag.HUNGRY -> Warn
         StatusTag.STARVING, StatusTag.GRUMPY -> BloodGlow
     }
-    Box(
-        Modifier
-            .drawBehind {
-                val cut = 5.dp.toPx()
-                val path = Path().apply {
-                    moveTo(0f, 0f)
-                    lineTo(size.width - cut, 0f)
-                    lineTo(size.width, cut)
-                    lineTo(size.width, size.height)
-                    lineTo(cut, size.height)
-                    lineTo(0f, size.height - cut)
-                    close()
-                }
-                drawPath(path, color.copy(alpha = 0.14f))
-                drawPath(path, color, style = Stroke(1.5.dp.toPx()))
-            }
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-    ) {
-        BasicText(tag.name, style = displayStyle(12.sp, color = color, tracking = 0.12f, lineHeight = 14.sp), maxLines = 1)
-    }
+    TagBox(tag.name, color)
 }
 
 /** The four stats, each with its [label] and its icon, drawn in the gold of the window's edge. */

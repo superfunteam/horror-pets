@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import team.superfun.horrorpets.assets.AssetLoader
 import team.superfun.horrorpets.audio.SoundSink
 import team.superfun.horrorpets.fight.Move
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.pantryItems
@@ -193,15 +194,20 @@ fun HorrorPetsApp(
                     focusEntry = focusEntry,
                 )
 
-                is Screen.Versus -> VersusScreen(
-                    player = state.game.selected ?: screen.opponent,
-                    opponent = screen.opponent,
-                    loader = loader,
-                    arenaRoll = arenaRoll,
-                    onDone = vm::onVersusDone,
-                    onBack = vm::onVersusBack,
-                    focusEntry = focusEntry,
-                )
+                is Screen.Versus -> {
+                    // The last meal only counts in a CPU fight, so PvP's card never shows it.
+                    val pet = state.game.selected?.let { state.game.pets[it] }?.takeUnless { screen.pvp }
+                    VersusScreen(
+                        player = state.game.selected ?: screen.opponent,
+                        opponent = screen.opponent,
+                        loader = loader,
+                        arenaRoll = arenaRoll,
+                        onDone = vm::onVersusDone,
+                        onBack = vm::onVersusBack,
+                        focusEntry = focusEntry,
+                        status = pet?.let { mealStatusOf(it, state.nowMs) },
+                    )
+                }
 
                 is Screen.Learn -> {
                     val pet = state.game.pets[screen.pet]

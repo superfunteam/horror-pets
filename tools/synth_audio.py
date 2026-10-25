@@ -843,6 +843,36 @@ def snore() -> np.ndarray:
     return loopify(out, length, fade)
 
 
+def perk_up() -> np.ndarray:
+    """A meal's perk landing, 0.6 s: three rising bell notes (E5, G5, B5) 90 ms apart, over a soft sparkle of high
+    noise."""
+    pr = rng_for("perk_up")  # its own stream, so the sounds before it are untouched
+    out = np.zeros(int(0.6 * SR))
+    for k, nm in enumerate(["E5", "G5", "B5"]):
+        place(out, bell(note_hz(nm), 0.45, ((1, 1), (2, 0.3), (3, 0.1))), k * 0.09, 0.5)
+    sn = int(0.4 * SR)
+    sparkle = highpass(noise(pr, sn), 6000) * env_adsr(sn, 0.05, 0.1, 0.5, 0.25) * 0.12
+    place(out, sparkle, 0.12)
+    out[-int(0.1 * SR):] *= np.linspace(1, 0, int(0.1 * SR))  # a soft tail, not a cut
+    return out
+
+
+def hangover() -> np.ndarray:
+    """A hangover setting in, 0.8 s: a low saw wobbling down from 160 to 90 Hz under a 5 Hz tremolo, then a burp of
+    bandpassed noise at the end."""
+    hr = rng_for("hangover")  # its own stream, so the sounds before it are untouched
+    n = int(0.8 * SR)
+    t = np.arange(n) / SR
+    hz = 160 * (90 / 160) ** (t / t[-1]) * (1 + 0.04 * np.sin(2 * np.pi * 3 * t))  # sliding down, queasily
+    tremolo = 0.6 + 0.4 * np.sin(2 * np.pi * 5 * t)
+    groan = lowpass(saw(hz, n) + saw(hz * 1.012, n), 700) * tremolo * env_adsr(n, 0.04, 0.1, 0.8, 0.25) * 0.5
+    bn = int(0.16 * SR)
+    burp = bandpass(noise(hr, bn), 120, 700) * env_adsr(bn, 0.01, 0.04, 0.6, 0.08)
+    burp *= 1 + 0.6 * np.sin(2 * np.pi * 38 * np.arange(bn) / SR)  # a rattle in the throat
+    place(groan, burp * 1.4, 0.6)
+    return groan
+
+
 def sfx_all() -> dict[str, np.ndarray]:
     rng = rng_for("sfx")
     s: dict[str, np.ndarray] = {}
@@ -1006,6 +1036,10 @@ def sfx_all() -> dict[str, np.ndarray]:
     s["ko_boom"] = ko_boom()
     # A sleeper's snore (appended last, on its own random stream, so nothing above changes).
     s["snore"] = snore()
+    # A meal's status landing in the pantry: the perk's chime and the hangover's groan (appended last, each on its own
+    # random stream, so nothing above changes).
+    s["perk_up"] = perk_up()
+    s["hangover"] = hangover()
     return s
 
 

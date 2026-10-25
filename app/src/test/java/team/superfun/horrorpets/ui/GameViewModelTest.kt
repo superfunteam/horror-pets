@@ -36,6 +36,7 @@ import team.superfun.horrorpets.game.pantry.MealPerk
 import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.game.pantry.feed
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.applyTraining
 import team.superfun.horrorpets.model.AwaySummary
 import team.superfun.horrorpets.model.GameState
@@ -1419,6 +1420,9 @@ class GameViewModelTest {
         assertEquals("and the mood a loved dish lifts", 10.0, fed.mood, 1e-9)
         assertEquals(paid.strengthGained, fed.strength, 0.0)
         assertEquals(paid.moodGained, fed.mood, 0.0)
+        assertEquals("a savory dish beefs it up, for the reaction to show", MealStatus(MealPerk.BEEFED_UP), fed.status)
+        assertEquals(paid.status, fed.status)
+        assertEquals("the screens read the status at the meal's own time", rig.clock.now, rig.ui.nowMs)
         assertEquals(emptyList<Int>(), rig.visit.board)
         assertTrue("the kitchen plays the eating sounds", rig.ui.sfx.isEmpty())
         assertFalse(rig.ui.busy)
@@ -2350,6 +2354,42 @@ class GameViewModelTest {
             rig.vm.tick()
         }
         assertEquals(32.0, rig.jason.hunger, 1e-9)
+    }
+
+    @Test
+    fun theScreensClockFollowsTheClockOnStartResumeAndTick() {
+        // UiState.nowMs is what the screens read a meal's status at, so a status left overnight is gone in the morning.
+        val rig = Rig(gameOf())
+        rig.loaded()
+        assertEquals(T0, rig.ui.nowMs)
+        rig.vm.onStart()
+        rig.clock.now += 2 * HOUR
+        rig.vm.onResume()
+        assertEquals(rig.clock.now, rig.ui.nowMs)
+        rig.clock.now += 3 * HOUR
+        rig.vm.tick()
+        assertEquals(rig.clock.now, rig.ui.nowMs)
+        // Even a tick that changes nothing else (a clock set back counts as no time) follows it, and saves nothing.
+        rig.settle()
+        val saves = rig.store.saves.size
+        rig.clock.now -= HOUR
+        rig.vm.tick()
+        assertEquals(rig.clock.now, rig.ui.nowMs)
+        rig.settle()
+        assertEquals(saves, rig.store.saves.size)
+    }
+
+    @Test
+    fun aStatusLeftOvernightIsGoneInTheMorningWithoutARestart() {
+        val rig = pantryRig(SHELF + STEAK, pet = jason(hunger = 60.0))
+        val session = rig.openPantry().session
+        rig.pick(SHELF.size)
+        rig.vm.onPantryFeed(session)
+        rig.vm.onPantryDone(session)
+        assertEquals(MealStatus(MealPerk.BEEFED_UP), mealStatusOf(rig.jason, rig.ui.nowMs))
+        rig.clock.now += 24 * HOUR
+        rig.vm.tick()
+        assertNull(mealStatusOf(rig.jason, rig.ui.nowMs))
     }
 
     @Test

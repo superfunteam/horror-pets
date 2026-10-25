@@ -32,6 +32,7 @@ import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.eligibleGames
 import team.superfun.horrorpets.game.training.pickMate
 import team.superfun.horrorpets.model.PantryItem
@@ -394,7 +395,9 @@ private class Session(
             PuppetCommand.Status -> {
                 val s = state()
                 val hud = if (DebugPuppet.hud.value) "on" else "off"
-                Outcome.Done("${describe(s)}; ${petLine(s)}; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
+                // The last meal's status, as the screens show it, when it has one.
+                val meal = s.game.selected?.let { s.game.pets[it] }?.let { mealStatusOf(it, s.nowMs) }?.let { "; ${it.title}" }.orEmpty()
+                Outcome.Done("${describe(s)}; ${petLine(s)}$meal; autoplay ${if (DebugPuppet.autoplay) "on" else "off"}; hud $hud")
             }
 
             is PuppetCommand.FakeVersion -> {

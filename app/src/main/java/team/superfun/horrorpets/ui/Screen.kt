@@ -6,6 +6,7 @@ import team.superfun.horrorpets.fight.FightReward
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.RefuseReason
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.model.GameState
 import team.superfun.horrorpets.model.PantryItem
@@ -91,9 +92,9 @@ data class CookShow(val result: PantryItem, val inputs: List<PantryItem>, val at
 
 /**
  * What the killer made of the meal it was just fed, for the pantry's screen to show: the [item] it ate, how it took it
- * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past, and how far
- * it moved [strength], [funLevel] and the [mood] bonus (as clamped; negative for a loss). All of it is already paid
- * and saved when this is set.
+ * ([reaction], and the [line] it says), the [xp] the meal paid and the [levelsGained] that carried it past, how far
+ * it moved [strength], [funLevel] and the [mood] bonus (as clamped; negative for a loss), and the meal [status] it
+ * left (null for none). All of it is already paid and saved when this is set.
  */
 data class FedShow(
     val item: PantryItem,
@@ -107,6 +108,7 @@ data class FedShow(
     /** The killer's hunger before and after the meal, for the reaction to read out what it took off. */
     val hungerBefore: Double = 0.0,
     val hungerAfter: Double = 0.0,
+    val status: MealStatus? = null,
 )
 
 /** Which screen the app is showing. The view model owns the transitions; the screens only render. */
@@ -247,6 +249,8 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = n
  *   same reason can repeat.
  * - [sfx] and [voice] are queues of audio file base names; the UI plays them and calls `consumeSounds()`.
  * - [stableOpen] is whether the stable menu is up over Home (Home takes no other input meanwhile).
+ * - [nowMs] is the view model's clock as of its last look (the save's load, a resume, the minute's tick, a meal): what
+ *   the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
  */
 data class UiState(
     val screen: Screen = Screen.Loading,
@@ -258,4 +262,5 @@ data class UiState(
     val sfx: List<String> = emptyList(),
     val voice: List<String> = emptyList(),
     val stableOpen: Boolean = false,
+    val nowMs: Long = 0L,
 )

@@ -156,9 +156,10 @@ class GameViewModel(
         started = true
         scope.launch {
             val loaded = loadOrNull() ?: GameState().also { savingDisabled = true }
-            val (game, away) = applyElapsed(loaded, clock.nowMs(), clockFloorMs)
+            val now = clock.nowMs()
+            val (game, away) = applyElapsed(loaded, now, clockFloorMs)
             pendingAway = away
-            _state.value = _state.value.copy(game = game, screen = Screen.Title)
+            _state.value = _state.value.copy(game = game, screen = Screen.Title, nowMs = now)
             persist(game)
         }
     }
@@ -213,9 +214,13 @@ class GameViewModel(
     private fun advanceClock(welcomeBack: Boolean) {
         val s = _state.value
         if (s.screen == Screen.Loading) return // the save has not been read yet: never overwrite it
-        val (game, away) = applyElapsed(s.game, clock.nowMs(), clockFloorMs)
-        if (game == s.game) return
-        val routed = s.copy(game = game).routeHome()
+        val now = clock.nowMs()
+        val (game, away) = applyElapsed(s.game, now, clockFloorMs)
+        if (game == s.game) {
+            _state.value = s.copy(nowMs = now) // nothing to save, but a meal's status still runs out on time
+            return
+        }
+        val routed = s.copy(game = game, nowMs = now).routeHome()
         _state.value = if (welcomeBack) routed.withAwayToast(away) else routed
         persist(game)
     }
@@ -455,7 +460,8 @@ class GameViewModel(
         val shelf = s.game.pantryItems()
         val place = pantry.board.single()
         val item = shelf[place]
-        val outcome = feed(pet, item, clock.nowMs())
+        val now = clock.nowMs()
+        val outcome = feed(pet, item, now)
         val game = s.game.withPet(outcome.pet).copy(pantry = shelf.filterIndexed { i, _ -> i != place }.map { it.id })
         val fed = FedShow(
             item = item,
@@ -468,8 +474,10 @@ class GameViewModel(
             mood = outcome.moodGained,
             hungerBefore = pet.hunger,
             hungerAfter = outcome.pet.hunger,
+            status = outcome.status,
         )
-        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed))
+        // The screens read the meal's status at the time it was stamped with, so it shows from this very frame.
+        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed), nowMs = now)
         persist(game)
     }
 
