@@ -369,6 +369,8 @@ class CookbookTest {
         assertEquals(methods.toSet(), hints.keys)
         for (method in methods) {
             assertEquals(method.name, hints[method], methodHint(method))
+            // The shelf's label budget (`LabelMaxHeight`) holds a lit way to cook's name on one line over its hint.
+            assertTrue("the shelf's label budget needs one-line method names: ${method.title}", ' ' !in method.title)
             // A hint is a promise: the way to cook makes at least four real dishes (botches aside).
             val dishes = RECIPES.filter { (inputs, made) -> method in inputs && made in DISHES }
             assertTrue("${method.name} makes ${dishes.size}", dishes.size >= 4)

@@ -59,7 +59,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
@@ -80,7 +79,9 @@ import team.superfun.horrorpets.game.pantry.FlavorMark
 import team.superfun.horrorpets.game.pantry.flavorMark
 import team.superfun.horrorpets.game.pantry.methodHint
 import team.superfun.horrorpets.model.PantryItem
+import team.superfun.horrorpets.ui.common.IronGreen
 import team.superfun.horrorpets.ui.common.MAX_FONT_SCALE
+import team.superfun.horrorpets.ui.common.SugarPink
 import team.superfun.horrorpets.ui.common.displayStyle
 import team.superfun.horrorpets.ui.common.softGlow
 import team.superfun.horrorpets.ui.common.spriteFilter
@@ -126,9 +127,8 @@ private val LabelPadX = 4.dp
 private val LabelPadY = 3.dp
 private val LabelCut = 5.dp
 
-/** A dish's flavor mark (see [flavorMarkPath]) is this big, and its name moves over by its width and a hair more. */
+/** A dish's flavor mark (see [flavorMarkPath]) is this big: a badge on its label's top-left corner. */
 private val MarkSize = 9.dp
-private val MarkRoom = MarkSize + 2.dp
 
 /**
  * A label at its tallest, at the biggest font scale the game allows: two lines at the biggest size, or a lit way to
@@ -279,10 +279,7 @@ private fun ShelfBody(
     val density = LocalDensity.current
     val standPx = with(density) { ShelfStandY.toPx() }
     val labelTopPx = with(density) { (ShelfStandY + LabelTop).toPx() }
-    val labelSize = rememberLabelSizes(
-        plain = labelTextWidth(constraints.maxWidth, window.slots, marked = false, density),
-        marked = labelTextWidth(constraints.maxWidth, window.slots, marked = true, density),
-    )
+    val labelSize = rememberLabelSizes(labelTextWidth(constraints.maxWidth, window.slots, density))
     // Only the whole slot the shelf has slid to recomposes; the slide itself is read while placing.
     val near by remember { derivedStateOf { scrolledTo() } }
     val from = max(0, near - 2)
@@ -336,7 +333,7 @@ private fun ShelfBody(
                         slots = window.slots,
                         standPx = standPx,
                         labelTopPx = labelTopPx,
-                        labelSize = labelSize(item),
+                        labelSize = labelSize(item.title),
                     )
                 }
             }
@@ -364,8 +361,11 @@ private fun ShelfSlot(
     labelTopPx: Float,
     labelSize: TextUnit,
 ) {
-    val lit by animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "shelfLit")
+    val litState = animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "shelfLit")
+    val lit by litState
     val dim by animateFloatAsState(if (onBoard) ON_BOARD_DIM else 0f, tween(200), label = "shelfDim")
+    // A way to cook's hint stays while its label is lit at all, so it fades out with the plate as the focus leaves.
+    val hinted by remember(litState) { derivedStateOf { litState.value > 0f } }
     val density = LocalDensity.current
     val sinkPx = with(density) { CursorSink.toPx() }
     Box(
@@ -403,7 +403,7 @@ private fun ShelfSlot(
             item.title,
             labelSize,
             mark = flavorMark(item),
-            hint = methodHint(item)?.takeIf { focused },
+            hint = methodHint(item)?.takeIf { hinted },
             lit = { lit },
             dim = { dim },
             x = x,
@@ -453,26 +453,22 @@ private fun labelStyle(size: TextUnit): TextStyle =
 private fun Density.labelWidth(shelfWidth: Int, slots: Int): Int =
     (shelfWidth.toFloat() / max(1, slots) - LabelGap.toPx()).roundToInt().coerceAtLeast(1)
 
-/** The room before a label's name: its padding, and the room for a flavor mark too when it wears one ([marked]). */
-private fun labelPadStart(marked: Boolean): Dp = if (marked) LabelPadX + MarkRoom else LabelPadX
-
-/** How wide the name inside such a label may be (px), less the room for a flavor mark when it wears one ([marked]). */
-private fun labelTextWidth(shelfWidth: Int, slots: Int, marked: Boolean, density: Density): Int =
-    with(density) { (labelWidth(shelfWidth, slots) - labelPadStart(marked).roundToPx() - LabelPadX.roundToPx()).coerceAtLeast(1) }
+/** How wide the name inside such a label may be (px). */
+private fun labelTextWidth(shelfWidth: Int, slots: Int, density: Density): Int =
+    with(density) { (labelWidth(shelfWidth, slots) - LabelPadX.roundToPx() * 2).coerceAtLeast(1) }
 
 /**
- * The size each item's name is set at on its label (see [labelFontSize]): in [plain] px, or in [marked] px for a dish,
- * whose flavor mark takes some of its label. Worked out once per item for as long as the widths hold.
+ * The size each item's name is set at on a label whose name may be [width] px wide (see [labelFontSize]), worked out
+ * once per name for as long as the width holds.
  */
 @Composable
-private fun rememberLabelSizes(plain: Int, marked: Int): (item: PantryItem) -> TextUnit {
+private fun rememberLabelSizes(width: Int): (title: String) -> TextUnit {
     val measurer = rememberTextMeasurer()
-    return remember(measurer, plain, marked) {
-        val sizes = HashMap<PantryItem, TextUnit>()
-        val pick: (PantryItem) -> TextUnit = { item ->
-            sizes.getOrPut(item) {
-                val label = labelText(item.title)
-                val width = if (flavorMark(item) == null) plain else marked
+    return remember(measurer, width) {
+        val sizes = HashMap<String, TextUnit>()
+        val pick: (String) -> TextUnit = { title ->
+            sizes.getOrPut(title) {
+                val label = labelText(title)
                 labelFontSize(label, LABEL_MAX_SP, LABEL_MIN_SP, LABEL_STEP_SP) { sp ->
                     val laid = measurer.measure(label, labelStyle(sp.sp), constraints = Constraints(maxWidth = width))
                     List(laid.lineCount) { laid.getLineEnd(it) }
@@ -488,9 +484,9 @@ private fun rememberLabelSizes(plain: Int, marked: Int): (item: PantryItem) -> T
  * down the shelf, never wider than its slot (less the gap to the next), the name at [size] on at most two lines. A
  * dark little plate behind it, which lights gold with a glow as the item takes the remote's focus ([lit], 0..1) and
  * fades with the item when it is on the board ([dim]); both are read while drawing. A dish wears its flavor's [mark]
- * at the plate's left edge, its name moved over for it. A way to cook's [hint] (given while the remote is on it) goes
- * under its name, which is one word and leaves the second line to it, coming up gold as the label lights (and fading
- * with it on the board).
+ * as a badge on the plate's top-left corner. A way to cook's [hint] (given while its label is lit) goes under its
+ * name, which is one word on one line, on up to two lines of its own: it comes up gold as the label lights, fades as it
+ * goes out, and dims with it on the board.
  */
 @Composable
 private fun ShelfLabel(
@@ -514,7 +510,7 @@ private fun ShelfLabel(
                 }
             }
             .labelPlate(mark, lit, dim)
-            .padding(start = labelPadStart(mark != null), end = LabelPadX, top = LabelPadY, bottom = LabelPadY),
+            .padding(horizontal = LabelPadX, vertical = LabelPadY),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BasicText(
@@ -530,7 +526,7 @@ private fun ShelfLabel(
                 style = LabelHintStyle,
                 maxLines = LABEL_LINES,
                 overflow = TextOverflow.Ellipsis,
-                color = { TrainingGold.copy(alpha = lit() * (1f - 0.5f * dim())) },
+                color = { TrainingGold.copy(alpha = lit() * labelFade(dim())) },
             )
         }
     }
@@ -542,10 +538,13 @@ private fun ShelfLabel(
  */
 private val LabelHintStyle = HintStyle.copy(fontSize = LABEL_MIN_SP.sp, lineHeight = LABEL_MIN_SP.sp)
 
+/** How much of a label shows as its item is [dim] (0..1) on the board: at most half fades. */
+private fun labelFade(dim: Float): Float = 1f - 0.5f * dim
+
 /** A label's name: soft white, lit pale gold, half faded on the board. */
 private fun labelInk(lit: Float, dim: Float): Color {
     val ink = lerp(LabelInk, CursorEdge, lit)
-    return ink.copy(alpha = ink.alpha * (1f - 0.5f * dim))
+    return ink.copy(alpha = ink.alpha * labelFade(dim))
 }
 
 private val LabelInk = TextHi.copy(alpha = 0.86f)
@@ -555,33 +554,30 @@ private val LabelEdge = Amber.copy(alpha = 0.3f)
 
 /**
  * A label's plate: dark glass cut like the cursor, its edge going gold as it is [lit], faded as it is [dim]. A dish's
- * flavor [mark] stands on it at the left, before the name, and fades with it.
+ * flavor [mark] sits on its top-left corner as a badge, half of it over the edge, and fades with it.
  */
 private fun Modifier.labelPlate(mark: FlavorMark?, lit: () -> Float, dim: () -> Float): Modifier = drawWithCache {
     val edge = 1.dp.toPx()
     val plate = chamfer(size, edge, LabelCut.toPx())
     val fill = Brush.verticalGradient(listOf(Color(0xFF1B1215), Color(0xFF070507)))
-    val markSize = MarkSize.toPx()
-    val markShape = mark?.let { flavorMarkPath(it, Offset(LabelPadX.toPx() + markSize / 2f, size.height / 2f), markSize) }
+    // Centred on the plate's corner (where its edge is drawn), so half of it hangs over.
+    val badge = mark?.let { flavorMarkPath(it, Offset(edge, edge), MarkSize.toPx()) to flavorMarkColor(it) }
     onDrawBehind {
         val l = lit()
-        val fade = 1f - 0.5f * dim()
+        val fade = labelFade(dim())
         if (l > 0f) softGlow(Amber, alpha = 0.4f * l * fade, cornerRadius = 3.dp.toPx(), spread = 10.dp, layers = 5)
         drawPath(plate, fill, alpha = (0.72f + 0.24f * l) * fade)
         drawPath(plate, lerp(LabelEdge, CursorEdge, l), alpha = fade, style = Stroke(edge * (1f + l)))
-        if (mark != null && markShape != null) drawPath(markShape, flavorMarkColor(mark), alpha = fade)
+        badge?.let { (shape, color) -> drawPath(shape, color, alpha = fade) }
     }
 }
 
 /** A flavor mark's colour: blood red for savory, and the pink and green of a sugar rush and an iron stomach. */
 private fun flavorMarkColor(mark: FlavorMark): Color = when (mark) {
     FlavorMark.DROP -> BloodGlow
-    FlavorMark.STAR -> SweetPink
-    FlavorMark.BLOT -> GrossGreen
+    FlavorMark.STAR -> SugarPink
+    FlavorMark.BLOT -> IronGreen
 }
-
-private val SweetPink = Color(0xFFFF7AB8)
-private val GrossGreen = Color(0xFF8BE37A)
 
 /**
  * A dish's flavor [mark]'s shape, [size] across, centred on [center]: a teardrop for savory, a four-point star for

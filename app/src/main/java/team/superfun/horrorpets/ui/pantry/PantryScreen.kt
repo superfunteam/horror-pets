@@ -394,9 +394,11 @@ private fun PantryVisit(
         // The title, as training's HUD has its game's.
         Column(Modifier.padding(start = safe.horizontal, top = safe.vertical)) {
             GlowText("THE PANTRY", displayStyle(HUD_TITLE_SP.sp, tracking = HUD_TITLE_TRACKING, lineHeight = HUD_TITLE_LINE_SP.sp))
+            // The status lines under it are the HUD's gold; the hunger line has its own colour.
+            val statusStyle = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true)
             BasicText(
                 if (shelf.size >= Tuning.PANTRY_MAX) "THE SHELF IS FULL" else "${shelf.size} ON THE SHELF",
-                style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
+                style = statusStyle,
                 maxLines = 1,
             )
             // How hungry the killer is (it drops as the meal is served), so the player knows what to feed.
@@ -410,7 +412,7 @@ private fun PantryVisit(
             val recipesShown by animateFloatAsState(if (bubbleUp) 0f else 1f, tween(200), label = "recipesShown")
             BasicText(
                 "RECIPES ${dishesFound(found)} / ${DISHES.size}",
-                style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
+                style = statusStyle,
                 maxLines = 1,
                 modifier = Modifier.graphicsLayer { alpha = recipesShown },
             )
@@ -419,7 +421,7 @@ private fun PantryVisit(
             tastesLine(pet)?.let {
                 BasicText(
                     it,
-                    style = displayStyle(HUD_STATUS_SP.sp, FontWeight.Bold, color = TrainingGold, tracking = HUD_STATUS_TRACKING, halo = true),
+                    style = statusStyle,
                     maxLines = 1,
                     modifier = Modifier.graphicsLayer { alpha = recipesShown },
                 )

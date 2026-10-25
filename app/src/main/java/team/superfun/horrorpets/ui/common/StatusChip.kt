@@ -43,11 +43,11 @@ fun StatusChip(tag: StatusTag, modifier: Modifier = Modifier) {
     }
 }
 
-/** A sugar rush's pink. */
-private val SugarPink = Color(0xFFFF7AB8)
+/** A sugar rush's pink (a sweet dish's flavor mark wears it too). */
+internal val SugarPink = Color(0xFFFF7AB8)
 
-/** An iron stomach's green. */
-private val IronGreen = Color(0xFF8BE37A)
+/** An iron stomach's green (a gross dish's flavor mark wears it too). */
+internal val IronGreen = Color(0xFF8BE37A)
 
 /** A meal status's colour, the same everywhere it shows: gold for a feast or beefed up, pink, green, and a hangover's red. */
 fun statusChipColor(status: MealStatus): Color = if (status.feast) {
