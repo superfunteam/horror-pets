@@ -74,9 +74,10 @@ private val Silent = FightSounds(emptyList(), emptyList())
 
 /**
  * The sounds of one turn's events, asked for one event at a time as the fight screen shows it, so each
- * lands with its animation. A hit is `hit`, `heavy_hit` or `special_<attacker's pet>`; a crit is `crit`
- * instead; a miss is `miss`, a block `block`, a potion or a drain `potion`, a bleed `hit`, and a KO is the `ko`
- * boom with the announcer saying `ko`.
+ * lands with its animation. A hit sounds like its attacker's weapon: `hit_<attacker's pet>` for a strike (a
+ * counter included) and `heavy_<attacker's pet>` for a heavy; a special is `special_<attacker's pet>`, and a
+ * crit is `crit` instead of any of them. A miss is `miss`, a block `block`, a potion or a drain `potion`, a
+ * bleed the plain `hit` (no one swung), and a KO is the `ko` boom with the announcer saying `ko`.
  * Interrupts and a filled meter are silent. The announcer's one reaction of the turn, if [callouts] picks
  * one from [events], is said with the event it reacts to.
  *
@@ -92,14 +93,14 @@ internal class TurnSounds(
 
     fun of(event: FightEvent): FightSounds {
         val sfx = when (event) {
-            is FightEvent.Hit -> when {
-                event.crit -> "crit"
-                event.move == Move.HEAVY -> "heavy_hit"
-                event.move == Move.SPECIAL -> {
-                    val attacker = if (event.attacker == Side.PLAYER) fight.player else fight.cpu
-                    "special_${attacker.id.name.lowercase()}"
+            is FightEvent.Hit -> {
+                val pet = (if (event.attacker == Side.PLAYER) fight.player else fight.cpu).id.name.lowercase()
+                when {
+                    event.crit -> "crit"
+                    event.move == Move.HEAVY -> "heavy_$pet"
+                    event.move == Move.SPECIAL -> "special_$pet"
+                    else -> "hit_$pet"
                 }
-                else -> "hit"
             }
             is FightEvent.Miss -> "miss"
             is FightEvent.Blocked -> "block"

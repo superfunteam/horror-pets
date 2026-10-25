@@ -179,19 +179,35 @@ class TurnSoundsTest {
     }
 
     @Test
-    fun plainHitsAndHeavyHits() {
+    fun aHitSoundsLikeTheAttackersWeapon() {
         val s = sounds(
             FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false),
+            FightEvent.Hit(Side.PLAYER, Move.HEAVY, 18, crit = false),
+            FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false),
             FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false),
         )
-        assertEquals(listOf("hit", "heavy_hit"), s.sfx)
+        assertEquals(listOf("hit_jason", "heavy_jason", "hit_freddy", "heavy_freddy"), s.sfx)
         assertTrue(s.voice.isEmpty())
     }
 
     @Test
-    fun counterHitIsAPlainHit() {
+    fun aCounterSoundsLikeTheCounteringKillersWeapon() {
+        // The player blocked, so the CPU's STRIKE is the one absorbed and the player's counter lands with Jason's blade.
         val s = sounds(FightEvent.Blocked(Side.PLAYER), FightEvent.Hit(Side.PLAYER, Move.STRIKE, 5, crit = false, counter = true))
-        assertEquals(listOf("block", "hit"), s.sfx)
+        assertEquals(listOf("block", "hit_jason"), s.sfx)
+    }
+
+    @Test
+    fun aCritAndABleedKeepTheirSounds() {
+        // A crit is its own big sound whoever swings and whatever the move, a special keeps its own, and a bleed has no weapon.
+        val s = sounds(
+            FightEvent.Hit(Side.PLAYER, Move.STRIKE, 20, crit = true),
+            FightEvent.Hit(Side.CPU, Move.HEAVY, 30, crit = true),
+            FightEvent.Hit(Side.CPU, Move.SPECIAL, 40, crit = false),
+            FightEvent.Bleed(Side.PLAYER, 6),
+            FightEvent.Bleed(Side.CPU, 6),
+        )
+        assertEquals(listOf("crit", "crit", "special_freddy", "hit", "hit"), s.sfx)
     }
 
     @Test
@@ -244,7 +260,7 @@ class TurnSoundsTest {
     @Test
     fun koIsTheBoomAndTheAnnouncer() {
         val s = sounds(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), FightEvent.Ko(Side.CPU))
-        assertEquals(listOf("hit", "ko"), s.sfx)
+        assertEquals(listOf("hit_jason", "ko"), s.sfx)
         assertEquals(listOf("ko"), s.voice)
     }
 
@@ -275,7 +291,7 @@ class TurnSoundsTest {
             FightEvent.Hit(Side.CPU, Move.STRIKE, 9, crit = false),
             FightEvent.Interrupted(Side.PLAYER),
         )
-        assertEquals(listOf("miss", "hit"), s.sfx)
+        assertEquals(listOf("miss", "hit_freddy"), s.sfx)
     }
 }
 

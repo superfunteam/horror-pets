@@ -239,6 +239,15 @@ class RosterAssetsTest {
     }
 
     @Test
+    fun everyKillerHasItsWeaponSounds() {
+        // A hit in a fight sounds like the attacker's weapon: `hit_<pet>` for a strike or a counter, `heavy_<pet>` for a heavy.
+        for (id in PetId.entries) {
+            val pet = id.name.lowercase()
+            for (sfx in listOf("hit_$pet", "heavy_$pet")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+        }
+    }
+
+    @Test
     fun theSnoreIsShipped() {
         // A sleeping killer snores on Home (HomeScreen plays it every 4 s): an sfx, loaded like any other by its name.
         assertTrue(file("audio-final/sfx/$SNORE_SFX.wav").isFile)
