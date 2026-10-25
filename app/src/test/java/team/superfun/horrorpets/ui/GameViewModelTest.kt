@@ -76,6 +76,7 @@ private const val T0 = 1_800_000_000_000L
 private const val HOUR = Tuning.HOUR_MS
 private const val DAY = Tuning.DAY_MS
 private const val MINUTE = Tuning.MINUTE_MS
+private const val SECOND = 1_000L
 
 /**
  * The training games a new player has to finish before their first fight (see mustTrainBeforeFighting). The fixtures
@@ -1401,6 +1402,7 @@ class GameViewModelTest {
         rig.pick(SHELF.size)
         rig.settle()
         val saves = rig.store.saves.size
+        rig.clock.now += MINUTE // since the screens last looked at the clock
         rig.vm.onPantryFeed(session)
 
         val paid = feed(before, STEAK, rig.clock.now)
@@ -2085,6 +2087,22 @@ class GameViewModelTest {
     }
 
     @Test
+    fun theVsCardAndTheFightReadTheStatusAtTheSameTime() {
+        // Jason's favorite, a day ago less 30 s: still a feast when the card opens, by the clock (no tick since).
+        val fed = jason().copy(lastMeal = CAMP_CRYSTAL_FISH_FRY.id, lastMealAtMs = T0 - DAY + 30 * SECOND)
+        val rig = Rig(gameOf(pets = arrayOf(fed))).started()
+        rig.clock.now += 20 * SECOND
+        rig.vm.onFightPressed()
+        rig.vm.onSwitcherPick(PetId.FREDDY)
+        assertEquals("the card opens on the clock", rig.clock.now, rig.ui.nowMs)
+        assertEquals(MealStatus(MealPerk.BEEFED_UP, feast = true), mealStatusOf(rig.jason, rig.ui.nowMs))
+        // The status runs out while the card plays: the fight still has what the card showed.
+        rig.clock.now += 15 * SECOND
+        rig.vm.onVersusDone()
+        assertEquals(MealStatus(MealPerk.BEEFED_UP, feast = true), (rig.ui.screen as Screen.Fight).fight.player.status)
+    }
+
+    @Test
     fun aMealADayOldIsNoStatusInAFight() {
         val stale = jason().copy(lastMeal = CAMP_CRYSTAL_FISH_FRY.id, lastMealAtMs = T0 - DAY)
         val rig = Rig(gameOf(pets = arrayOf(stale))).started()
@@ -2384,10 +2402,17 @@ class GameViewModelTest {
         val rig = pantryRig(SHELF + STEAK, pet = jason(hunger = 60.0))
         val session = rig.openPantry().session
         rig.pick(SHELF.size)
+        rig.clock.now += HOUR // no tick since: the meal itself brings the screens' clock up to date
+        val fedAt = rig.clock.now
         rig.vm.onPantryFeed(session)
+        assertEquals(fedAt, rig.ui.nowMs)
         rig.vm.onPantryDone(session)
         assertEquals(MealStatus(MealPerk.BEEFED_UP), mealStatusOf(rig.jason, rig.ui.nowMs))
-        rig.clock.now += 24 * HOUR
+        // A day from the meal, not from the last tick: a minute short of it, the ticks still show it; then it is gone.
+        rig.clock.now = fedAt + 24 * HOUR - MINUTE
+        rig.vm.tick()
+        assertEquals(MealStatus(MealPerk.BEEFED_UP), mealStatusOf(rig.jason, rig.ui.nowMs))
+        rig.clock.now = fedAt + 24 * HOUR
         rig.vm.tick()
         assertNull(mealStatusOf(rig.jason, rig.ui.nowMs))
     }

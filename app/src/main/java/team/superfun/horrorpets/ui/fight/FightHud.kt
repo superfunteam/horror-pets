@@ -36,9 +36,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -207,7 +209,9 @@ private val DazedFill = Brush.verticalGradient(listOf(Color(0xFFE3C8FF), Color(0
 
 /**
  * A side's lasting states as small chips, from the outer edge in: the player's [meal] status (the stat card's outlined
- * chip; the CPU's side, [mirrored], never has one), then COMBO ×N, BLEED N and DAZED, slanted.
+ * chip; the CPU's side, [mirrored], never has one), then COMBO ×N, BLEED N and DAZED, slanted. The fight's own states
+ * keep their room: on a side too narrow for them all (a 4:3 screen), the meal chip says it in a word
+ * ([statusShortTitle]), and where even that would not fit it steps aside.
  */
 @Composable
 private fun StatusRow(status: HudStatus, meal: MealStatus?, mirrored: Boolean) {
@@ -218,15 +222,39 @@ private fun StatusRow(status: HudStatus, meal: MealStatus?, mirrored: Boolean) {
         if (bleed > 0) add(Triple("BLEED $bleed", BleedFill, Color.White))
         if (status.dazed()) add(Triple("DAZED", DazedFill, Color.White))
     }
-    Row(
-        Modifier.height(StatusRowHeight),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        meal?.let { StatusChip(it) }
-        for ((text, fill, ink) in if (mirrored) chips.reversed() else chips) HudChip(text, fill, ink, mirrored)
+    Layout(
+        content = {
+            if (meal != null) {
+                StatusChip(meal)
+                StatusChip(meal, short = true)
+            }
+            for ((text, fill, ink) in if (mirrored) chips.reversed() else chips) HudChip(text, fill, ink, mirrored)
+        },
+        modifier = Modifier.height(StatusRowHeight),
+    ) { measurables, constraints ->
+        val gap = StatusChipGap.roundToPx()
+        val placeables = measurables.map { it.measure(Constraints(maxHeight = constraints.maxHeight)) }
+        val mealCount = if (meal != null) 2 else 0
+        val meals = placeables.take(mealCount) // the whole title, then the word
+        val others = placeables.drop(mealCount)
+        val othersWidth = others.sumOf { it.width } + gap * (others.size - 1).coerceAtLeast(0)
+        // The whole title if it fits beside the fight's own states, else the word, else nothing.
+        val mealChip = meals.firstOrNull { othersWidth + it.width + (if (others.isEmpty()) 0 else gap) <= constraints.maxWidth }
+        val shown = listOfNotNull(mealChip) + others
+        val width = (shown.sumOf { it.width } + gap * (shown.size - 1).coerceAtLeast(0)).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = constraints.maxHeight
+        layout(width, height) {
+            var x = 0
+            for (p in shown) {
+                p.placeRelative(x, (height - p.height) / 2)
+                x += p.width + gap
+            }
+        }
     }
 }
+
+/** The gap between a side's status chips. */
+private val StatusChipGap = 8.dp
 
 /** One status chip: [text] in [ink] on a slanted [fill] (leaning like the bars), with a light rim. */
 @Composable

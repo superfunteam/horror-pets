@@ -438,10 +438,10 @@ fun VersusScreen(
                     .placeAt(x = { place.left + place.width * CHIP_IN }, y = { place.bottom + gap }, pivotX = 0f, pivotY = 0f)
                     .graphicsLayer {
                         val since = clock.longValue - VsTimeline.PLAYER_NAME_AT
-                        val s = VsTimeline.slamScale(since, VsTimeline.NAME_SLAM_MS, NAME_FROM)
+                        val s = nameSlamScale(since)
                         scaleX = s
                         scaleY = s
-                        alpha = (since / (VsTimeline.NAME_SLAM_MS * 0.4f)).coerceIn(0f, 1f)
+                        alpha = nameSlamAlpha(since)
                     },
             )
         }
@@ -556,14 +556,20 @@ private fun landFlash(since: Long): Float {
     return 0.85f * f * f
 }
 
+/** How big a name is [since] it started to slam in: from [NAME_FROM] down to its size (the player's chip slams with it). */
+private fun nameSlamScale(since: Long): Float = VsTimeline.slamScale(since, VsTimeline.NAME_SLAM_MS, NAME_FROM)
+
+/** How opaque a name is [since] it started to slam in: fully, from 40% of the way down (the player's chip with it). */
+private fun nameSlamAlpha(since: Long): Float = (since / (VsTimeline.NAME_SLAM_MS * 0.4f)).coerceIn(0f, 1f)
+
 /**
  * A name, [since] it started to slam in: falling from [NAME_FROM] to its [place] (its [shadow] below), tilted [tilt]
  * degrees.
  */
 private fun DrawScope.drawName(img: ImageBitmap, place: Rect, shadow: Rect, since: Long, tilt: Float) {
     if (since < 0) return
-    val s = VsTimeline.slamScale(since, VsTimeline.NAME_SLAM_MS, NAME_FROM)
-    val a = (since / (VsTimeline.NAME_SLAM_MS * 0.4f)).coerceIn(0f, 1f)
+    val s = nameSlamScale(since)
+    val a = nameSlamAlpha(since)
     withTransform({
         rotate(tilt, place.center)
         scale(s, s, place.center)

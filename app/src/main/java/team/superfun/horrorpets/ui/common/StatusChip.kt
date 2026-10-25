@@ -74,10 +74,17 @@ fun statusBanner(status: MealStatus): Pair<String, String> {
 /** The sound a meal's [status] lands with: a hangover's sour wobble, or the perk's rising chime. */
 fun statusSound(status: MealStatus): String = if (status.perk == MealPerk.HANGOVER) "hangover" else "perk_up"
 
-/** A meal's [status] as an outlined tag in its colour ([statusChipColor]), as Home's stat card, the VS card and the HUD show it. */
+/** A meal's [status] in a word, for a HUD side too narrow for its whole title: its perk's first word, or "FEAST". */
+fun statusShortTitle(status: MealStatus): String =
+    if (status.feast) "FEAST" else status.perk.title.substringBefore(' ').uppercase()
+
+/**
+ * A meal's [status] as an outlined tag in its colour ([statusChipColor]), as Home's stat card, the VS card and the HUD
+ * show it: its title, or in a word ([statusShortTitle]) when [short].
+ */
 @Composable
-fun StatusChip(status: MealStatus, modifier: Modifier = Modifier) {
-    TagBox(status.title.uppercase(), statusChipColor(status), modifier)
+fun StatusChip(status: MealStatus, modifier: Modifier = Modifier, short: Boolean = false) {
+    TagBox(if (short) statusShortTitle(status) else status.title.uppercase(), statusChipColor(status), modifier)
 }
 
 /**

@@ -44,6 +44,17 @@ class StatusChipTest {
     }
 
     @Test
+    fun aNarrowHudSaysItInAWord() {
+        assertEquals("BEEFED", statusShortTitle(MealStatus(MealPerk.BEEFED_UP)))
+        assertEquals("SUGAR", statusShortTitle(MealStatus(MealPerk.SUGAR_RUSH)))
+        assertEquals("IRON", statusShortTitle(MealStatus(MealPerk.IRON_STOMACH)))
+        assertEquals("HANGOVER", statusShortTitle(MealStatus(MealPerk.HANGOVER)))
+        for (perk in listOf(MealPerk.BEEFED_UP, MealPerk.SUGAR_RUSH, MealPerk.IRON_STOMACH)) {
+            assertEquals("$perk feast", "FEAST", statusShortTitle(MealStatus(perk, feast = true)))
+        }
+    }
+
+    @Test
     fun aHangoverSoundsSourAndEverythingElseChimes() {
         assertEquals("hangover", statusSound(MealStatus(MealPerk.HANGOVER)))
         for (perk in listOf(MealPerk.BEEFED_UP, MealPerk.SUGAR_RUSH, MealPerk.IRON_STOMACH)) {

@@ -347,9 +347,9 @@ fun HomeScreen(
 
     val idle = request == null && walk == null
     val hungry by rememberUpdatedState(pet.hunger >= Tuning.HUNGRY_AT)
-    // A hangover rocks the killer slowly from the head while it idles where it stands; a gag, a walk or a stroll
-    // stands it upright at once.
-    val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null && stroll == null
+    // A hangover rocks the killer slowly from the head through its idle life (its glances and strolls too); a gag or a
+    // walk stands it upright at once.
+    val swaying = meal?.perk == MealPerk.HANGOVER && idle && playing == null
     LaunchedEffect(swaying) {
         if (!swaying) return@LaunchedEffect
         try {

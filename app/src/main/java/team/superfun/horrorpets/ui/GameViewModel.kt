@@ -651,7 +651,8 @@ class GameViewModel(
 
     /**
      * The VS card is done: the fight starts with the selected pet against the picked opponent (or the other player).
-     * Against the CPU the pet brings its last meal's status; a PvP fight never has one.
+     * Against the CPU the pet brings its last meal's status, read at [UiState.nowMs] as the card showed it (so one that
+     * runs out while the card plays still counts); a PvP fight never has one.
      */
     fun onVersusDone() {
         val s = _state.value
@@ -665,7 +666,7 @@ class GameViewModel(
             return
         }
         val player = s.game.selected?.let { s.game.pets[it] } ?: return
-        val fight = startFight(player, versus.opponent, rng, mealStatusOf(player, clock.nowMs()))
+        val fight = startFight(player, versus.opponent, rng, mealStatusOf(player, s.nowMs))
         _state.value = s.copy(screen = Screen.Fight(fight, emptyList()))
     }
 
@@ -1302,12 +1303,17 @@ class GameViewModel(
 
     /**
      * The VS card against [opponent], with the announcer's "<player> versus <opponent>" queued as it opens; null
-     * without a selected pet, or when [opponent] is that pet (it can not fight itself).
+     * without a selected pet, or when [opponent] is that pet (it can not fight itself). It opens on the clock as it is
+     * now ([UiState.nowMs]): the card shows the last meal's status as of then, and the fight brings the same one.
      */
     private fun UiState.versusAgainst(opponent: PetId): UiState? {
         val player = game.selected ?: return null
         if (opponent == player) return null
-        return copy(screen = Screen.Versus(opponent), voice = voice + listOf(player.soundName(), "versus", opponent.soundName()))
+        return copy(
+            screen = Screen.Versus(opponent),
+            voice = voice + listOf(player.soundName(), "versus", opponent.soundName()),
+            nowMs = clock.nowMs(),
+        )
     }
 
     // ---- attacks: learning and equipping -------------------------------------------------------
