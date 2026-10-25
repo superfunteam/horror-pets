@@ -13,7 +13,10 @@ data class Roll(
     val crit: Double = NO_CRIT,
 ) {
     companion object {
-        /** Above every miss chance in play (the largest is 0.15 + 0.07). */
+        /**
+         * Above every miss chance in play (the largest is a hungover HEAVY with a -0.07 accuracy trait against
+         * Ghostface: 0.15 + 0.07 + 0.07 + 0.15 = 0.44).
+         */
         const val NO_MISS = 0.99
 
         /** Variance 0.5 means exactly x1.0 (0.0 is x0.85, 1.0 is x1.15). */

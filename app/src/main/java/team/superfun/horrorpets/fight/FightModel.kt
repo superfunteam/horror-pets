@@ -93,7 +93,10 @@ data class FightState(
     /** How many turns have been played. */
     val turnsPlayed: Int get() = turn - 1
 
-    /** How many potions the player has drunk (of the ones it brought: see [potionsFor]). */
+    /**
+     * How many potions the player has drunk (of the ones it brought: see [potionsFor]). This holds as long as
+     * [playerPotions] started at `potionsFor(player.status)`, as [startFight] and [startPvp] set it.
+     */
     val potionsUsed: Int get() = potionsFor(player.status) - playerPotions
 
     /**

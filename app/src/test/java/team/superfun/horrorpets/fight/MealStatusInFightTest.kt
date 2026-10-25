@@ -67,6 +67,10 @@ class MealStatusInFightTest {
         assertEquals("the CPU's blow is its own", 16, strike.hitBy(Side.CPU)!!.damage)
         val crit = resolveTurn(stateOf(player = fed(hangover)), Move.HEAVY, Move.BLOCK, ScriptedRandom.attacks(Roll(crit = 0.0)))
         assertEquals(Hit(Side.PLAYER, Move.HEAVY, 45, true), crit.hitBy(Side.PLAYER)) // round(16 * 1.8 * 1.75 * 0.9 = 45.36)
+        // Where rounding once and rounding twice part ways: a STRIKE at combo 1 (x1.15) does round(16 * 1.15 * 0.9 =
+        // 16.56) = 17, where rounding the combo's 18.4 first would give round(18 * 0.9 = 16.2) = 16.
+        val combo = resolveTurn(stateOf(player = fighter(combo = 1).copy(status = hangover)), Move.STRIKE, Move.STRIKE, ScriptedRandom.attacks(Roll(), Roll()))
+        assertEquals(Hit(Side.PLAYER, Move.STRIKE, 17, false, combo = 1), combo.hitBy(Side.PLAYER))
     }
 
     // ---------------------------------------------------------------- misses
@@ -111,9 +115,10 @@ class MealStatusInFightTest {
 
     @Test
     fun anIronStomachCritsOnARollThatWouldNotHave() {
-        // A crit roll of 0.1 is over the plain crit chance at mood 0 (0.05), under an iron stomach's (0.15).
-        val plain = resolveTurn(stateOf(), Move.STRIKE, Move.STRIKE, ScriptedRandom.attacks(Roll(crit = 0.1), Roll()))
-        val iron = resolveTurn(stateOf(player = fed(ironStomach)), Move.STRIKE, Move.STRIKE, ScriptedRandom.attacks(Roll(crit = 0.1), Roll()))
+        // A crit roll of 0.1 is over the plain crit chance at mood 0 (0.05), under an iron stomach's (0.15). The CPU
+        // rolls it too, and its chance is still the plain one.
+        val plain = resolveTurn(stateOf(), Move.STRIKE, Move.STRIKE, ScriptedRandom.attacks(Roll(crit = 0.1), Roll(crit = 0.1)))
+        val iron = resolveTurn(stateOf(player = fed(ironStomach)), Move.STRIKE, Move.STRIKE, ScriptedRandom.attacks(Roll(crit = 0.1), Roll(crit = 0.1)))
         assertFalse(plain.hitBy(Side.PLAYER)!!.crit)
         assertEquals(Hit(Side.PLAYER, Move.STRIKE, 28, true), iron.hitBy(Side.PLAYER))
         assertFalse("the CPU's crit chance is its own", iron.hitBy(Side.CPU)!!.crit)
