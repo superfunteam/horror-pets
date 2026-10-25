@@ -121,7 +121,8 @@ private val WindowGap = 12.dp
  * values alone and the bar starts full. [Screen.Results.fight] is the fight as it ended; without it the report
  * is empty. One focused CONTINUE pill, or Back, calls [onDone]. OK is ignored for a moment after the screen
  * comes up (see `rememberOkReady`), so an OK mashed through the fight's last turn cannot skip it; so is a tap,
- * on a phone. The view model has already queued `you_win` / `you_lose` (and `levelup`).
+ * on a phone. The view model has already queued `you_win` / `you_lose` (and `levelup`); the killers'
+ * [Screen.Results.lastWords] are the card's to say, with the rank call or as it opens (see [resultsVoice]).
  */
 @Composable
 fun ResultsCard(
@@ -146,9 +147,11 @@ fun ResultsCard(
     // One clock for the whole sequence; every part reads where it is from it.
     val clock = remember { Animatable(0f) }
     val title = remember { Animatable(0f) }
+    val call = scored?.let { rankCall(it.rank) }
     LaunchedEffect(Unit) {
         launch { title.animateTo(1f, tween(TITLE_IN_MS, easing = LinearOutSlowInEasing)) }
         launch { clock.animateTo(TIMELINE_END_MS.toFloat(), tween(TIMELINE_END_MS, easing = LinearEasing)) }
+        resultsVoice(call, screen.lastWords, atStamp = false).takeIf { it.isNotEmpty() }?.let(sink::voice)
         // A tick as each report line starts counting, a boom as the rank lands, the announcer for a great one.
         for (i in lines.indices) {
             delay(if (i == 0) REPORT_START_MS else REPORT_LINE_MS)
@@ -157,7 +160,7 @@ fun ResultsCard(
         delay(stampAt - (REPORT_START_MS + REPORT_LINE_MS * (lines.size - 1).coerceAtLeast(0)))
         if (scored != null) {
             sink.sfx("crit")
-            rankCall(scored.rank)?.let { sink.voice(listOf(it)) }
+            resultsVoice(call, screen.lastWords, atStamp = true).takeIf { it.isNotEmpty() }?.let(sink::voice)
         }
     }
 
@@ -212,6 +215,16 @@ internal fun rankCall(rank: Rank): String? = when (rank) {
     Rank.S -> "unbelievable"
     Rank.A -> "brutal"
     Rank.B, Rank.C -> null
+}
+
+/**
+ * What the results card says at one of its two moments: as it opens, or ([atStamp]) as the rank stamp lands.
+ * With a [rankCall] the killers' [lastWords] follow it at the stamp, so they never hold the call up behind them in the
+ * queue; without one (a loss, or a rank that gets no call) they are said as the card opens, after YOU WIN or YOU LOSE.
+ */
+internal fun resultsVoice(rankCall: String?, lastWords: List<String>, atStamp: Boolean): List<String> = when {
+    rankCall != null -> if (atStamp) listOf(rankCall) + lastWords else emptyList()
+    else -> if (atStamp) emptyList() else lastWords
 }
 
 private val WinFill = Brush.verticalGradient(listOf(Color(0xFFFFE9A8), Amber, Color(0xFFB4700E)))

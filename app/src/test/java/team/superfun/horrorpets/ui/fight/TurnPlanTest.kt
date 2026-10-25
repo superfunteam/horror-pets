@@ -7,6 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.assets.AnimSpec
+import team.superfun.horrorpets.audio.VoiceBeat
+import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
@@ -315,15 +317,35 @@ class TurnSoundsTest {
         assertTrue(alone.voice.single() in Moment.HEAVY.lines)
         assertNull(alone.quip)
 
-        // Chucky's own strike follows in the same turn: he has his say on that one instead.
+        // Chucky's own strike follows in the same turn: still the announcer's turn, Chucky keeps quiet.
         val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
-        val turn = TurnSounds(chuckyFight, listOf(heavy, strike), Callouts(fixed(0f)), Quips(fixed(0f)))
-        val called = turn.of(heavy)
-        assertEquals(1, called.voice.size)
-        assertNull(called.quip)
-        val quipped = turn.of(strike)
-        assertTrue("the announcer has had his say", quipped.voice.isEmpty())
-        assertEquals("chucky_attack_1", quipped.quip)
+        val after = TurnSounds(chuckyFight, listOf(heavy, strike), Callouts(fixed(0f)), Quips(fixed(0f)))
+        assertEquals(listOf(1, 0), listOf(heavy, strike).map { after.of(it).voice.size })
+        assertEquals(listOf(null, null), listOf(heavy, strike).map { after.of(it).quip })
+    }
+
+    @Test
+    fun aQuipNeverComesBeforeTheAnnouncersCall() {
+        // Chucky's strike lands first and Jason's HEAVY after it gets the call: a line on the strike would hold the call
+        // up behind it in the queue, so there is none.
+        val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
+        val heavy = FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false)
+        val turn = TurnSounds(chuckyFight, listOf(strike, heavy), Callouts(fixed(0f)), Quips(fixed(0f)))
+        val first = turn.of(strike)
+        assertNull(first.quip)
+        assertTrue(first.voice.isEmpty())
+        assertTrue(turn.of(heavy).voice.single() in Moment.HEAVY.lines)
+    }
+
+    @Test
+    fun theFinishingTurnHasNoQuip() {
+        // Jason's strike knocks Chucky out: "Knockout!" never waits behind a line of his.
+        val blow = FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false)
+        val ko = FightEvent.Ko(Side.PLAYER)
+        val turn = TurnSounds(chuckyFight.copy(winner = Side.CPU), listOf(blow, ko), Callouts(fixed(0f)), Quips(fixed(0f)))
+        val sounds = listOf(blow, ko).map(turn::of)
+        assertEquals(listOf(null, null), sounds.map { it.quip })
+        assertEquals(listOf("ko"), sounds.flatMap { it.voice })
     }
 
     @Test
@@ -338,11 +360,11 @@ class TurnSoundsTest {
         val turn = TurnSounds(chuckyFight, events, quips = Quips(fixed(0f)))
         assertEquals(listOf("chucky_attack_1", null, null, null), events.map { turn.of(it).quip })
 
-        // Over a whole seeded fight's worth of such turns, never two.
+        // Over a whole seeded fight's worth of such turns (no calls, which would take the turn), never two.
         val quips = Quips(Random(11))
         var said = 0
         repeat(200) { n ->
-            val t = TurnSounds(chuckyFight, events, Callouts(Random(n)), quips)
+            val t = TurnSounds(chuckyFight, events, quips = quips)
             val lines = events.mapNotNull { t.of(it).quip }
             assertTrue("turn $n: $lines", lines.size <= 1)
             said += lines.size
@@ -360,13 +382,22 @@ class TurnSoundsTest {
         val hurt = turn.of(counter)
         assertEquals("the hit's own sound still plays", listOf("hit_jason"), hurt.sfx)
         assertTrue("Chucky is not the announcer", hurt.voice.isEmpty())
-        assertTrue(hurt.quip in listOf("chucky_hurt_1", "chucky_hurt_2"))
+        assertTrue(hurt.quip in killerLines(PetId.CHUCKY, VoiceBeat.HURT))
         assertNull("said once", turn.of(counter).quip)
     }
 }
 
 /** Chucky's lines in a fight: which event of a turn gets one, how often, and never the same line twice running. */
 class QuipsTest {
+    /** A random source that always rolls [roll] and picks the first line, counting its rolls. */
+    private class Counting(private val roll: Float) : Random() {
+        var rolls = 0
+
+        override fun nextBits(bitCount: Int) = 0
+
+        override fun nextFloat() = roll.also { rolls++ }
+    }
+
     private val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
     private val blocked = FightEvent.Blocked(Side.PLAYER)
 
@@ -379,13 +410,9 @@ class QuipsTest {
     @Test
     fun oneRollATurnForItsFirstChance() {
         // A no for the turn's first line is a quiet turn, not a second try on the next event.
-        var rolls = 0
-        val no = object : Random() {
-            override fun nextBits(bitCount: Int) = 0
-            override fun nextFloat() = 0.9f.also { rolls++ }
-        }
+        val no = Counting(0.9f)
         assertNull(Quips(no).pick(chuckyFight, listOf(strike, blocked), null))
-        assertEquals(1, rolls)
+        assertEquals(1, no.rolls)
     }
 
     @Test
@@ -406,12 +433,22 @@ class QuipsTest {
 
     @Test
     fun theKnockoutIsTheAnnouncers() {
+        // The turn that ends the fight is his, the blow that did it included, and no roll is spent on it.
+        val yes = Counting(0f)
         val over = chuckyFight.copy(winner = Side.CPU)
-        val ko = FightEvent.Ko(Side.PLAYER)
-        assertNull(Quips(fixed(0f)).pick(over, listOf(ko), null))
-        // The blow that knocked him out is still his to curse.
         val blow = FightEvent.Hit(Side.CPU, Move.STRIKE, 10, crit = false)
-        assertEquals(blow to "chucky_hurt_1", Quips(fixed(0f)).pick(over, listOf(blow, ko), null))
+        assertNull(Quips(yes).pick(over, listOf(blow, FightEvent.Ko(Side.PLAYER)), null))
+        assertNull("a double KO has no KO event of its own", Quips(yes).pick(over, listOf(blow), null))
+        assertEquals(0, yes.rolls)
+    }
+
+    @Test
+    fun aTurnWithACallIsTheAnnouncersAlone() {
+        // His call on a later event still takes the turn: Chucky's strike before it gets nothing, and no roll.
+        val yes = Counting(0f)
+        val heavy = FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false)
+        assertNull(Quips(yes).pick(chuckyFight, listOf(strike, heavy), Callout(heavy, "big_one")))
+        assertEquals(0, yes.rolls)
     }
 
     @Test
@@ -419,9 +456,10 @@ class QuipsTest {
         val quips = Quips(Random(42), chance = 1f)
         val said = List(300) { quips.pick(chuckyFight, listOf(strike), null)!!.second }
         said.zipWithNext().forEach { (a, b) -> assertFalse("$a twice", a == b) }
-        assertEquals(setOf("chucky_attack_1", "chucky_attack_2"), said.toSet())
+        assertEquals(killerLines(PetId.CHUCKY, VoiceBeat.ATTACK).toSet(), said.toSet())
         // A beat with one line says it every time.
-        assertEquals(List(3) { "chucky_block" }, List(3) { quips.pick(chuckyFight, listOf(blocked), null)!!.second })
+        val block = killerLines(PetId.CHUCKY, VoiceBeat.BLOCK).single()
+        assertEquals(List(3) { block }, List(3) { quips.pick(chuckyFight, listOf(blocked), null)!!.second })
     }
 }
 

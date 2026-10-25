@@ -334,7 +334,8 @@ class PvpFlowTest {
 
     @Test
     fun aPvpChuckyHasTheLastWordOnBothApps() {
-        // A friend's Chucky loses to strong Jason: each app's announcer calls its own result, then Chucky has his say.
+        // A friend's Chucky loses to strong Jason: each app's announcer calls its own result, and each app's results
+        // carry Chucky's parting shot for its card to say.
         val host = jasonApp()
         val guest = App(PetState(PetId.CHUCKY, strength = 30.0), hub.app())
         meet(host, guest)
@@ -350,9 +351,37 @@ class PvpFlowTest {
             guest.finishAnim()
             check(++turns < 30) { "the fight never ended" }
         }
-        assertTrue((host.ui.screen as Screen.Results).won)
-        assertEquals(listOf("you_win", "chucky_lose"), host.ui.voice.takeLast(2))
-        assertEquals(listOf("you_lose", "chucky_lose"), guest.ui.voice.takeLast(2))
+        val hostResults = host.ui.screen as Screen.Results
+        val guestResults = guest.ui.screen as Screen.Results
+        assertTrue(hostResults.won)
+        assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
+        assertEquals(listOf("you_lose"), guest.ui.voice.takeLast(1))
+        assertEquals(listOf("chucky_lose"), hostResults.lastWords)
+        assertEquals(listOf("chucky_lose"), guestResults.lastWords)
+    }
+
+    @Test
+    fun aForfeitEndsAPvpFightWithNoLastWords() {
+        // A friend's Jason runs from Chucky: no one was beaten, so neither app has a killer's line to say.
+        val host = App(PetState(PetId.CHUCKY, strength = 30.0), hub.app())
+        val guest = jasonApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+
+        guest.vm.onMove(Move.RUN)
+        guest.finishAnim()
+        val ran = guest.ui.screen as Screen.Results
+        assertTrue(ran.ran)
+        assertTrue(ran.lastWords.isEmpty())
+
+        pumpBoth(host, guest)
+        assertTrue(host.fight.fight.cpuRan)
+        host.finishAnim()
+        val won = host.ui.screen as Screen.Results
+        assertTrue(won.won)
+        assertEquals("the announcer still calls it", listOf("you_win"), host.ui.voice.takeLast(1))
+        assertTrue("no laugh from Chucky over a forfeit", won.lastWords.isEmpty())
     }
 
     @Test

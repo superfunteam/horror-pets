@@ -216,8 +216,18 @@ sealed interface Screen {
         val intense: Boolean = false,
     ) : Screen
 
-    /** A fight's results: what the pet earned ([reward]), and the [fight] as it ended, for its stats (null when not known). */
-    data class Results(val reward: FightReward, val won: Boolean, val ran: Boolean, val fight: FightState? = null) : Screen
+    /**
+     * A fight's results: what the pet earned ([reward]), and the [fight] as it ended, for its stats (null when not
+     * known). [lastWords] are the killers' own lines on how it ended (voice clip names, often none), which the results
+     * card says in step with its rank call rather than the view model queueing them behind YOU WIN.
+     */
+    data class Results(
+        val reward: FightReward,
+        val won: Boolean,
+        val ran: Boolean,
+        val fight: FightState? = null,
+        val lastWords: List<String> = emptyList(),
+    ) : Screen
 
     /** The player just beat [pet], a killer they did not have, and it joined their stable; [results] come next. */
     data class Unlocked(val pet: PetId, val results: Results) : Screen

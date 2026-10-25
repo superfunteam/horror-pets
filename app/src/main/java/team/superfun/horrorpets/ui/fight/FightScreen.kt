@@ -256,9 +256,9 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    under its own riff (the music ducking under it until a second after the blow) and plays its pet's effect
  *    ([SpecialVfx]); a miss shows a grey MISS as the defender sways away, a block a shield ring
  *    and BLOCK before the blocker's counter. Each event's sound plays at its impact ([TurnSounds]), and now and
- *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]), or a killer with lines of its
- *    own has its say about a blow, a block or a whiff ([Quips]), if the announcer is quiet; a special
- *    whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
+ *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]); in a turn he has no call in,
+ *    short of the last, a killer with lines of its own may have its say about a blow, a block or a whiff
+ *    ([Quips]); a special whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
  *    then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast flashes the screen white
  *    and shakes it hard ([specialJolt]). A hit stops the fight's clock as it lands ([hitStopFor]): its sound plays,
  *    both fighters freeze for a blink, and its number, flash, shake and drain come as time resumes. The blow that

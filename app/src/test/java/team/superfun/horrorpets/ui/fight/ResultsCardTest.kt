@@ -52,4 +52,18 @@ class ResultsCardTest {
         assertNull(rankCall(Rank.C))
         assertFalse(Rank.entries.mapNotNull(::rankCall).isEmpty())
     }
+
+    @Test
+    fun theKillersHaveTheirSayWithTheRankCallOrAsTheCardOpens() {
+        val laugh = listOf("chucky_win")
+        // A great rank: nothing more as the card opens, then the call and the laugh behind it as the stamp lands.
+        assertEquals(emptyList<String>(), resultsVoice("brutal", laugh, atStamp = false))
+        assertEquals(listOf("brutal", "chucky_win"), resultsVoice("brutal", laugh, atStamp = true))
+        // A rank with no call, or a loss: the laugh as the card opens, nothing at the stamp.
+        assertEquals(laugh, resultsVoice(null, laugh, atStamp = false))
+        assertEquals(emptyList<String>(), resultsVoice(null, laugh, atStamp = true))
+        // A killer with nothing to say leaves the call as it was.
+        assertEquals(listOf("unbelievable"), resultsVoice("unbelievable", emptyList(), atStamp = true))
+        assertEquals(emptyList<String>(), resultsVoice(null, emptyList(), atStamp = false))
+    }
 }

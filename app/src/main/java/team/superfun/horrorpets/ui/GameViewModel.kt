@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import team.superfun.horrorpets.assets.Anim
-import team.superfun.horrorpets.audio.Beat
+import team.superfun.horrorpets.audio.VoiceBeat
 import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
@@ -737,8 +737,8 @@ class GameViewModel(
     /**
      * The turn's animation is over. A fight that goes on may turn intense now (see [playedOut]). A finished fight
      * turns into its results and the pet is paid; beating a killer the player did not have unlocks it (it joins the
-     * stable at its defaults) and shows that before the results. The announcer calls the result (and the unlock), then
-     * the killers have the [last word][lastWords].
+     * stable at its defaults) and shows that before the results. The announcer calls the result (and the unlock); the
+     * killers' [last words][lastWords] ride on the results for its card to say.
      *
      * The stable's clock is brought up to now first (as the minute tick would), so the newcomer joins from this
      * moment and decays like the rest through the next absence, even one that starts before the next tick. Only
@@ -751,13 +751,13 @@ class GameViewModel(
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
-        val results = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight)
+        val results = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight))
         val unlock = fight.cpu.id.takeIf { won && !fight.playerRan && !s.game.isUnlocked(it) }
         val voice = when {
             fight.playerRan -> emptyList()
             won -> listOf("you_win")
             else -> listOf("you_lose")
-        } + (if (unlock != null) listOf("unlocked") else emptyList()) + lastWords(fight)
+        } + if (unlock != null) listOf("unlocked") else emptyList()
         val game = if (unlock == null) {
             s.game.withPet(reward.pet)
         } else {
@@ -782,17 +782,17 @@ class GameViewModel(
     private fun Screen.Fight.playedOut(): Screen.Fight = copy(intense = intense || nearlyDone(fight))
 
     /**
-     * What the killers say once [fight] is over, after the announcer's YOU WIN or YOU LOSE: the winner's WIN line, then
-     * the loser's LOSE line, each from its own killer, against the CPU and in PvP alike (nothing from a killer with no
-     * lines). The player running off says nothing, as the announcer does then. Queued like his lines, never dropped.
+     * What the killers say once [fight] is over, for [Screen.Results.lastWords]: the winner's WIN line, then the
+     * loser's LOSE line, each from its own killer, against the CPU and in PvP alike (nothing from a killer with no
+     * lines). A fight either side ran from ends with no last words: no one was beaten.
      */
     private fun lastWords(fight: FightState): List<String> {
         val winner = fight.winner
-        if (winner == null || fight.playerRan) return emptyList()
+        if (winner == null || fight.playerRan || fight.cpuRan) return emptyList()
         val (champ, loser) = if (winner == Side.PLAYER) fight.player to fight.cpu else fight.cpu to fight.player
         return listOfNotNull(
-            killerLines(champ.id, Beat.WIN).randomOrNull(pickRng),
-            killerLines(loser.id, Beat.LOSE).randomOrNull(pickRng),
+            killerLines(champ.id, VoiceBeat.WIN).randomOrNull(pickRng),
+            killerLines(loser.id, VoiceBeat.LOSE).randomOrNull(pickRng),
         )
     }
 
@@ -1225,13 +1225,13 @@ class GameViewModel(
         val won = winner == Side.PLAYER
         return s.copy(
             game = s.game.withPet(reward.pet),
-            screen = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight),
+            screen = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight)),
             sfx = s.sfx + if (reward.levelsGained > 0) listOf("levelup") else emptyList(),
             voice = s.voice + when {
                 fight.playerRan -> emptyList()
                 won -> listOf("you_win")
                 else -> listOf("you_lose")
-            } + lastWords(fight),
+            },
         )
     }
 

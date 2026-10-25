@@ -2225,21 +2225,25 @@ class GameViewModelTest {
 
     @Test
     fun chuckyHasTheLastWord() {
-        // Chucky wins: the announcer calls it, then Chucky laughs.
+        // Chucky wins: the announcer calls it, and the results carry Chucky's laugh for their card to say.
         val win = Rig(strongChucky(), rng = plainScript(cpuPick = 0)).started()
         win.toFight(PetId.FREDDY)
         win.vm.consumeSounds()
         win.playOut(Move.STRIKE)
-        assertTrue((win.ui.screen as Screen.Results).won)
-        assertEquals(listOf("you_win", "chucky_win"), win.ui.voice)
+        val won = win.ui.screen as Screen.Results
+        assertTrue(won.won)
+        assertEquals(listOf("you_win"), win.ui.voice)
+        assertEquals(listOf("chucky_win"), won.lastWords)
 
-        // Losing to Chucky: the same laugh, his, after "You lose".
+        // Losing to Chucky: the same laugh, his.
         val loss = Rig(strongJason(), rng = plainScript(cpuPick = 40)).started()
         loss.toFight(PetId.CHUCKY)
         loss.vm.consumeSounds()
         loss.playOut(Move.BLOCK)
-        assertFalse((loss.ui.screen as Screen.Results).won)
-        assertEquals(listOf("you_lose", "chucky_win"), loss.ui.voice)
+        val lost = loss.ui.screen as Screen.Results
+        assertFalse(lost.won)
+        assertEquals(listOf("you_lose"), loss.ui.voice)
+        assertEquals(listOf("chucky_win"), lost.lastWords)
 
         // Running away says nothing at all.
         val run = Rig(strongChucky(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
@@ -2247,28 +2251,36 @@ class GameViewModelTest {
         run.vm.consumeSounds()
         run.vm.onMove(Move.RUN)
         run.finishAnim()
-        assertTrue((run.ui.screen as Screen.Results).ran)
+        val ran = run.ui.screen as Screen.Results
+        assertTrue(ran.ran)
         assertTrue(run.ui.voice.isEmpty())
+        assertTrue(ran.lastWords.isEmpty())
     }
 
     @Test
     fun chuckyBeatenHasTheLastWordToo() {
-        // Chucky loses: "You lose", then his parting shot.
+        // Chucky loses: "You lose", and his parting shot for the card.
         val loss = Rig(strongChucky(), rng = plainScript(cpuPick = 40)).started()
         loss.toFight(PetId.FREDDY)
         loss.vm.consumeSounds()
         loss.playOut(Move.BLOCK)
-        assertFalse((loss.ui.screen as Screen.Results).won)
-        assertEquals(listOf("you_lose", "chucky_lose"), loss.ui.voice)
+        val lost = loss.ui.screen as Screen.Results
+        assertFalse(lost.won)
+        assertEquals(listOf("you_lose"), loss.ui.voice)
+        assertEquals(listOf("chucky_lose"), lost.lastWords)
 
-        // Beating him when he was locked (Jason's strikes cut off every HEAVY): the unlock is the announcer's, then
-        // Chucky has his say.
+        // Beating him when he was locked (Jason's strikes cut off every HEAVY): the unlock is the announcer's, and
+        // Chucky's line waits on the results behind the unlock screen.
         val unlock = Rig(soloJason(), rng = plainScript(cpuPick = 40)).started()
         unlock.toFight(PetId.CHUCKY)
         unlock.vm.consumeSounds()
         unlock.playOut(Move.STRIKE)
-        assertEquals(PetId.CHUCKY, (unlock.ui.screen as Screen.Unlocked).pet)
-        assertEquals(listOf("you_win", "unlocked", "chucky_lose"), unlock.ui.voice)
+        val unlocked = unlock.ui.screen as Screen.Unlocked
+        assertEquals(PetId.CHUCKY, unlocked.pet)
+        assertEquals(listOf("you_win", "unlocked"), unlock.ui.voice)
+        assertEquals(listOf("chucky_lose"), unlocked.results.lastWords)
+        unlock.vm.onUnlockedDone()
+        assertEquals(listOf("chucky_lose"), (unlock.ui.screen as Screen.Results).lastWords)
     }
 
     @Test
