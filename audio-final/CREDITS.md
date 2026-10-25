@@ -1,7 +1,8 @@
 # Audio credits
 
 - **Music** (`music/`) and **sound effects** (`sfx/`): original, synthesized from scratch by
-  `tools/synth_audio.py` (NumPy). No samples or third-party recordings.
+  `tools/synth_audio.py` (NumPy), the meal-status sounds `perk_up` and `hangover` among them. No samples or
+  third-party recordings.
 - **Training sounds** (`sfx/`): the eight dot tones `tone_1` to `tone_8` are synthesized like the rest. `reel_spin`,
   `reel_stop`, `slash`, `stone_slide`, `squish`, `splat` and `game_over` were generated with ElevenLabs sound generation
   by `tools/generate_game_sfx.py`, then trimmed and normalized.

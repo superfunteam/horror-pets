@@ -31,9 +31,15 @@ nothing else.
   piles squash into one, to make room on the shelf). Every visit stocks the shelf with at least two pairs that cook
   into something good, and every item wears its name. The shelf keeps its kinds together (ways to cook, raw foods,
   snacks, meals, then slop), and the pantry says how hungry your killer is and how many of the recipes you have found;
-  put one item on the board and anything you have already made a dish with wears a check. Feed one to your killer and
-  it reacts to its taste: better food pays more, and every killer has a secret favorite to find. Still hungry? OK
-  feeds again without leaving.
+  put one item on the board and anything you have already made a dish with wears a check. Each way to cook says what
+  it does, on the board and on the shelf (the grill grills, fries and sears), and dishes wear a flavor mark (a red drop
+  for savory, a pink star for sweet, a green blot for gross). Feed one to your killer and it reacts to its taste: better
+  food pays more, and every killer has a secret favorite to find. The pantry's header remembers the flavors it has
+  loved or hated ("LOVES SAVORY · HATES GROSS"), never one it is merely fine with. What a meal leaves lasts a day, or
+  until it eats again, and shows in the pantry's reaction, on Home, on the VS card and in the fight HUD: a savory dish
+  leaves BEEFED UP (+15% damage), a sweet one SUGAR RUSH (meter starts half full), a gross one IRON STOMACH (+10% crit
+  chance), a botched dish HANGOVER (misses more, hits softer), and the killer's favorite dish FAVORITE FEAST (its
+  flavor's effect, and a third potion in the fight). Still hungry? OK feeds again without leaving.
 - **Training games:** TRAIN spins a film reel, slot-machine style, onto one of four quick games, each played until
   your first mistake: Slasher Says, Quick Draw, Hide and Eek! and Organ Drop. The better the score, the harder your
   killer trains (up to triple the strength and XP), and it keeps its best in each. Dropped it? TRY AGAIN on the
@@ -48,7 +54,8 @@ nothing else.
   own, and both resolve. Every hit lands with a blink of hit-stop, the knockout blow plays in slow motion with the
   arena drained of colour, a special turns the arena red under its own riff, and the music hardens when either
   fighter is nearly done. Damage pops up in red (−23); two potions a fight are tossed onto your killer for half to all
-  of its health back, in green (+34). On a phone, the hits buzz. Win XP, level up.
+  of its health back, in green (+34). On a phone, the hits buzz. Win XP, level up. A meal's status fights too, in CPU
+  fights only; PvP never uses it.
 - **Fight a friend:** PvP Battle, the last pick in FIGHT's opponent carousel, opens a room with a 4-digit code for a
   friend to type in, on a phone or a TV. On two phones it's simpler still: touch them back to back on Home and the
   fight starts, with no codes (both need NFC on and the same version of the game).

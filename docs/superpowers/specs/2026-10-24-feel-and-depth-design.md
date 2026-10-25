@@ -1,13 +1,17 @@
 # Feel and depth: meal perks, the Gauntlet, a living Home, fights that hit, and sound everywhere
 
 **Date:** 2026-10-24. **Status:** approved in chat; the tell is removed (open question 1 answered). Implemented in
-phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with
-the riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore)
-in the fights-that-hit plan. Tuned by eye: the intense join matches the plain track by speed (a plain seek landed
-120–170 ms late) and the switch back after a fight keeps its place too; the intense track's tom fills every 4 bars;
-the knockout's slow motion holds the sprites and the stage's waits while the damage number and the marks keep their
-own pace (accepted after review); and the music hardens as the turn's playback ends, not as the move is picked, so a
-knockout from above 30% ends the fight on the plain track.
+phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with the
+riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore) in
+the fights-that-hit plan, and A and G in the meal-perks plan. Tuned by eye: the intense join matches the plain track by
+speed (a plain seek landed 120–170 ms late) and the switch back after a fight keeps its place too; the intense track's
+tom fills every 4 bars; the knockout's slow motion holds the sprites and the stage's waits while the damage number and
+the marks keep their own pace (accepted after review); and the music hardens as the turn's playback ends, not as the
+move is picked, so a knockout from above 30% ends the fight on the plain track. Tuned by eye in the meal-perks plan:
+the HUD's meal chip shortens to one word (FEAST, IRON) or steps aside where even that will not fit, so COMBO, BLEED and
+DAZED always show whole; the VS card and the fight read the status at the moment the card opens; the flavor mark is a
+corner badge on the shelf label, with no text inset, so no name loses room; and a lit way-to-cook label runs three
+lines on TV, with the shelf 8 dp taller.
 
 ## Intent
 
