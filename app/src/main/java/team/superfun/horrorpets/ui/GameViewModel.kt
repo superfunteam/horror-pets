@@ -2,6 +2,7 @@ package team.superfun.horrorpets.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
@@ -108,6 +109,8 @@ class GameViewModel(
     private val onHostCode: (String?) -> Unit = {},
     /** A clock that only ever runs forward, in milliseconds, for short waits such as a tap's quiet moment. */
     private val uptimeMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** The zone of the player's clock, which says which hours of a time away the killers slept through. */
+    private val zone: TimeZone = TimeZone.getDefault(),
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -157,7 +160,7 @@ class GameViewModel(
         scope.launch {
             val loaded = loadOrNull() ?: GameState().also { savingDisabled = true }
             val now = clock.nowMs()
-            val (game, away) = applyElapsed(loaded, now, clockFloorMs)
+            val (game, away) = applyElapsed(loaded, now, clockFloorMs, zone)
             pendingAway = away
             _state.value = _state.value.copy(game = game, screen = Screen.Title, nowMs = now)
             persist(game)
@@ -215,7 +218,7 @@ class GameViewModel(
         val s = _state.value
         if (s.screen == Screen.Loading) return // the save has not been read yet: never overwrite it
         val now = clock.nowMs()
-        val (game, away) = applyElapsed(s.game, now, clockFloorMs)
+        val (game, away) = applyElapsed(s.game, now, clockFloorMs, zone)
         if (game == s.game) {
             _state.value = s.copy(nowMs = now) // nothing to save, but a meal's status still runs out on time
             return
@@ -729,7 +732,7 @@ class GameViewModel(
             s.game.withPet(reward.pet)
         } else {
             val now = clock.nowMs()
-            val current = applyElapsed(s.game.withPet(reward.pet), now, clockFloorMs).first
+            val current = applyElapsed(s.game.withPet(reward.pet), now, clockFloorMs, zone).first
             current.withPet(PetState(unlock, freshJoin = now < clockFloorMs))
         }
         return s.copy(

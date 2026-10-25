@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.game
 
+import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -22,6 +23,8 @@ import team.superfun.horrorpets.model.PetState
  *   `lastSeenMs`, so it cannot turn the next valid launch into a 30-day jump and a fake death.
  * - A clock that went backwards counts as zero elapsed time and never moves `lastSeenMs` back.
  * - Elapsed time is capped at [Tuning.MAX_ELAPSED_MS]; `lastSeenMs` still advances to the real now.
+ * - The hours of the stretch that fell in sleep hours on a clock in [zone] (see [sleepHoursBetween]) move hunger and
+ *   fun at [Tuning.SLEEP_DECAY_SHARE] of their pace. The welcome back still counts the whole stretch.
  * - Decay is linear and clamped, so applying two intervals back to back equals applying their sum.
  * - After [Tuning.FAKE_DEATH_AFTER_MS] away, every pet fake-dies (applied after the decay). The strength
  *   penalty is skipped for a pet whose fake death is already pending (not yet viewed).
@@ -34,6 +37,7 @@ fun applyElapsed(
     state: GameState,
     nowMs: Long,
     floorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
+    zone: TimeZone = TimeZone.getDefault(),
 ): Pair<GameState, AwaySummary> {
     if (nowMs < floorMs) return state to AwaySummary(0L, null, 0, emptySet())
 
@@ -45,7 +49,9 @@ fun applyElapsed(
     }
 
     val hours = elapsedMs.toDouble() / Tuning.HOUR_MS
-    var pets = state.pets.mapValues { (_, p) -> if (p.freshJoin) p else decay(p, hours) }
+    // The stretch applied ends now and is elapsedMs long: under the cap it starts after lastSeen, not at it.
+    val sleepHours = sleepHoursBetween(nowMs - elapsedMs, nowMs, zone)
+    var pets = state.pets.mapValues { (_, p) -> if (p.freshJoin) p else decay(p, hours, sleepHours) }
 
     val fakeDeath = if (elapsedMs >= Tuning.FAKE_DEATH_AFTER_MS) pets.filterValues { !it.freshJoin }.keys else emptySet()
     if (fakeDeath.isNotEmpty()) pets = pets.mapValues { (id, p) -> if (id in fakeDeath) fakeDie(p) else p }
@@ -66,12 +72,20 @@ private fun gapMs(nowMs: Long, lastSeenMs: Long): Long =
         Long.MAX_VALUE
     }
 
-private fun decay(p: PetState, hours: Double): PetState = p.copy(
-    hunger = clampStat(p.hunger + Tuning.HUNGER_PER_HOUR * hours),
-    funLevel = clampStat(p.funLevel - Tuning.FUN_PER_HOUR * hours),
-    strength = clampStat(p.strength - Tuning.STRENGTH_PER_HOUR * hours),
-    moodBonus = moveTowardZero(clampMoodBonus(p.moodBonus), Tuning.MOOD_BONUS_DECAY_PER_HOUR * hours),
-)
+/**
+ * [p] after [hours] of time away, [sleepHours] of them (at most [hours]) asleep: hunger and fun move at
+ * [Tuning.SLEEP_DECAY_SHARE] of their pace through the sleep, strength and the mood bonus at their full pace throughout.
+ */
+internal fun decay(p: PetState, hours: Double, sleepHours: Double): PetState {
+    // A sleeping hour counts for SLEEP_DECAY_SHARE of a waking one.
+    val hungerHours = hours - sleepHours * (1 - Tuning.SLEEP_DECAY_SHARE)
+    return p.copy(
+        hunger = clampStat(p.hunger + Tuning.HUNGER_PER_HOUR * hungerHours),
+        funLevel = clampStat(p.funLevel - Tuning.FUN_PER_HOUR * hungerHours),
+        strength = clampStat(p.strength - Tuning.STRENGTH_PER_HOUR * hours),
+        moodBonus = moveTowardZero(clampMoodBonus(p.moodBonus), Tuning.MOOD_BONUS_DECAY_PER_HOUR * hours),
+    )
+}
 
 /** Closed-form move toward 0 that stops at 0, so decaying a then b equals decaying a + b. */
 private fun moveTowardZero(v: Double, amount: Double): Double =

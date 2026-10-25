@@ -18,6 +18,11 @@ object Tuning {
     const val STRENGTH_PER_HOUR = 1.0 / 6
     const val MOOD_BONUS_DECAY_PER_HOUR = 5.0
 
+    // Sleep (23:00 to 06:00 by the local clock, see isSleepHour): hunger and fun move at this share of their waking
+    // pace (strength and the mood bonus at their full pace), and a press wakes the killer for AWAKE_MS
+    const val SLEEP_DECAY_SHARE = 0.5
+    const val AWAKE_MS = 10 * MINUTE_MS
+
     // Fake death: the pet "dies" if left alone this long, and elapsed time is capped.
     const val FAKE_DEATH_AFTER_MS = 7 * DAY_MS
     const val MAX_ELAPSED_MS = 30 * DAY_MS

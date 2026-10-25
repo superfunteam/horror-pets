@@ -3,6 +3,7 @@
 package team.superfun.horrorpets.ui
 
 import java.io.IOException
+import java.util.TimeZone
 import kotlin.random.Random
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -71,7 +72,7 @@ import team.superfun.horrorpets.musicTrackFor
 import team.superfun.horrorpets.ui.fight.nearlyDone
 import team.superfun.horrorpets.ui.switcher.lineup
 
-// A realistic epoch (2027-01-15), safely past Tuning.MIN_VALID_EPOCH_MS.
+// A realistic epoch (2027-01-15 08:00 UTC), safely past Tuning.MIN_VALID_EPOCH_MS.
 private const val T0 = 1_800_000_000_000L
 private const val HOUR = Tuning.HOUR_MS
 private const val DAY = Tuning.DAY_MS
@@ -169,6 +170,8 @@ private class Rig(
     val clock: FakeClock = FakeClock(T0),
     clockFloorMs: Long = Tuning.MIN_VALID_EPOCH_MS,
     pickRng: Random = Random.Default,
+    // UTC, so the sleep hours fall in the same place on every machine: T0 is 08:00 there, 15 hours before bedtime.
+    zone: TimeZone = TimeZone.getTimeZone("UTC"),
 ) {
     val errors = mutableListOf<Throwable>()
     val scope = TestScope(StandardTestDispatcher())
@@ -182,6 +185,7 @@ private class Rig(
         onError = { errors += it },
         clockFloorMs = clockFloorMs,
         pickRng = pickRng,
+        zone = zone,
     )
 
     val ui: UiState get() = vm.state.value
@@ -2372,6 +2376,19 @@ class GameViewModelTest {
             rig.vm.tick()
         }
         assertEquals(32.0, rig.jason.hunger, 1e-9)
+    }
+
+    @Test
+    fun theKillersSleepThroughTheNightOnThePlayersClock() {
+        // T0 is 23:00 in Anchorage (UTC-9 in January), so the seven hours after it are all asleep: hunger moves at
+        // half pace (20 + 7 * 4 / 2) whether the app was closed through them or open and ticking.
+        val anchorage = TimeZone.getTimeZone("America/Anchorage")
+        val closed = Rig(gameOf(), clock = FakeClock(T0 + 7 * HOUR), zone = anchorage).started()
+        assertEquals(34.0, closed.jason.hunger, 1e-9)
+        val open = Rig(gameOf(), zone = anchorage).started()
+        open.clock.now += 7 * HOUR
+        open.vm.tick()
+        assertEquals(34.0, open.jason.hunger, 1e-9)
     }
 
     @Test

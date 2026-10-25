@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.game
 
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -13,8 +14,17 @@ class DecayTest {
     private val hour = 3_600_000L
     private val day = 24 * hour
 
-    /** A valid 2025 timestamp, comfortably above Tuning.MIN_VALID_EPOCH_MS. */
+    /** Every stretch is read by UTC, so the sleep hours fall in the same place on every machine. */
+    private val utc = TimeZone.getTimeZone("UTC")
+
+    /**
+     * A valid 2025 timestamp, comfortably above Tuning.MIN_VALID_EPOCH_MS. It is 08:53 UTC, so a stretch from it of up
+     * to 14 hours is all awake.
+     */
     private val t0 = 1_760_000_000_000L
+
+    /** 22:00 UTC on the day of [t0]. */
+    private val tenPm = 1_760_047_200_000L
 
     /** A stable with every killer in it, so decay can be checked on all of them. */
     private val everyone = PetId.entries.associateWith { PetState(it) }
@@ -38,7 +48,7 @@ class DecayTest {
     @Test
     fun firstRunSetsLastSeenWithoutDecay() {
         val state = GameState(pets = everyone, lastSeenMs = null)
-        val (next, summary) = applyElapsed(state, t0)
+        val (next, summary) = applyElapsed(state, t0, zone = utc)
         assertEquals(state.pets, next.pets)
         assertEquals(t0, next.lastSeenMs)
         assertEquals(0L, summary.elapsedMs)
@@ -49,7 +59,7 @@ class DecayTest {
 
     @Test
     fun tenHoursDecays() {
-        val (next, summary) = applyElapsed(seen(), t0 + 10 * hour)
+        val (next, summary) = applyElapsed(seen(), t0 + 10 * hour, zone = utc)
         for (id in PetId.entries) {
             val p = next.pets.getValue(id)
             assertEquals(60.0, p.hunger, 0.001)
@@ -70,9 +80,9 @@ class DecayTest {
                     (PetId.FREDDY to s.pets.getValue(PetId.FREDDY).copy(moodBonus = -22.0)),
             )
         }
-        val single = applyElapsed(start, t0 + 10 * hour).first
-        val half = applyElapsed(start, t0 + 5 * hour).first
-        val split = applyElapsed(half, t0 + 10 * hour).first
+        val single = applyElapsed(start, t0 + 10 * hour, zone = utc).first
+        val half = applyElapsed(start, t0 + 5 * hour, zone = utc).first
+        val split = applyElapsed(half, t0 + 10 * hour, zone = utc).first
 
         assertEquals(single.lastSeenMs, split.lastSeenMs)
         for (id in PetId.entries) assertPetEquals(single.pets.getValue(id), split.pets.getValue(id))
@@ -87,24 +97,24 @@ class DecayTest {
                     (PetId.FREDDY to s.pets.getValue(PetId.FREDDY).copy(moodBonus = -30.0)),
             )
         }
-        val twoH = applyElapsed(start, t0 + 2 * hour).first
+        val twoH = applyElapsed(start, t0 + 2 * hour, zone = utc).first
         assertEquals(20.0, twoH.pets.getValue(PetId.JASON).moodBonus, 1e-9)
         assertEquals(-20.0, twoH.pets.getValue(PetId.FREDDY).moodBonus, 1e-9)
 
-        val fourH = applyElapsed(twoH, t0 + 4 * hour).first
-        val fourHDirect = applyElapsed(start, t0 + 4 * hour).first
+        val fourH = applyElapsed(twoH, t0 + 4 * hour, zone = utc).first
+        val fourHDirect = applyElapsed(start, t0 + 4 * hour, zone = utc).first
         assertEquals(10.0, fourH.pets.getValue(PetId.JASON).moodBonus, 1e-9)
         for (id in PetId.entries) assertPetEquals(fourHDirect.pets.getValue(id), fourH.pets.getValue(id))
 
         // Never overshoots past zero.
-        val sixH = applyElapsed(fourH, t0 + 12 * hour).first
+        val sixH = applyElapsed(fourH, t0 + 12 * hour, zone = utc).first
         assertEquals(0.0, sixH.pets.getValue(PetId.JASON).moodBonus, 0.0)
         assertEquals(0.0, sixH.pets.getValue(PetId.FREDDY).moodBonus, 0.0)
     }
 
     @Test
     fun clampsAtBounds() {
-        val (next, _) = applyElapsed(seen(), t0 + 48 * hour)
+        val (next, _) = applyElapsed(seen(), t0 + 48 * hour, zone = utc)
         for (id in PetId.entries) {
             val p = next.pets.getValue(id)
             assertEquals(100.0, p.hunger, 0.0)
@@ -116,7 +126,7 @@ class DecayTest {
     @Test
     fun backwardsClockIsZeroAndKeepsLastSeen() {
         val state = seen(at = t0 + 10 * hour)
-        val (next, summary) = applyElapsed(state, t0)
+        val (next, summary) = applyElapsed(state, t0, zone = utc)
         assertEquals(state.pets, next.pets)
         assertEquals(t0 + 10 * hour, next.lastSeenMs)
         assertEquals(0L, summary.elapsedMs)
@@ -126,13 +136,13 @@ class DecayTest {
     @Test
     fun clockBeforeFloorIsIgnored() {
         val fresh = GameState(pets = everyone, lastSeenMs = null)
-        val (a, aSummary) = applyElapsed(fresh, 5_000)
+        val (a, aSummary) = applyElapsed(fresh, 5_000, zone = utc)
         assertEquals(fresh.pets, a.pets)
         assertNull(a.lastSeenMs)
         assertEquals(0L, aSummary.elapsedMs)
 
         val state = seen()
-        val (b, bSummary) = applyElapsed(state, 5_000)
+        val (b, bSummary) = applyElapsed(state, 5_000, zone = utc)
         assertEquals(state.pets, b.pets)
         assertEquals(t0, b.lastSeenMs)
         assertEquals(0L, bSummary.elapsedMs)
@@ -144,7 +154,7 @@ class DecayTest {
         // A corrupt/old save holding a 1970-ish timestamp must not become a 30-day jump (and a fake
         // death for every pet) on the next valid launch: it counts as "never seen".
         val state = seen(at = 5_000)
-        val (next, summary) = applyElapsed(state, t0)
+        val (next, summary) = applyElapsed(state, t0, zone = utc)
         assertEquals(state.pets, next.pets)
         assertEquals(t0, next.lastSeenMs)
         assertEquals(0L, summary.elapsedMs)
@@ -155,8 +165,8 @@ class DecayTest {
     fun clockFloorIsJanuaryFirst2024() {
         assertEquals(1_704_067_200_000L, Tuning.MIN_VALID_EPOCH_MS)
         // Exactly at the floor is valid (first run records it); one ms below is not.
-        assertEquals(Tuning.MIN_VALID_EPOCH_MS, applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS).first.lastSeenMs)
-        assertNull(applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS - 1).first.lastSeenMs)
+        assertEquals(Tuning.MIN_VALID_EPOCH_MS, applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS, zone = utc).first.lastSeenMs)
+        assertNull(applyElapsed(GameState(), Tuning.MIN_VALID_EPOCH_MS - 1, zone = utc).first.lastSeenMs)
     }
 
     @Test
@@ -165,14 +175,14 @@ class DecayTest {
         // app was installed. The floor is the install time, so that date is recognised as stale.
         val floor = t0 + 30 * day
         val state = seen(at = t0)
-        val (next, summary) = applyElapsed(state, t0 + 10 * day, floorMs = floor)
+        val (next, summary) = applyElapsed(state, t0 + 10 * day, floorMs = floor, zone = utc)
         assertEquals("no decay and no lastSeen write", state, next)
         assertEquals(0L, summary.elapsedMs)
         assertTrue(summary.fakeDeath.isEmpty())
 
         val fresh = GameState(pets = everyone, lastSeenMs = null)
-        assertNull(applyElapsed(fresh, floor - 1, floorMs = floor).first.lastSeenMs)
-        assertEquals(floor, applyElapsed(fresh, floor, floorMs = floor).first.lastSeenMs)
+        assertNull(applyElapsed(fresh, floor - 1, floorMs = floor, zone = utc).first.lastSeenMs)
+        assertEquals(floor, applyElapsed(fresh, floor, floorMs = floor, zone = utc).first.lastSeenMs)
     }
 
     @Test
@@ -181,19 +191,19 @@ class DecayTest {
         val floor = t0 + 30 * day
         val state = seen(at = t0)
         val now = floor + 2 * hour
-        val (next, summary) = applyElapsed(state, now, floorMs = floor)
+        val (next, summary) = applyElapsed(state, now, floorMs = floor, zone = utc)
         assertEquals(state.pets, next.pets)
         assertEquals(now, next.lastSeenMs)
         assertEquals(0L, summary.elapsedMs)
         assertTrue(summary.fakeDeath.isEmpty())
 
         // The same save with the default floor is a 32-day absence (capped at 30) and a fake death.
-        assertTrue(applyElapsed(state, now).second.fakeDeath.isNotEmpty())
+        assertTrue(applyElapsed(state, now, zone = utc).second.fakeDeath.isNotEmpty())
     }
 
     @Test
     fun hugeJumpIsCapped() {
-        val (next, summary) = applyElapsed(seen(), t0 + 400 * day)
+        val (next, summary) = applyElapsed(seen(), t0 + 400 * day, zone = utc)
         assertEquals(30 * day, summary.elapsedMs)
         assertEquals(PetId.entries.toSet(), summary.fakeDeath)
         for (id in PetId.entries) assertTrue(next.pets.getValue(id).fakeDeathPending)
@@ -206,7 +216,7 @@ class DecayTest {
         val strong = seen().let { s ->
             s.copy(pets = s.pets.mapValues { (_, p) -> p.copy(strength = 80.0, level = 4, xp = 37) })
         }
-        val (next, summary) = applyElapsed(strong, t0 + 7 * day)
+        val (next, summary) = applyElapsed(strong, t0 + 7 * day, zone = utc)
         assertEquals(PetId.entries.toSet(), summary.fakeDeath)
         // Strength decays for 168 h first (80 - 28 = 52), then the fake death takes 20% off.
         val expectedStrength = (80.0 - 168.0 / 6) * 0.8
@@ -225,7 +235,7 @@ class DecayTest {
     fun secondFakeDeathBeforeViewingDoesNotCompoundStrength() {
         val strong = seen().let { s -> s.copy(pets = s.pets.mapValues { (_, p) -> p.copy(strength = 80.0) }) }
 
-        val (first, _) = applyElapsed(strong, t0 + 7 * day)
+        val (first, _) = applyElapsed(strong, t0 + 7 * day, zone = utc)
         val s1 = (80.0 - 168.0 / 6) * 0.8
         for (id in PetId.entries) {
             assertTrue(first.pets.getValue(id).fakeDeathPending)
@@ -233,7 +243,7 @@ class DecayTest {
         }
 
         // The fake death has not been viewed yet (pending is still true) when another 7 days pass.
-        val (second, summary) = applyElapsed(first, t0 + 14 * day)
+        val (second, summary) = applyElapsed(first, t0 + 14 * day, zone = utc)
         assertEquals(PetId.entries.toSet(), summary.fakeDeath)
         for (id in PetId.entries) {
             val p = second.pets.getValue(id)
@@ -254,7 +264,7 @@ class DecayTest {
                 p.copy(strength = 80.0, fakeDeathPending = id == PetId.JASON)
             },
         )
-        val (next, _) = applyElapsed(mixed, t0 + 7 * day)
+        val (next, _) = applyElapsed(mixed, t0 + 7 * day, zone = utc)
         val decayed = 80.0 - 168.0 / 6
         assertEquals(decayed, next.pets.getValue(PetId.JASON).strength, 1e-9)
         assertEquals(decayed * 0.8, next.pets.getValue(PetId.FREDDY).strength, 1e-9)
@@ -269,7 +279,7 @@ class DecayTest {
     fun freshPetsSitOutTheTimeAwayAndAreThenTreatedLikeEveryoneElse() {
         // A save from before Chucky and Michael existed: they were added at their defaults on load.
         val loaded = joining(seen(), PetId.CHUCKY, PetId.MICHAEL)
-        val (next, summary) = applyElapsed(loaded, t0 + 8 * day)
+        val (next, summary) = applyElapsed(loaded, t0 + 8 * day, zone = utc)
         assertEquals(PetState(PetId.CHUCKY), next.pets.getValue(PetId.CHUCKY))
         assertEquals(PetState(PetId.MICHAEL), next.pets.getValue(PetId.MICHAEL))
         assertEquals(PetId.entries.toSet() - PetId.CHUCKY - PetId.MICHAEL, summary.fakeDeath)
@@ -277,15 +287,15 @@ class DecayTest {
         assertTrue(next.pets.values.none { it.freshJoin })
 
         // From then on they decay with the rest.
-        val (later, _) = applyElapsed(next, t0 + 8 * day + 10 * hour)
+        val (later, _) = applyElapsed(next, t0 + 8 * day + 10 * hour, zone = utc)
         assertEquals(20.0 + 40.0, later.pets.getValue(PetId.CHUCKY).hunger, 1e-9)
     }
 
     @Test
     fun theFreshMarkIsClearedEvenWhenNoTimeHasPassed() {
-        val (next, _) = applyElapsed(joining(seen(), PetId.MICHAEL), t0)
+        val (next, _) = applyElapsed(joining(seen(), PetId.MICHAEL), t0, zone = utc)
         assertTrue(next.pets.values.none { it.freshJoin })
-        val (firstRun, _) = applyElapsed(joining(GameState(pets = everyone), PetId.MICHAEL), t0)
+        val (firstRun, _) = applyElapsed(joining(GameState(pets = everyone), PetId.MICHAEL), t0, zone = utc)
         assertTrue(firstRun.pets.values.none { it.freshJoin })
     }
 
@@ -293,21 +303,21 @@ class DecayTest {
     fun freshPetsWaitOutAStaleBootClock() {
         // The clock has not synced yet: nothing is applied, so the mark stays (and is saved) for the real update.
         val marked = joining(seen(), PetId.CHUCKY)
-        val (next, _) = applyElapsed(marked, Tuning.MIN_VALID_EPOCH_MS - 1)
+        val (next, _) = applyElapsed(marked, Tuning.MIN_VALID_EPOCH_MS - 1, zone = utc)
         assertEquals(marked, next)
         assertTrue(next.pets.getValue(PetId.CHUCKY).freshJoin)
     }
 
     @Test
     fun justUnderSevenDaysNoFakeDeath() {
-        val (next, summary) = applyElapsed(seen(), t0 + 7 * day - 1)
+        val (next, summary) = applyElapsed(seen(), t0 + 7 * day - 1, zone = utc)
         assertTrue(summary.fakeDeath.isEmpty())
         for (id in PetId.entries) assertFalse(next.pets.getValue(id).fakeDeathPending)
     }
 
     @Test
     fun sixDaysNoFakeDeath() {
-        val (next, summary) = applyElapsed(seen(), t0 + 6 * day)
+        val (next, summary) = applyElapsed(seen(), t0 + 6 * day, zone = utc)
         assertTrue(summary.fakeDeath.isEmpty())
         for (id in PetId.entries) {
             val p = next.pets.getValue(id)
@@ -318,8 +328,30 @@ class DecayTest {
     }
 
     @Test
+    fun asleepTheHungerGrowsAtHalfSpeed() {
+        val p = PetState(PetId.JASON, hunger = 20.0, funLevel = 80.0, strength = 20.0, moodBonus = 30.0)
+        val slept = decay(p, hours = 10.0, sleepHours = 10.0)
+        assertEquals(20.0 + Tuning.HUNGER_PER_HOUR * 5, slept.hunger, 1e-9)
+        assertEquals(80.0 - Tuning.FUN_PER_HOUR * 5, slept.funLevel, 1e-9)
+        // Strength and the mood bonus fade for all ten hours: the bonus's 50 points' worth takes the whole 30.
+        assertEquals(20.0 - Tuning.STRENGTH_PER_HOUR * 10, slept.strength, 1e-9)
+        assertEquals(0.0, slept.moodBonus, 0.0)
+    }
+
+    @Test
+    fun theWelcomeBackCountsTheWholeStretch() {
+        assertEquals(22, localHour(tenPm, utc))
+        // 22:00 to 08:00: ten hours away, seven of them asleep, so hunger rose for 10 - 7 * 0.5 = 6.5 hours' worth.
+        val (next, summary) = applyElapsed(seen(at = tenPm), tenPm + 10 * hour, zone = utc)
+        assertEquals(20.0 + Tuning.HUNGER_PER_HOUR * 6.5, next.pets.getValue(PetId.JASON).hunger, 1e-9)
+        assertEquals(10 * hour, summary.elapsedMs)
+        assertEquals("Hunger", summary.biggestStat)
+        assertEquals(26, summary.biggestDelta)
+    }
+
+    @Test
     fun summaryBiggestChange() {
-        val (_, summary) = applyElapsed(seen(), t0 + 2 * hour)
+        val (_, summary) = applyElapsed(seen(), t0 + 2 * hour, zone = utc)
         assertEquals(2 * hour, summary.elapsedMs)
         assertEquals("Hunger", summary.biggestStat)
         assertEquals(8, summary.biggestDelta)
@@ -331,7 +363,7 @@ class DecayTest {
         val s = seen().let { st ->
             st.copy(pets = st.pets + (PetId.JASON to st.pets.getValue(PetId.JASON).copy(hunger = 99.0)))
         }
-        val (_, summary) = applyElapsed(s, t0 + 2 * hour)
+        val (_, summary) = applyElapsed(s, t0 + 2 * hour, zone = utc)
         assertEquals("Fun", summary.biggestStat)
         assertEquals(-6, summary.biggestDelta)
     }
@@ -340,7 +372,7 @@ class DecayTest {
     fun summaryIsForSelectedPet() {
         val base = seen(selected = PetId.PINHEAD)
         val s = base.copy(pets = base.pets + (PetId.PINHEAD to base.pets.getValue(PetId.PINHEAD).copy(hunger = 99.0)))
-        val (_, summary) = applyElapsed(s, t0 + 2 * hour)
+        val (_, summary) = applyElapsed(s, t0 + 2 * hour, zone = utc)
         // PINHEAD's hunger only moves +1 (clamped), so fun (-6) is the biggest change.
         assertEquals("Fun", summary.biggestStat)
         assertEquals(-6, summary.biggestDelta)
@@ -350,14 +382,14 @@ class DecayTest {
     fun summaryFallsBackToJasonWhenNothingSelected() {
         val base = seen(selected = null)
         val s = base.copy(pets = base.pets + (PetId.JASON to base.pets.getValue(PetId.JASON).copy(hunger = 99.0)))
-        val (_, summary) = applyElapsed(s, t0 + 2 * hour)
+        val (_, summary) = applyElapsed(s, t0 + 2 * hour, zone = utc)
         assertEquals("Fun", summary.biggestStat)
         assertEquals(-6, summary.biggestDelta)
     }
 
     @Test
     fun tinyElapsedHasNoNoticeableChange() {
-        val (_, summary) = applyElapsed(seen(), t0 + 1_000)
+        val (_, summary) = applyElapsed(seen(), t0 + 1_000, zone = utc)
         assertNull(summary.biggestStat)
         assertEquals(0, summary.biggestDelta)
     }
@@ -372,7 +404,7 @@ class DecayTest {
                     ),
             )
         }
-        val (next, _) = applyElapsed(s, t0 + 3 * hour)
+        val (next, _) = applyElapsed(s, t0 + 3 * hour, zone = utc)
         val p = next.pets.getValue(PetId.GHOSTFACE)
         assertEquals(5, p.level)
         assertEquals(44, p.xp)
