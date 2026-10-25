@@ -186,12 +186,7 @@ class RosterAssetsTest {
         // loaded by name, so a missing one would just be silence.
         val calls = listOf("finish_him", "flawless_victory", "first_blood", "last_chance", "comeback") +
             (2..7).map { "bout_$it" } + listOf("final_bout", "champion")
-        assertEquals(13, calls.size)
-        for (line in calls) {
-            val wav = file("audio-final/voice/$line.wav")
-            assertTrue(line, wav.isFile)
-            assertEquals("$line: channels, rate, bits", Triple(1, 44_100, 16), wavFormat(wav.readBytes()))
-        }
+        for (line in calls) assertShippedWav("audio-final/voice/$line.wav")
     }
 
     @Test
@@ -259,7 +254,7 @@ class RosterAssetsTest {
         // A hit in a fight sounds like the attacker's weapon: `hit_<pet>` for a strike or a counter, `heavy_<pet>` for a heavy.
         for (id in PetId.entries) {
             val pet = id.name.lowercase()
-            for (sfx in listOf("hit_$pet", "heavy_$pet")) assertTrue(sfx, file("audio-final/sfx/$sfx.wav").isFile)
+            for (sfx in listOf("hit_$pet", "heavy_$pet")) assertShippedWav("audio-final/sfx/$sfx.wav")
         }
     }
 
@@ -268,7 +263,7 @@ class RosterAssetsTest {
         // A killer's lines are voice clips, loaded like the announcer's by name: every one the table can hand out is there.
         val lines = PetId.entries.flatMap { pet -> VoiceBeat.entries.flatMap { killerLines(pet, it) } }
         assertEquals("Chucky's seventeen", 17, lines.distinct().size)
-        for (line in lines) assertTrue(line, file("audio-final/voice/$line.wav").isFile)
+        for (line in lines) assertShippedWav("audio-final/voice/$line.wav")
     }
 
     @Test
@@ -290,6 +285,13 @@ class RosterAssetsTest {
         }
         assertEquals("tone_1", tone(0))
         assertEquals("tone_8", tone(7))
+    }
+
+    /** The clip at [path] is there and is the format SoundPool is fed: 16-bit PCM mono at 44.1 kHz. */
+    private fun assertShippedWav(path: String) {
+        val wav = file(path)
+        assertTrue(path, wav.isFile)
+        assertEquals("$path: channels, rate, bits", Triple(1, 44_100, 16), wavFormat(wav.readBytes()))
     }
 
     /** A 16-bit PCM WAV's (channels, sample rate, bits per sample), from its fmt chunk. */

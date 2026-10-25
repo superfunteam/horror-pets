@@ -259,9 +259,9 @@ internal fun warmFightStrips(loader: AssetLoader, player: PetId, cpu: PetId) {
  *    then the announcer reacts to the turn's biggest moment as it lands ([Callouts]: the fight's first hit, short of
  *    a knockout, is always "First blood!"); in a turn he has no call in,
  *    short of the last, a killer with lines of its own may have its say about a blow, a block or a whiff
- *    ([Quips]); a special whose blow comes later in its effect (The Shape's slash, Jaws's oxygen tank landing) lands its number and drain
- *    then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast flashes the screen white
- *    and shakes it hard ([specialJolt]). A hit stops the fight's clock as it lands ([hitStopFor]): its sound plays,
+ *    ([Quips]); a special whose blow comes later in its effect (The Shape's slash, a thrown tank landing) lands
+ *    its number and drain then, its sound timed to hit with them (see [specialLandsAtMs]), and the tank's blast
+ *    flashes the screen white and shakes it hard ([specialJolt]). A hit stops the fight's clock as it lands ([hitStopFor]): its sound plays,
  *    both fighters freeze for a blink, and its number, flash, shake and drain come as time resumes. The blow that
  *    wins the fight then crawls in slow motion, the scene and the fighters greying, with a low boom ([knockout]).
  * 3. If the fight is over (always read from `fight.winner`), the loser plays FAIL and greys out under a

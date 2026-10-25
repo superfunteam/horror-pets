@@ -76,6 +76,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -553,12 +554,13 @@ fun HomeScreen(
             }
         }
 
-        // Now and then a killer with a voice says something of its own: every 25–45 s, drawn afresh each time, if it is
-        // quiet when the time comes. A stroll or a glance is quiet; a gag, a walk, a bubble, sleep or the stable's menu
-        // (open over the killer, the player busy picking) is not, and a line missed to one is not said late. Only on
-        // the Home being shown (not one fading out on the way elsewhere), and only in the foreground: the timer starts
-        // over when the app comes back, so nothing piles up while it is away. Queued behind the announcer, never over
-        // him.
+        // Now and then a killer with a voice says something of its own: after a wait of 25–45 s, drawn afresh each
+        // time, that runs only while it is quiet. A stroll or a glance is quiet; a gag, a walk, a bubble, sleep or the
+        // stable's menu (open over the killer, the player busy picking) is not: the wait is dropped the moment it
+        // stops being quiet and drawn again when it is, so a line never lands right behind a reply or a gag, and one
+        // missed to them is not said late. Only on the Home being shown (not one fading out on the way elsewhere),
+        // and only in the foreground: the wait starts over when the app comes back, so nothing piles up while it is
+        // away. Queued behind the announcer, never over him.
         val quiet by rememberUpdatedState(
             focusEntry != null && idle && playing == null && bubble == null && !asleep && !state.stableOpen,
         )
@@ -566,10 +568,13 @@ fun HomeScreen(
             val lines = killerLines(petId, VoiceBeat.IDLE)
             if (lines.isEmpty()) return@LaunchedEffect
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    val nextAt = nextIdleLineAt(SystemClock.uptimeMillis(), Random)
-                    delay(nextAt - SystemClock.uptimeMillis())
-                    if (idleLineDue(SystemClock.uptimeMillis(), nextAt, quiet)) sounds.voice(listOf(lines.random()))
+                snapshotFlow { quiet }.collectLatest { isQuiet ->
+                    // collectLatest cancels this wait the moment quiet turns false.
+                    while (isQuiet) {
+                        val nextAt = nextIdleLineAt(SystemClock.uptimeMillis(), Random)
+                        delay(nextAt - SystemClock.uptimeMillis())
+                        if (idleLineDue(SystemClock.uptimeMillis(), nextAt, quiet)) sounds.voice(listOf(lines.random()))
+                    }
                 }
             }
         }

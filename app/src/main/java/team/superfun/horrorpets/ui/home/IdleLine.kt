@@ -2,11 +2,9 @@ package team.superfun.horrorpets.ui.home
 
 import kotlin.random.Random
 
-/**
- * When Home's killer says something of its own (one of its idle lines, see `killerLines`), kept free of Compose so it
- * can be tested: every [IDLE_LINE_MIN_MS]–[IDLE_LINE_MAX_MS], drawn afresh each time, and only while nothing else is
- * going on.
- */
+// When Home's killer says something of its own (one of its idle lines, see `killerLines`), kept free of Compose so it
+// can be tested: every IDLE_LINE_MIN_MS to IDLE_LINE_MAX_MS of quiet time, drawn afresh each time, and only while
+// nothing else is going on.
 
 /** The shortest wait for the next idle line. */
 const val IDLE_LINE_MIN_MS = 25_000L

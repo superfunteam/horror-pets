@@ -35,9 +35,9 @@ class HapticsTest {
         assertArrayEquals(longArrayOf(40, 60, 40), hapticFor("levelup"))
     }
 
-    @Test fun theWeaponSoundsToComeBuzzAsTheirPlainKind() {
-        assertArrayEquals(longArrayOf(15), hapticFor("hit_axe"))
-        assertArrayEquals(longArrayOf(35), hapticFor("heavy_axe"))
+    @Test fun aWeaponBuzzesLikeItsPlainKind() {
+        assertArrayEquals(longArrayOf(15), hapticFor("hit_jason"))
+        assertArrayEquals(longArrayOf(35), hapticFor("heavy_leatherface"))
     }
 
     @Test fun aSoundWithNoBuzzGivesNull() {

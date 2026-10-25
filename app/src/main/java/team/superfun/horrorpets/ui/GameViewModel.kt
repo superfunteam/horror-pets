@@ -756,7 +756,9 @@ class GameViewModel(
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
-        val results = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight))
+        val results = Screen.Results(
+            reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight),
+        )
         val unlock = fight.cpu.id.takeIf { won && !fight.playerRan && !s.game.isUnlocked(it) }
         val voice = when {
             fight.playerRan -> emptyList()
@@ -1257,9 +1259,9 @@ class GameViewModel(
     }
 
     /**
-     * A PvP turn's animation is over: the next turn's watch starts (the fight may turn intense now, see
-     * [playedOut]), or the fight is paid like any other (but unlocks no one: the other killer is someone else's) and
-     * the room is left.
+     * A PvP turn's animation is over: the next turn's watch starts (the fight may turn intense now, and the
+     * announcer's calls are queued, as [playedOut] does: FIRST BLOOD is the callout's, here it is LAST CHANCE), or
+     * the fight is paid like any other (but unlocks no one: the other killer is someone else's) and the room is left.
      */
     private fun finishPvpTurn(s: UiState): UiState {
         val screen = s.screen as? Screen.Fight ?: return s
@@ -1275,7 +1277,9 @@ class GameViewModel(
         val won = winner == Side.PLAYER
         return s.copy(
             game = s.game.withPet(reward.pet),
-            screen = Screen.Results(reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight)),
+            screen = Screen.Results(
+                reward, won = won, ran = fight.playerRan, fight = fight, lastWords = lastWords(fight),
+            ),
             sfx = s.sfx + if (reward.levelsGained > 0) listOf("levelup") else emptyList(),
             voice = s.voice + when {
                 fight.playerRan -> emptyList()
