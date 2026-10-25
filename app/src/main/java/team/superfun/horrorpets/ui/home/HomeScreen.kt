@@ -554,12 +554,13 @@ fun HomeScreen(
         }
 
         // Now and then a killer with a voice says something of its own: every 25–45 s, drawn afresh each time, if it is
-        // quiet when the time comes. A stroll or a glance is quiet; a gag, a walk, a bubble or sleep is not, and a line
-        // missed to one is not said late. Only on the Home being shown (not one fading out on the way elsewhere), and
-        // only in the foreground: the timer starts over when the app comes back, so nothing piles up while it is away.
-        // Queued behind the announcer, never over him.
+        // quiet when the time comes. A stroll or a glance is quiet; a gag, a walk, a bubble, sleep or the stable's menu
+        // (open over the killer, the player busy picking) is not, and a line missed to one is not said late. Only on
+        // the Home being shown (not one fading out on the way elsewhere), and only in the foreground: the timer starts
+        // over when the app comes back, so nothing piles up while it is away. Queued behind the announcer, never over
+        // him.
         val quiet by rememberUpdatedState(
-            focusEntry != null && idle && playing == null && bubble == null && !asleep,
+            focusEntry != null && idle && playing == null && bubble == null && !asleep && !state.stableOpen,
         )
         LaunchedEffect(petId, lifecycleOwner) {
             val lines = killerLines(petId, VoiceBeat.IDLE)

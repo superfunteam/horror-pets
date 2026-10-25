@@ -1,10 +1,10 @@
 package team.superfun.horrorpets.ui.pantry
 
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import kotlin.random.Random
 import org.junit.Test
 import team.superfun.horrorpets.assets.Anim
 import team.superfun.horrorpets.audio.VoiceBeat
@@ -239,16 +239,24 @@ class ReactionTest {
 
     @Test
     fun aVoicelessKillerOrAReplaySaysNothing() {
-        // Every killer but Chucky has no lines yet: the reaction plays as ever, with no voice.
-        for (pet in PetId.entries.filter { it != CHUCKY }) {
+        // As the voice table has it: a killer with FEED lines says one of its own, one without plays the reaction as
+        // ever, with no voice.
+        for (pet in PetId.entries) {
+            val lines = killerLines(pet, VoiceBeat.FEED)
             for (reaction in Reaction.entries) {
                 val cue = reactionCue(fed(reaction, levels = 0, pet = pet), replay = false, rng = Random(1))
-                assertNull("$pet $reaction", cue.voice)
+                if (lines.isEmpty()) {
+                    assertNull("$pet $reaction", cue.voice)
+                } else {
+                    assertTrue("$pet $reaction: ${cue.voice}", cue.voice in lines)
+                }
             }
         }
-        // Coming back to a meal already eaten is silent, Chucky's line included: it was said once already.
-        for (seed in 0 until 10) {
-            assertNull(reactionCue(fed(levels = 0, pet = CHUCKY), replay = true, rng = Random(seed)).voice)
+        // Coming back to a meal already eaten is silent, a killer with lines included: it was said once already.
+        for (pet in PetId.entries) {
+            for (seed in 0 until 10) {
+                assertNull("$pet", reactionCue(fed(levels = 0, pet = pet), replay = true, rng = Random(seed)).voice)
+            }
         }
     }
 
