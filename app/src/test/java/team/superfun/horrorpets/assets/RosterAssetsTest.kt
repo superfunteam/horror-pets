@@ -181,6 +181,20 @@ class RosterAssetsTest {
     }
 
     @Test
+    fun theAnnouncersBigCallsAreShipped() {
+        // The fight's big calls, and the Gauntlet's bout calls recorded with them for later: lines like the rest,
+        // loaded by name, so a missing one would just be silence.
+        val calls = listOf("finish_him", "flawless_victory", "first_blood", "last_chance", "comeback") +
+            (2..7).map { "bout_$it" } + listOf("final_bout", "champion")
+        assertEquals(13, calls.size)
+        for (line in calls) {
+            val wav = file("audio-final/voice/$line.wav")
+            assertTrue(line, wav.isFile)
+            assertEquals("$line: channels, rate, bits", Triple(1, 44_100, 16), wavFormat(wav.readBytes()))
+        }
+    }
+
+    @Test
     fun theSoundsAFeedPlaysAreShipped() {
         // The kitchen plays the meal's toss and bites, the reaction's happy or gross beat (or the favorite's fanfare)
         // and a level-up; the old snack drop's art is gone.

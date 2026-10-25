@@ -121,8 +121,9 @@ private val WindowGap = 12.dp
  * values alone and the bar starts full. [Screen.Results.fight] is the fight as it ended; without it the report
  * is empty. One focused CONTINUE pill, or Back, calls [onDone]. OK is ignored for a moment after the screen
  * comes up (see `rememberOkReady`), so an OK mashed through the fight's last turn cannot skip it; so is a tap,
- * on a phone. The view model has already queued `you_win` / `you_lose` (and `levelup`); the killers'
- * [Screen.Results.lastWords] are the card's to say, with the rank call or as it opens (see [resultsVoice]).
+ * on a phone. The view model has already queued the announcer's result (`you_win` or `flawless_victory`, `comeback`
+ * after a win from the last chance, `you_lose`) and `levelup`; the killers' [Screen.Results.lastWords] are the card's
+ * to say, with the rank call or as it opens (see [resultsVoice]).
  */
 @Composable
 fun ResultsCard(

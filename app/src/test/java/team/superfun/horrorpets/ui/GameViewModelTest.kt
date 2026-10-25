@@ -24,6 +24,7 @@ import team.superfun.horrorpets.data.SaveCodec
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightTuning
+import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Roll
 import team.superfun.horrorpets.fight.ScriptedRandom
@@ -71,6 +72,7 @@ import team.superfun.horrorpets.model.isVisible
 import team.superfun.horrorpets.model.pantryItems
 import team.superfun.horrorpets.musicTrackFor
 import team.superfun.horrorpets.ui.fight.nearlyDone
+import team.superfun.horrorpets.ui.fight.shareOf
 import team.superfun.horrorpets.ui.switcher.lineup
 
 // A realistic epoch (2027-01-15 08:00 UTC), safely past Tuning.MIN_VALID_EPOCH_MS.
@@ -2225,14 +2227,15 @@ class GameViewModelTest {
 
     @Test
     fun chuckyHasTheLastWord() {
-        // Chucky wins: the announcer calls it, and the results carry Chucky's laugh for their card to say.
+        // Chucky wins: the announcer calls it (after "Finish him!" as Freddy fell under a fifth), and the results carry
+        // Chucky's laugh for their card to say.
         val win = Rig(strongChucky(), rng = plainScript(cpuPick = 0)).started()
         win.toFight(PetId.FREDDY)
         win.vm.consumeSounds()
         win.playOut(Move.STRIKE)
         val won = win.ui.screen as Screen.Results
         assertTrue(won.won)
-        assertEquals(listOf("you_win"), win.ui.voice)
+        assertEquals(listOf("finish_him", "you_win"), win.ui.voice)
         assertEquals(listOf("chucky_win"), won.lastWords)
 
         // Losing to Chucky: the same laugh, his.
@@ -2269,18 +2272,151 @@ class GameViewModelTest {
         assertEquals(listOf("you_lose"), loss.ui.voice)
         assertEquals(listOf("chucky_lose"), lost.lastWords)
 
-        // Beating him when he was locked (Jason's strikes cut off every HEAVY): the unlock is the announcer's, and
-        // Chucky's line waits on the results behind the unlock screen.
+        // Beating him when he was locked (Jason's strikes cut off every HEAVY, so the win is flawless): the unlock is
+        // the announcer's, and Chucky's line waits on the results behind the unlock screen.
         val unlock = Rig(soloJason(), rng = plainScript(cpuPick = 40)).started()
         unlock.toFight(PetId.CHUCKY)
         unlock.vm.consumeSounds()
         unlock.playOut(Move.STRIKE)
         val unlocked = unlock.ui.screen as Screen.Unlocked
         assertEquals(PetId.CHUCKY, unlocked.pet)
-        assertEquals(listOf("you_win", "unlocked"), unlock.ui.voice)
+        assertEquals(listOf("finish_him", "flawless_victory", "unlocked"), unlock.ui.voice)
         assertEquals(listOf("chucky_lose"), unlocked.results.lastWords)
         unlock.vm.onUnlockedDone()
         assertEquals(listOf("chucky_lose"), (unlock.ui.screen as Screen.Results).lastWords)
+    }
+
+    // ---- the announcer's big calls ------------------------------------------------------------
+
+    /** Sets the fight's hit points between turns, as the puppet can: [player] and [cpu] each as hp to max HP. */
+    private fun Rig.setHp(player: Pair<Int, Int>? = null, cpu: Pair<Int, Int>? = null) {
+        fun Fighter.at(hp: Pair<Int, Int>?) = if (hp == null) this else copy(hp = hp.first, maxHp = hp.second)
+        val edited = vm.debugEdit { s ->
+            val screen = s.screen as Screen.Fight
+            val f = screen.fight
+            s.copy(screen = screen.copy(fight = f.copy(player = f.player.at(player), cpu = f.cpu.at(cpu))))
+        }
+        check(edited) { "a turn is still playing" }
+    }
+
+    /** Plays one turn with [move]: what the announcer was handed for it, which waits until the turn has played out. */
+    private fun Rig.turn(move: Move): List<String> {
+        vm.consumeSounds()
+        vm.onMove(move)
+        assertTrue("nothing is said before the turn has played out", ui.voice.isEmpty())
+        finishAnim()
+        return ui.voice
+    }
+
+    /** Plays the fight out with [move] every turn: what the announcer was handed for each turn, in order. */
+    private fun Rig.hearOut(move: Move): List<List<String>> = buildList {
+        while (ui.screen is Screen.Fight) {
+            add(turn(move))
+            check(size < 20) { "the fight never ended" }
+        }
+    }
+
+    @Test
+    fun finishHimAsTheMenuOpens() {
+        // Strong Jason trades strikes with Freddy, who is down to 21% of a big bar: Jason's first strike leaves him
+        // under a fifth, and the fight goes on.
+        val rig = Rig(strongJason(), rng = plainScript(cpuPick = 0)).started()
+        rig.toFight(PetId.FREDDY)
+        rig.setHp(cpu = 210 to 1000)
+        rig.vm.consumeSounds()
+        rig.vm.onMove(Move.STRIKE)
+        val playing = rig.ui.screen as Screen.Fight
+        assertTrue(shareOf(playing.fight.cpu) < FightTuning.FINISH_HIM_SHARE)
+        assertFalse(playing.finishHim)
+        assertTrue("not while the blow plays", rig.ui.voice.isEmpty())
+        rig.finishAnim()
+        val menu = rig.ui.screen as Screen.Fight
+        assertNull(menu.fight.winner)
+        assertTrue(menu.finishHim)
+        assertEquals("as the menu opens", listOf("finish_him"), rig.ui.voice)
+
+        // Once a fight: he is still under the line after the next turn, and nothing more is said.
+        assertEquals(emptyList<String>(), rig.turn(Move.STRIKE))
+        val next = rig.ui.screen as Screen.Fight
+        assertTrue(shareOf(next.fight.cpu) < FightTuning.FINISH_HIM_SHARE)
+        assertTrue(next.finishHim)
+    }
+
+    @Test
+    fun finishHimWaitsForAFightThatGoesOn() {
+        // Strong Jason and Freddy trade strikes once (neither is near done), then Freddy is at 21 of 100, just over the
+        // line: Jason's strike takes him under it and out with the same blow. The fight is over, so the announcer calls
+        // the win and nothing else.
+        val rig = Rig(strongJason(), rng = plainScript(cpuPick = 0)).started()
+        rig.toFight(PetId.FREDDY)
+        assertEquals(emptyList<String>(), rig.turn(Move.STRIKE))
+        rig.setHp(cpu = 21 to 100)
+        assertEquals(listOf("you_win"), rig.turn(Move.STRIKE))
+        assertTrue((rig.ui.screen as Screen.Results).won)
+    }
+
+    @Test
+    fun lastChanceOnceAndComebackOnTheWin() {
+        // Jason, down to 16% of a big bar, trades strikes with Freddy: Freddy's first strike leaves him under 15%.
+        val rig = Rig(strongJason(), rng = plainScript(cpuPick = 0)).started()
+        rig.toFight(PetId.FREDDY)
+        rig.setHp(player = 160 to 1000)
+        assertEquals(listOf("last_chance"), rig.turn(Move.STRIKE))
+        assertTrue((rig.ui.screen as Screen.Fight).lastChance)
+
+        // A potion brings him back over the line; worn back down under it, there is nothing more to say.
+        assertEquals(emptyList<String>(), rig.turn(Move.POTION))
+        assertFalse(shareOf((rig.ui.screen as Screen.Fight).fight.player) < FightTuning.LAST_CHANCE_SHARE)
+        rig.setHp(player = 160 to 1000)
+        assertEquals(emptyList<String>(), rig.turn(Move.STRIKE))
+        assertTrue(shareOf((rig.ui.screen as Screen.Fight).fight.player) < FightTuning.LAST_CHANCE_SHARE)
+
+        // He wins from there: a comeback, called after the win.
+        val rest = rig.hearOut(Move.STRIKE)
+        assertTrue((rig.ui.screen as Screen.Results).won)
+        assertEquals(listOf("you_win", "comeback"), rest.last())
+        assertFalse("last_chance" in rest.flatten())
+
+        // Down to his last chance and beaten anyway: the loss, and no comeback.
+        val lost = Rig(strongJason(), rng = plainScript(cpuPick = 40)).started()
+        lost.toFight(PetId.FREDDY)
+        lost.setHp(player = 160 to 1000)
+        val calls = lost.hearOut(Move.BLOCK)
+        assertFalse((lost.ui.screen as Screen.Results).won)
+        assertEquals(listOf("last_chance"), calls.first())
+        assertEquals(listOf("you_lose"), calls.last())
+    }
+
+    @Test
+    fun flawlessMeansNeverScratched() {
+        // Strong Jason's strikes cut off every one of Freddy's HEAVYs: never touched, a flawless victory in place of
+        // "You win!".
+        val clean = Rig(strongJason(), rng = plainScript(cpuPick = 40)).started()
+        clean.toFight(PetId.FREDDY)
+        val calls = clean.hearOut(Move.STRIKE)
+        val won = clean.ui.screen as Screen.Results
+        assertTrue(won.won)
+        assertEquals(0, won.fight!!.stats.damageTaken)
+        assertEquals(listOf("flawless_victory"), calls.last())
+
+        // Hit once, then a potion back to full and never touched again: a win at full health, but not a flawless one.
+        // Freddy strikes with Jason's first strike, blocks through his potion, then HEAVYs into his strikes.
+        val dice = ScriptedRandom(List(70) { 0.99 }, ints = listOf(0, 0, 0, 70) + List(10) { 40 })
+        val healed = Rig(strongJason(), rng = dice).started()
+        healed.toFight(PetId.FREDDY)
+        healed.turn(Move.STRIKE)
+        healed.turn(Move.POTION)
+        val full = (healed.ui.screen as Screen.Fight).fight.player
+        assertEquals(full.maxHp, full.hp)
+        assertEquals(listOf("you_win"), healed.hearOut(Move.STRIKE).last())
+        val after = (healed.ui.screen as Screen.Results).fight!!
+        assertEquals(after.player.maxHp, after.player.hp)
+
+        // Running away is no win at all: nothing is said.
+        val run = Rig(strongJason(), rng = ScriptedRandom(ints = listOf(0, 0))).started()
+        run.toFight(PetId.FREDDY)
+        assertEquals(emptyList<String>(), run.turn(Move.RUN))
+        assertTrue((run.ui.screen as Screen.Results).ran)
     }
 
     @Test

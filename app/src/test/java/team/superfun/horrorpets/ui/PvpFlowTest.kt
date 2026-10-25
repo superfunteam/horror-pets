@@ -201,6 +201,7 @@ class PvpFlowTest {
         return code
     }
 
+
     @Test
     fun pvpIsOnOfferOnlyWithARelay() {
         val offline = App(PetState(PetId.JASON), relay = null)
@@ -279,9 +280,46 @@ class PvpFlowTest {
         assertEquals(1, host.ui.game.pets.getValue(PetId.JASON).wins)
         assertEquals(1, guest.ui.game.pets.getValue(PetId.FREDDY).losses)
         assertEquals("beating a friend's killer unlocks no one", setOf(PetId.JASON), host.ui.game.pets.keys)
-        assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
+        assertEquals("never touched", listOf("flawless_victory"), host.ui.voice.takeLast(1))
         host.pump(0)
         assertEquals("the room is left once the fight is over", Role.HOST, hub.rooms.single().left)
+    }
+
+    @Test
+    fun lastChanceCallsInPvpButFinishHimNever() {
+        // Jason blocks and counters every one of Freddy's strikes, untouched: Freddy goes 53, 41, 17, 1, then out. On
+        // Freddy's app the fourth turn leaves him on his last chance; on Jason's there is no "Finish him!" (there is no
+        // CPU to finish), just the win, flawless.
+        val host = jasonApp()
+        val guest = freddyApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        host.vm.consumeSounds()
+        guest.vm.consumeSounds()
+        val hostHeard = mutableListOf<List<String>>()
+        val guestHeard = mutableListOf<List<String>>()
+        while (host.ui.screen is Screen.Fight) {
+            host.vm.onMove(Move.BLOCK)
+            guest.vm.onMove(Move.STRIKE)
+            pumpBoth(host, guest)
+            pumpBoth(host, guest)
+            host.finishAnim()
+            guest.finishAnim()
+            hostHeard += host.ui.voice
+            guestHeard += guest.ui.voice
+            host.vm.consumeSounds()
+            guest.vm.consumeSounds()
+            if (host.ui.screen is Screen.Fight) {
+                assertFalse(host.fight.finishHim)
+                assertFalse(guest.fight.finishHim)
+            }
+            check(hostHeard.size < 30) { "the fight never ended" }
+        }
+        val quiet = emptyList<String>()
+        assertEquals(listOf(quiet, quiet, quiet, listOf("last_chance"), listOf("you_lose")), guestHeard)
+        assertEquals(listOf(quiet, quiet, quiet, quiet, listOf("flawless_victory")), hostHeard)
+        assertTrue((host.ui.screen as Screen.Results).won)
     }
 
     @Test
@@ -354,7 +392,7 @@ class PvpFlowTest {
         val hostResults = host.ui.screen as Screen.Results
         val guestResults = guest.ui.screen as Screen.Results
         assertTrue(hostResults.won)
-        assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
+        assertEquals("Jason's strikes cut off every HEAVY", listOf("flawless_victory"), host.ui.voice.takeLast(1))
         assertEquals(listOf("you_lose"), guest.ui.voice.takeLast(1))
         assertEquals(listOf("chucky_lose"), hostResults.lastWords)
         assertEquals(listOf("chucky_lose"), guestResults.lastWords)

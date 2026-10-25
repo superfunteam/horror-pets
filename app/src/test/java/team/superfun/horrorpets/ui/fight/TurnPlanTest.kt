@@ -27,6 +27,9 @@ private fun fixed(roll: Float) = object : Random() {
     override fun nextFloat() = roll
 }
 
+/** The announcer's picks partway through a fight: blood was drawn long ago, so no FIRST BLOOD! takes a turn's call. */
+private fun midFight(rng: Random) = Callouts(rng, bloodDrawn = true)
+
 /** Chucky (the player, who has lines) against Jason (who has none). */
 private val chuckyFight = FightState(
     player = Fighter(PetId.CHUCKY, 1, 100, 100, 20.0, 50, 0),
@@ -250,7 +253,7 @@ class TurnSoundsTest {
     fun theCalloutIsSaidOnceWithTheEventItReactsTo() {
         val crit = FightEvent.Hit(Side.CPU, Move.STRIKE, 20, crit = true)
         val events = listOf(FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false), crit, crit)
-        val turn = TurnSounds(fight, events, Callouts(Random(7)))
+        val turn = TurnSounds(fight, events, midFight(Random(7)))
         assertTrue(turn.of(events[0]).voice.isEmpty())
         val said = turn.of(crit).voice
         assertEquals(1, said.size)
@@ -313,15 +316,24 @@ class TurnSoundsTest {
     fun theAnnouncerWinsTheTurn() {
         // Jason's HEAVY lands on Chucky: the announcer calls it, and Chucky's HURT line is not said over him.
         val heavy = FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false)
-        val alone = TurnSounds(chuckyFight, listOf(heavy), Callouts(fixed(0f)), Quips(fixed(0f))).of(heavy)
+        val alone = TurnSounds(chuckyFight, listOf(heavy), midFight(fixed(0f)), Quips(fixed(0f))).of(heavy)
         assertTrue(alone.voice.single() in Moment.HEAVY.lines)
         assertNull(alone.quip)
 
         // Chucky's own strike follows in the same turn: still the announcer's turn, Chucky keeps quiet.
         val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
-        val after = TurnSounds(chuckyFight, listOf(heavy, strike), Callouts(fixed(0f)), Quips(fixed(0f)))
+        val after = TurnSounds(chuckyFight, listOf(heavy, strike), midFight(fixed(0f)), Quips(fixed(0f)))
         assertEquals(listOf(1, 0), listOf(heavy, strike).map { after.of(it).voice.size })
         assertEquals(listOf(null, null), listOf(heavy, strike).map { after.of(it).quip })
+    }
+
+    @Test
+    fun firstBloodIsSaidWithTheFightsFirstHit() {
+        // Chucky's plain strike opens the fight: the announcer calls it as it lands, and the turn is his.
+        val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
+        val sounds = TurnSounds(chuckyFight, listOf(strike), Callouts(fixed(0f)), Quips(fixed(0f))).of(strike)
+        assertEquals(listOf("first_blood"), sounds.voice)
+        assertNull(sounds.quip)
     }
 
     @Test
@@ -330,7 +342,7 @@ class TurnSoundsTest {
         // up behind it in the queue, so there is none.
         val strike = FightEvent.Hit(Side.PLAYER, Move.STRIKE, 10, crit = false)
         val heavy = FightEvent.Hit(Side.CPU, Move.HEAVY, 18, crit = false)
-        val turn = TurnSounds(chuckyFight, listOf(strike, heavy), Callouts(fixed(0f)), Quips(fixed(0f)))
+        val turn = TurnSounds(chuckyFight, listOf(strike, heavy), midFight(fixed(0f)), Quips(fixed(0f)))
         val first = turn.of(strike)
         assertNull(first.quip)
         assertTrue(first.voice.isEmpty())
@@ -485,36 +497,65 @@ class CalloutsTest {
     }
 
     @Test
+    fun firstBloodIsTheFirstHitOfTheFight() {
+        // The fight's first hit gets the call over any bigger moment in its turn: here the CPU's counter, ahead of the
+        // player's special.
+        val callouts = Callouts(fixed(0f))
+        val first = callouts.pick(listOf(miss, block, counter, special), finishing = false)
+        assertEquals(Callout(counter, "first_blood"), first)
+        // Never twice: from then on a turn's hits are their own moments again, and a plain one is no moment at all.
+        val next = callouts.pick(listOf(counter, special), finishing = false)
+        assertEquals(special, next?.event)
+        assertTrue(next!!.line in Moment.SPECIAL.lines)
+        assertNull(callouts.pick(listOf(counter), finishing = false))
+
+        // A bleed is no blow: the first hit after one is still the fight's first.
+        val bleed = FightEvent.Bleed(Side.CPU, 6)
+        val strike = FightEvent.Hit(Side.CPU, Move.STRIKE, 9, crit = false)
+        val bled = Callouts(fixed(0f))
+        assertNull(bled.pick(listOf(bleed), finishing = false))
+        assertEquals(Callout(strike, "first_blood"), bled.pick(listOf(bleed, strike), finishing = false))
+
+        // It is always called, a plain strike or not.
+        assertEquals(Callout(strike, "first_blood"), Callouts(fixed(0.999f)).pick(listOf(strike), finishing = false))
+        // A first hit that ends the fight leaves the call to "Knockout!".
+        assertNull(Callouts(fixed(0f)).pick(listOf(special), finishing = true))
+        // A fight screen rebuilt after blood was drawn (see Screen.Fight.firstBlood) never calls it again.
+        assertEquals(special, midFight(fixed(0f)).pick(listOf(counter, special), finishing = false)?.event)
+    }
+
+    @Test
     fun theBiggestMomentOfTheTurnGetsTheCall() {
-        val call = Callouts(fixed(0f)).pick(listOf(miss, block, counter, crit, special), finishing = false)
+        val call = midFight(fixed(0f)).pick(listOf(miss, block, counter, crit, special), finishing = false)
         assertEquals(special, call?.event)
         assertTrue(call!!.line in Moment.SPECIAL.lines)
     }
 
     @Test
     fun specialsAndCritsAlwaysGetACall() {
-        assertEquals(special, Callouts(fixed(0.999f)).pick(listOf(special), finishing = false)?.event)
-        assertEquals(crit, Callouts(fixed(0.999f)).pick(listOf(crit), finishing = false)?.event)
+        assertEquals(special, midFight(fixed(0.999f)).pick(listOf(special), finishing = false)?.event)
+        assertEquals(crit, midFight(fixed(0.999f)).pick(listOf(crit), finishing = false)?.event)
     }
 
     @Test
     fun smallerMomentsOnlySometimes() {
         for (e in listOf(heavy, block, miss)) {
-            assertEquals(null, Callouts(fixed(0.999f)).pick(listOf(e), finishing = false))
-            assertEquals(e, Callouts(fixed(0f)).pick(listOf(e), finishing = false)?.event)
+            assertEquals(null, midFight(fixed(0.999f)).pick(listOf(e), finishing = false))
+            assertEquals(e, midFight(fixed(0f)).pick(listOf(e), finishing = false)?.event)
         }
     }
 
     @Test
     fun quietTurnsAndTheFinishingTurnGetNone() {
-        assertEquals(null, Callouts(fixed(0f)).pick(listOf(counter, FightEvent.SpecialReady(Side.CPU)), finishing = false))
+        val quiet = listOf(counter, FightEvent.SpecialReady(Side.CPU))
+        assertEquals(null, midFight(fixed(0f)).pick(quiet, finishing = false))
         assertEquals(null, Callouts(fixed(0f)).pick(emptyList(), finishing = false))
-        assertEquals(null, Callouts(fixed(0f)).pick(listOf(special), finishing = true))
+        assertEquals(null, midFight(fixed(0f)).pick(listOf(special), finishing = true))
     }
 
     @Test
     fun neverTheSameLineTwiceInARow() {
-        val callouts = Callouts(Random(42))
+        val callouts = midFight(Random(42))
         val said = List(300) { callouts.pick(listOf(if (it % 3 == 0) special else crit), finishing = false)!!.line }
         said.zipWithNext().forEach { (a, b) -> assertFalse("$a twice", a == b) }
         assertEquals(Moment.SPECIAL.lines.toSet() + Moment.CRIT.lines, said.toSet())

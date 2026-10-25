@@ -115,4 +115,10 @@ object FightTuning {
     // A fight turns intense (its music hardens, to the end) once either fighter is under NEARLY_DONE_SHARE of its
     // max HP.
     const val NEARLY_DONE_SHARE = 0.3
+
+    // The announcer's big calls, each once a fight and only while it goes on: "FINISH HIM!" (against the CPU only) once
+    // the CPU is under FINISH_HIM_SHARE of its max HP, "LAST CHANCE!" once the player is under LAST_CHANCE_SHARE of
+    // theirs (and "COMEBACK!" after the win if they come back from there).
+    const val FINISH_HIM_SHARE = 0.20f
+    const val LAST_CHANCE_SHARE = 0.15f
 }

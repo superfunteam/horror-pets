@@ -207,6 +207,13 @@ sealed interface Screen {
      * [intense] is set once a turn that leaves either fighter nearly done (see `nearlyDone`) has played out, and stays
      * set for the rest of the fight, a potion or not: the music hardens with it. The turn that ends the fight never
      * sets it.
+     *
+     * The announcer's big calls latch the same way, as a turn plays out, and stay set: [firstBlood] once a turn with a
+     * hit in it has (a fight screen built after that never calls FIRST BLOOD again), [scratched] once one has hurt the
+     * player (a hit or a bleed, a potion or not: no flawless victory after that), [finishHim] as "Finish him!" is
+     * said, the CPU under `FightTuning.FINISH_HIM_SHARE` (never in PvP), and [lastChance] as "Last chance!" is, the
+     * player under `FightTuning.LAST_CHANCE_SHARE` ("Comeback!" after a win from there). The last two only latch on a
+     * fight that goes on.
      */
     data class Fight(
         val fight: FightState,
@@ -215,6 +222,10 @@ sealed interface Screen {
         val cpuMove: Move? = null,
         val pvp: PvpView? = null,
         val intense: Boolean = false,
+        val firstBlood: Boolean = false,
+        val finishHim: Boolean = false,
+        val lastChance: Boolean = false,
+        val scratched: Boolean = false,
     ) : Screen
 
     /**

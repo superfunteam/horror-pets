@@ -21,6 +21,7 @@ import team.superfun.horrorpets.audio.VoiceBeat
 import team.superfun.horrorpets.audio.killerLines
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
+import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
@@ -71,6 +72,7 @@ import team.superfun.horrorpets.pvp.PvpRelay
 import team.superfun.horrorpets.pvp.Role
 import team.superfun.horrorpets.pvp.resolvePvpTurn
 import team.superfun.horrorpets.ui.fight.nearlyDone
+import team.superfun.horrorpets.ui.fight.shareOf
 
 /**
  * The state machine behind every screen. The screens render [state] and call the `on...` functions;
@@ -729,17 +731,19 @@ class GameViewModel(
         // Running ends the fight before the CPU acts, and the engine ignores the move it is handed.
         val cpuMove = if (m == Move.RUN) null else cpuPick(fight, rng)
         val turn = resolveTurn(fight, m, cpuMove ?: Move.BLOCK, rng)
-        // The music hardens only once the turn has played out (see playedOut), not before the blow that does it.
+        // The music hardens and the announcer's big calls latch only once the turn has played out (see playedOut), not
+        // before the blow that does it: until then the screen keeps what the fight had.
         _state.value = s.copy(
-            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuMove, intense = screen.intense),
+            screen = screen.copy(fight = turn.state, lastEvents = turn.events, playerMove = m, cpuMove = cpuMove),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 
     /**
-     * The turn's animation is over. A fight that goes on may turn intense now (see [playedOut]). A finished fight
-     * turns into its results and the pet is paid; beating a killer the player did not have unlocks it (it joins the
-     * stable at its defaults) and shows that before the results. The announcer calls the result (and the unlock); the
-     * killers' [last words][lastWords] ride on the results for its card to say.
+     * The turn's animation is over. A fight that goes on may turn intense now, and hear "Finish him!" or "Last
+     * chance!" (see [playedOut]). A finished fight turns into its results and the pet is paid; beating a killer the
+     * player did not have unlocks it (it joins the stable at its defaults) and shows that before the results. The
+     * announcer calls the result (a win as [winCall] has it) and then the unlock; the killers' [last words][lastWords]
+     * ride on the results for its card to say.
      *
      * The stable's clock is brought up to now first (as the minute tick would), so the newcomer joins from this
      * moment and decays like the rest through the next absence, even one that starts before the next tick. Only
@@ -748,7 +752,7 @@ class GameViewModel(
     private fun finishTurn(s: UiState): UiState {
         val screen = s.screen as? Screen.Fight ?: return s
         val fight = screen.fight
-        val winner = fight.winner ?: return s.copy(screen = screen.playedOut())
+        val winner = fight.winner ?: return s.playedOut(screen)
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
@@ -756,7 +760,7 @@ class GameViewModel(
         val unlock = fight.cpu.id.takeIf { won && !fight.playerRan && !s.game.isUnlocked(it) }
         val voice = when {
             fight.playerRan -> emptyList()
-            won -> listOf("you_win")
+            won -> winCall(screen)
             else -> listOf("you_lose")
         } + if (unlock != null) listOf("unlocked") else emptyList()
         val game = if (unlock == null) {
@@ -775,12 +779,56 @@ class GameViewModel(
     }
 
     /**
-     * This fight screen once its turn has played out: intense from now on if the turn left either fighter nearly done
-     * (see `nearlyDone`), and still intense if it was already, even if a potion brought him back. Only a fight that
-     * goes on gets here: one the turn ended goes to its results, so a knockout from above the line never hardens the
-     * music. The same on both apps of a PvP fight.
+     * [screen] once its turn has played out, the menu opening: intense from now on if the turn left either fighter
+     * nearly done (see `nearlyDone`), and still intense if it was already, even if a potion brought him back. Only a
+     * fight that goes on gets here: one the turn ended goes to its results, so a knockout from above the line never
+     * hardens the music. The same on both apps of a PvP fight.
+     *
+     * The announcer's big calls latch with it (see [Screen.Fight]), and the two he makes between turns are queued now,
+     * as the menu opens, each the first time its line is crossed: "Finish him!" for a CPU under
+     * [FightTuning.FINISH_HIM_SHARE] (never in PvP: there is no CPU to finish, only a friend's killer), then "Last
+     * chance!" for a player under [FightTuning.LAST_CHANCE_SHARE].
      */
-    private fun Screen.Fight.playedOut(): Screen.Fight = copy(intense = intense || nearlyDone(fight))
+    private fun UiState.playedOut(screen: Screen.Fight): UiState {
+        val fight = screen.fight
+        val finishHim = screen.finishHim || (screen.pvp == null && shareOf(fight.cpu) < FightTuning.FINISH_HIM_SHARE)
+        val lastChance = screen.lastChance || shareOf(fight.player) < FightTuning.LAST_CHANCE_SHARE
+        val played = screen.copy(
+            intense = screen.intense || nearlyDone(fight),
+            firstBlood = screen.firstBlood || screen.lastEvents.any { it is FightEvent.Hit },
+            scratched = screen.hurt,
+            finishHim = finishHim,
+            lastChance = lastChance,
+        )
+        val calls = listOfNotNull(
+            "finish_him".takeIf { finishHim && !screen.finishHim },
+            "last_chance".takeIf { lastChance && !screen.lastChance },
+        )
+        return copy(screen = played, voice = voice + calls)
+    }
+
+    /**
+     * Whether anything has hurt the player in this fight: [Screen.Fight.scratched], or the turn on
+     * [Screen.Fight.lastEvents] (a hit from the other side, a counter included, or a bleed), which is how the last turn
+     * of a fight counts too: it never plays out into a menu to latch it.
+     */
+    private val Screen.Fight.hurt: Boolean
+        get() = scratched || lastEvents.any {
+            (it is FightEvent.Hit && it.attacker == Side.CPU) || (it is FightEvent.Bleed && it.side == Side.PLAYER)
+        }
+
+    /**
+     * The announcer's call on a fight the player won, [screen] as its last turn played: "Flawless victory!" in place of
+     * "You win!" when nothing ever [hurt] the player, and "Comeback!" after "You win!" when they won from their last
+     * chance ([Screen.Fight.lastChance]). A win by forfeit (the other side ran) is a plain "You win!": no one was
+     * beaten, so there is nothing to be flawless in or to come back from.
+     */
+    private fun winCall(screen: Screen.Fight): List<String> = when {
+        screen.fight.cpuRan -> listOf("you_win")
+        !screen.hurt -> listOf("flawless_victory")
+        screen.lastChance -> listOf("you_win", "comeback")
+        else -> listOf("you_win")
+    }
 
     /**
      * What the killers say once [fight] is over, for [Screen.Results.lastWords]: the winner's WIN line, then the
@@ -1168,15 +1216,14 @@ class GameViewModel(
         canonical = turn.state
         val mine = if (game.role == Role.HOST) host else guest
         val theirs = if (game.role == Role.HOST) guest else host
-        // As in onMove: the music hardens only once the turn has played out (see playedOut).
+        // As in onMove: the music hardens and the big calls latch only once the turn has played out (see playedOut).
         _state.value = s.copy(
-            screen = Screen.Fight(
-                game.view(turn.state),
-                game.viewEvents(turn.events),
+            screen = s.screen.copy(
+                fight = game.view(turn.state),
+                lastEvents = game.viewEvents(turn.events),
                 playerMove = mine,
                 cpuMove = theirs,
                 pvp = PvpView(),
-                intense = s.screen.intense,
             ),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
     }
@@ -1190,19 +1237,21 @@ class GameViewModel(
         endPvpFight(s, forfeit(fight, game.side.other()), playerMove = null, cpuMove = Move.RUN)
     }
 
-    /** Plays the forfeit that ended [fight] (canonical), then on to the results. An intense fight stays intense. */
+    /**
+     * Plays the forfeit that ended [fight] (canonical), then on to the results. What the fight latched stays: an
+     * intense fight stays intense.
+     */
     private fun endPvpFight(s: UiState, fight: FightState, playerMove: Move?, cpuMove: Move?) {
         val game = match ?: return
+        val screen = s.screen as? Screen.Fight ?: return
         canonical = fight
-        val intense = (s.screen as? Screen.Fight)?.intense == true
         _state.value = s.copy(
-            screen = Screen.Fight(
-                game.view(fight),
-                emptyList(),
+            screen = screen.copy(
+                fight = game.view(fight),
+                lastEvents = emptyList(),
                 playerMove = playerMove,
                 cpuMove = cpuMove,
                 pvp = PvpView(),
-                intense = intense,
             ),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
     }
@@ -1218,7 +1267,7 @@ class GameViewModel(
         val winner = fight.winner
         if (winner == null) {
             watchTurn()
-            return s.copy(screen = screen.playedOut())
+            return s.playedOut(screen)
         }
         val pet = s.game.pets[fight.player.id] ?: return s
         endMatch(leave = true)
@@ -1230,7 +1279,7 @@ class GameViewModel(
             sfx = s.sfx + if (reward.levelsGained > 0) listOf("levelup") else emptyList(),
             voice = s.voice + when {
                 fight.playerRan -> emptyList()
-                won -> listOf("you_win")
+                won -> winCall(screen)
                 else -> listOf("you_lose")
             },
         )

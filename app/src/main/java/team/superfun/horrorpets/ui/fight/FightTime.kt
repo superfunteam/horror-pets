@@ -3,6 +3,7 @@ package team.superfun.horrorpets.ui.fight
 import team.superfun.horrorpets.fight.FightEvent
 import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.FightTuning
+import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Side
 
@@ -45,3 +46,9 @@ internal fun nearlyDone(s: FightState): Boolean {
     val share = FightTuning.NEARLY_DONE_SHARE
     return s.player.hp < s.player.maxHp * share || s.cpu.hp < s.cpu.maxHp * share
 }
+
+/**
+ * The share of its max HP [f] has left: 1 at full health, 0 knocked out. A fighter exactly on a line (20 of 100 against
+ * 0.20f) is not under it: the division rounds to the same Float as the line's literal.
+ */
+internal fun shareOf(f: Fighter): Float = f.hp.toFloat() / f.maxHp
