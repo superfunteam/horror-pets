@@ -93,6 +93,17 @@ object FightTuning {
     const val LOSS_FUN = -5.0
     const val RUN_MOOD_PENALTY = -10.0
 
+    // Meal statuses (the player's against the CPU only): BEEFED_UP hits PERK_DAMAGE_UP times as hard and a HANGOVER
+    // PERK_DAMAGE_DOWN times (every hit, after crits), an IRON_STOMACH adds PERK_CRIT_BONUS to the crit chance, a
+    // HANGOVER adds PERK_MISS_BONUS to a STRIKE's or HEAVY's miss chance, a SUGAR_RUSH starts the meter at
+    // PERK_START_METER, and a favorite feast brings PERK_FEAST_POTIONS potions.
+    const val PERK_DAMAGE_UP = 1.15
+    const val PERK_DAMAGE_DOWN = 0.9
+    const val PERK_CRIT_BONUS = 0.10
+    const val PERK_MISS_BONUS = 0.15
+    const val PERK_START_METER = 50
+    const val PERK_FEAST_POTIONS = 3
+
     // The fight screen's clock: a hit that lands freezes both fighters for HIT_STOP_STRIKE_MS (a STRIKE) or
     // HIT_STOP_HEAVY_MS (a HEAVY, a crit, a counter or a special), and the blow that empties a bar plays at KO_SLOW
     // speed for KO_SLOW_MS.

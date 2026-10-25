@@ -14,11 +14,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveStore
+import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Fighter
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.mirroredEvents
+import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
 import team.superfun.horrorpets.model.GameState
+import team.superfun.horrorpets.model.PantryItem
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.Slot
@@ -276,6 +280,28 @@ class PvpFlowTest {
         assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
         host.pump(0)
         assertEquals("the room is left once the fight is over", Role.HOST, hub.rooms.single().left)
+    }
+
+    @Test
+    fun aMealsStatusStaysHomeFromAPvpFight() {
+        // Jason's favorite an hour ago: a feast against the CPU, nothing against a friend (whose app could never know).
+        val pet = PetState(
+            PetId.JASON, strength = 100.0, level = 3, known = setOf("jason_light_1", "jason_heavy_1"),
+            lastMeal = PantryItem.CAMP_CRYSTAL_FISH_FRY.id, lastMealAtMs = NOW - Tuning.HOUR_MS,
+        )
+        assertNotNull(mealStatusOf(pet, NOW))
+        val host = App(pet, hub.app())
+        val guest = freddyApp()
+        meet(host, guest)
+        assertNull("the relay never hears of it", hub.rooms.single().host.status)
+
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        val fight = host.fight.fight
+        assertNull(fight.player.status)
+        assertEquals(0, fight.player.meter)
+        assertEquals(FightTuning.POTIONS_PER_FIGHT, fight.playerPotions)
+        assertEquals(fight.mirrored(), guest.fight.fight)
     }
 
     @Test

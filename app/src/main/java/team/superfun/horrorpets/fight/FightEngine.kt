@@ -5,6 +5,8 @@ import kotlin.random.Random
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.clampStat
 import team.superfun.horrorpets.game.mood
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.PetState
 import team.superfun.horrorpets.model.Attack
@@ -23,8 +25,12 @@ internal fun maxHpFor(id: PetId, level: Int, hunger: Double): Int {
 
 private fun lerp(a: Double, b: Double, t: Double): Double = a + (b - a) * t
 
-/** The player's pet as a fresh fighter: full hit points, empty meter, its live strength and mood, and its equipped attacks. */
-fun buildFighter(p: PetState): Fighter {
+/**
+ * The player's pet as a fresh fighter: full hit points, empty meter, its live strength and mood, and its equipped
+ * attacks. With its last meal's [status] (see [team.superfun.horrorpets.game.pantry.mealStatusOf]; for a fight
+ * against the CPU only) it fights with that too, and a SUGAR RUSH starts its meter half full.
+ */
+fun buildFighter(p: PetState, status: MealStatus? = null): Fighter {
     val maxHp = maxHpFor(p.id, p.level, p.hunger)
     return Fighter(
         id = p.id,
@@ -33,8 +39,9 @@ fun buildFighter(p: PetState): Fighter {
         hp = maxHp,
         strength = p.strength,
         mood = mood(p),
-        meter = 0,
+        meter = if (status?.perk == MealPerk.SUGAR_RUSH) FightTuning.PERK_START_METER else 0,
         kit = kitOf(p),
+        status = status,
     )
 }
 
@@ -60,9 +67,20 @@ fun buildOpponent(id: PetId, player: PetState, rng: Random): Fighter {
     )
 }
 
-/** Turn 1 of a fight between [player]'s pet and a freshly built [opponent]. Draws like [buildOpponent]. */
-fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
-    FightState(player = buildFighter(player), cpu = buildOpponent(opponent, player, rng))
+/**
+ * Turn 1 of a fight between [player]'s pet and a freshly built [opponent]. Draws like [buildOpponent]. The player
+ * fights with its last meal's [status] (see [buildFighter]) and the potions it brings ([potionsFor]); the CPU never
+ * has a status.
+ */
+fun startFight(player: PetState, opponent: PetId, rng: Random, status: MealStatus? = null): FightState = FightState(
+    player = buildFighter(player, status),
+    cpu = buildOpponent(opponent, player, rng),
+    playerPotions = potionsFor(status),
+)
+
+/** The potions a fighter with [status] brings to a fight: [FightTuning.POTIONS_PER_FIGHT], or a third after a favorite feast. */
+internal fun potionsFor(status: MealStatus?): Int =
+    if (status?.feast == true) FightTuning.PERK_FEAST_POTIONS else FightTuning.POTIONS_PER_FIGHT
 
 /**
  * Plays one turn: both sides choose a move and the two are resolved simultaneously.
@@ -100,8 +118,9 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * Damage is `(8 + strength / 8)` times variance (uniform 0.85..1.15) times the move (STRIKE 1.0, or
  * 1.15 for Chucky; HEAVY 1.8, times 1.2 for Leatherface; counter 0.5, or 1.0 for Pinhead; SPECIAL 2.5) times
  * the combo bonus (`1 + 0.15 * min(combo, 3)`, see below) times
- * 1.75 on a crit, times 0.85 when the defender is Michael, rounded once at the end and never below 1. Specials and counters
- * can crit but never miss. Attacks against GHOSTFACE miss 0.07 more often (STRIKE and HEAVY only).
+ * 1.75 on a crit, times 0.85 when the defender is Michael, times the attacker's meal (1.15 BEEFED UP, 0.9 with a
+ * HANGOVER), rounded once at the end and never below 1. Specials and counters can crit but never miss. Attacks
+ * against GHOSTFACE miss 0.07 more often, and a hungover attacker's 0.15 more often (STRIKE and HEAVY only).
  * Every per-pet number comes from the pet's [Passive][team.superfun.horrorpets.model.Passive] in the roster.
  * Each landed hit (counters included, specials excluded) adds 25 to the attacker's meter, capped
  * at 100; [FightEvent.SpecialReady] is emitted on the hit that takes it from below 100 to 100. A
@@ -130,12 +149,14 @@ fun startFight(player: PetState, opponent: PetId, rng: Random): FightState =
  * 1. miss roll: the attack misses when `roll < missChance`;
  * 2. variance roll: damage variance is `1 + (2 * roll - 1) * 0.15`;
  * 3. crit roll: the attack crits when `roll < critChance`, where
- *    `critChance = 0.05 + mood / 100 * 0.15`, plus the attacker's passive bonus (0.08 for FREDDY).
+ *    `critChance = 0.05 + mood / 100 * 0.15`, plus the attacker's passive bonus (0.08 for FREDDY), plus 0.10 for
+ *    an IRON STOMACH.
  *
  * PLAYER's attack (if any) is rolled before the CPU's. An attack that does not happen (an absorbed
  * STRIKE, an interrupted HEAVY, a BLOCK that countered nothing, a dazed swing) draws nothing, and RUN draws
  * nothing.
- * A POTION draws one double, the heal roll, in its side's place (PLAYER's before the CPU's).
+ * A POTION draws one double, the heal roll, in its side's place (PLAYER's before the CPU's). A meal's status
+ * ([Fighter.status]) draws nothing: it only changes the numbers the dice are read against.
  *
  * ## Events and results
  * Events come in a fixed order: everything PLAYER's move caused, then everything the CPU's move
@@ -352,7 +373,7 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
         val varianceRoll = rng.nextDouble()
         val critRoll = rng.nextDouble()
         val hitMove = if (counter) Move.STRIKE else myMove
-        if (missRoll < missChance(myMove, counter, other, attack)) {
+        if (missRoll < missChance(myMove, counter, me, other, attack)) {
             events += FightEvent.Miss(side, myMove)
         } else {
             val crit = critRoll < critChance(me, attack)
@@ -388,19 +409,21 @@ private fun act(side: Side, me: Fighter, other: Fighter, myMove: Move, otherMove
     return Action(events, damage, meter, healed, bleeds, dazes, shatter)
 }
 
-private fun missChance(move: Move, counter: Boolean, defender: Fighter, attack: Attack?): Double {
+private fun missChance(move: Move, counter: Boolean, attacker: Fighter, defender: Fighter, attack: Attack?): Double {
     if (counter) return 0.0
     val base = when (move) {
         Move.STRIKE -> FightTuning.MISS_STRIKE
         Move.HEAVY -> FightTuning.MISS_HEAVY
         else -> return 0.0 // SPECIAL never misses
     }
-    return (base + (attack?.missChange ?: 0.0) + defender.id.spec.passive.evadeBonus).coerceAtLeast(0.0)
+    val hungover = if (attacker.status?.perk == MealPerk.HANGOVER) FightTuning.PERK_MISS_BONUS else 0.0
+    return (base + (attack?.missChange ?: 0.0) + defender.id.spec.passive.evadeBonus + hungover).coerceAtLeast(0.0)
 }
 
 private fun critChance(attacker: Fighter, attack: Attack?): Double {
     val moodShare = attacker.mood.coerceIn(0, 100) / 100.0
-    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + attacker.id.spec.passive.critBonus + (attack?.critBonus ?: 0.0)
+    val ironStomach = if (attacker.status?.perk == MealPerk.IRON_STOMACH) FightTuning.PERK_CRIT_BONUS else 0.0
+    return FightTuning.CRIT_BASE + moodShare * FightTuning.CRIT_MOOD_SPAN + attacker.id.spec.passive.critBonus + (attack?.critBonus ?: 0.0) + ironStomach
 }
 
 /** A hit's multiplier for its move: a counter's from the passive, otherwise the attack's power (times the passive's for its slot). */
@@ -423,5 +446,12 @@ private fun damageOf(attacker: Fighter, defender: Fighter, multiplier: Double, v
     val variance = 1.0 + (2.0 * varianceRoll - 1.0) * FightTuning.DAMAGE_VARIANCE
     val critMult = if (crit) FightTuning.CRIT_MULT else 1.0
     val taken = defender.id.spec.passive.damageTakenMult
-    return (base * variance * multiplier * critMult * taken).roundToInt().coerceAtLeast(1)
+    return (base * variance * multiplier * critMult * taken * mealMultiplier(attacker)).roundToInt().coerceAtLeast(1)
+}
+
+/** What [attacker]'s last meal does to its damage: harder BEEFED UP, softer with a HANGOVER. */
+private fun mealMultiplier(attacker: Fighter): Double = when (attacker.status?.perk) {
+    MealPerk.BEEFED_UP -> FightTuning.PERK_DAMAGE_UP
+    MealPerk.HANGOVER -> FightTuning.PERK_DAMAGE_DOWN
+    else -> 1.0
 }

@@ -2,6 +2,7 @@ package team.superfun.horrorpets.pvp
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import team.superfun.horrorpets.fight.FightTuning
@@ -10,6 +11,8 @@ import team.superfun.horrorpets.fight.Side
 import team.superfun.horrorpets.fight.fighter
 import team.superfun.horrorpets.fight.mirroredEvents
 import team.superfun.horrorpets.fight.startPvp
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
 import team.superfun.horrorpets.model.attackById
@@ -89,6 +92,17 @@ class PvpMatchTest {
         assertEquals("Sleeping Bag Slam", f.kit.heavy.name)
         val match = PvpMatch(Role.HOST, "r", "h", 9, armed, guest)
         assertEquals(f, match.start().player)
+    }
+
+    @Test
+    fun aMealsStatusNeverComesToAPvpFight() {
+        // The other app never hears of it (the relay carries no status), so both apps fight without it.
+        val fed = host.copy(status = MealStatus(MealPerk.SUGAR_RUSH, feast = true))
+        assertEquals(pvpFighter(host), pvpFighter(fed))
+        val s = PvpMatch(Role.HOST, "r", "h", 9, fed, guest).start()
+        assertNull(s.player.status)
+        assertEquals(0, s.player.meter)
+        assertEquals(FightTuning.POTIONS_PER_FIGHT, s.playerPotions)
     }
 
     @Test

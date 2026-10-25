@@ -22,6 +22,7 @@ import team.superfun.horrorpets.data.Clock
 import team.superfun.horrorpets.data.SaveCodec
 import team.superfun.horrorpets.data.SaveStore
 import team.superfun.horrorpets.fight.FightEvent
+import team.superfun.horrorpets.fight.FightTuning
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.fight.Roll
 import team.superfun.horrorpets.fight.ScriptedRandom
@@ -31,6 +32,8 @@ import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.training.FIGHT_PREREQUISITE_NAMES
+import team.superfun.horrorpets.game.pantry.MealPerk
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.game.pantry.Reaction
 import team.superfun.horrorpets.game.pantry.feed
 import team.superfun.horrorpets.game.training.applyTraining
@@ -2063,6 +2066,28 @@ class GameViewModelTest {
 
         rig.vm.onVersusDone() // key repeat
         assertEquals(fight, rig.ui.screen)
+    }
+
+    @Test
+    fun aCpuFightCarriesTheLastMealsStatus() {
+        // Jason's favorite an hour ago, by the clock: a feast of savory, so beefed up with a third potion.
+        val fed = jason().copy(lastMeal = CAMP_CRYSTAL_FISH_FRY.id, lastMealAtMs = T0 - HOUR)
+        val rig = Rig(gameOf(pets = arrayOf(fed))).started()
+        rig.toFight()
+        val fight = (rig.ui.screen as Screen.Fight).fight
+        assertEquals(MealStatus(MealPerk.BEEFED_UP, feast = true), fight.player.status)
+        assertEquals(FightTuning.PERK_FEAST_POTIONS, fight.playerPotions)
+        assertNull("never the CPU's", fight.cpu.status)
+    }
+
+    @Test
+    fun aMealADayOldIsNoStatusInAFight() {
+        val stale = jason().copy(lastMeal = CAMP_CRYSTAL_FISH_FRY.id, lastMealAtMs = T0 - DAY)
+        val rig = Rig(gameOf(pets = arrayOf(stale))).started()
+        rig.toFight()
+        val fight = (rig.ui.screen as Screen.Fight).fight
+        assertNull(fight.player.status)
+        assertEquals(FightTuning.POTIONS_PER_FIGHT, fight.playerPotions)
     }
 
     @Test

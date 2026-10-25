@@ -1,5 +1,6 @@
 package team.superfun.horrorpets.fight
 
+import team.superfun.horrorpets.game.pantry.MealStatus
 import team.superfun.horrorpets.model.Attack
 import team.superfun.horrorpets.model.Kit
 import team.superfun.horrorpets.model.PetId
@@ -21,7 +22,9 @@ fun Side.other(): Side = if (this == Side.PLAYER) Side.CPU else Side.PLAYER
  * special meter (0..[FightTuning.METER_MAX]) and [hp] runs from [maxHp] down to 0. [combo] is how many
  * turns in a row it has landed a hit without being hit, [bleed] how many more turns it bleeds (and [bleedShare]
  * of its max HP each), and [dazed] whether its next STRIKE, HEAVY or BLOCK fails (see [resolveTurn]). [kit] is the
- * attack it fights with in each slot (the starting ones unless it has learned and equipped others).
+ * attack it fights with in each slot (the starting ones unless it has learned and equipped others). [status] is what
+ * its last meal does to the fight (see [buildFighter] and [resolveTurn]): only ever the player's against the CPU,
+ * never the CPU's and never in PvP.
  */
 data class Fighter(
     val id: PetId,
@@ -36,6 +39,7 @@ data class Fighter(
     val dazed: Boolean = false,
     val bleedShare: Double = FightTuning.BLEED_SHARE,
     val kit: Kit = Kit.base(id),
+    val status: MealStatus? = null,
 )
 
 /** The attack [this] kit plays for [move]: a STRIKE is its light, a HEAVY its heavy, a SPECIAL its special. */
@@ -70,8 +74,8 @@ data class FightStats(
  * [playerHistory] every move the player has chosen (the CPU reads it), [winner] is null while the
  * fight is on, and [playerRan] is true when the player forfeited ([cpuRan] when the other side did, which only a
  * PvP opponent can). [playerPotions] is how many potions the player has left ([FightTuning.POTIONS_PER_FIGHT]
- * to start) and [cpuPotions] the other side's (none for the CPU; a PvP opponent's own). [stats] tallies how the
- * player has fought, and [cpuStats] the other side.
+ * to start, a third after a favorite feast) and [cpuPotions] the other side's (none for the CPU; a PvP opponent's
+ * own). [stats] tallies how the player has fought, and [cpuStats] the other side.
  */
 data class FightState(
     val player: Fighter,
@@ -89,8 +93,8 @@ data class FightState(
     /** How many turns have been played. */
     val turnsPlayed: Int get() = turn - 1
 
-    /** How many potions the player has drunk. */
-    val potionsUsed: Int get() = FightTuning.POTIONS_PER_FIGHT - playerPotions
+    /** How many potions the player has drunk (of the ones it brought: see [potionsFor]). */
+    val potionsUsed: Int get() = potionsFor(player.status) - playerPotions
 
     /**
      * The same fight from the other side: the fighters, their potions, forfeits and stats swapped, the winner

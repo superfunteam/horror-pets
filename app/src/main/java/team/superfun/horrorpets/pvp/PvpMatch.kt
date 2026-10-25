@@ -61,8 +61,9 @@ fun kitFromIds(pet: PetId, level: Int, ids: List<String>?): Kit {
 }
 
 /**
- * [f] as a PvP fight takes it, the same on both apps: at full health with an empty meter, and with only attacks its
- * level allows (see [kitFromIds]). Both players' fighters go through this, the local one and the one off the relay.
+ * [f] as a PvP fight takes it, the same on both apps: at full health with an empty meter, with no meal status (the
+ * relay never carries one, so the other app could not know of it), and with only attacks its level allows (see
+ * [kitFromIds]). Both players' fighters go through this, the local one and the one off the relay.
  */
 fun pvpFighter(f: Fighter): Fighter = f.copy(
     hp = f.maxHp,
@@ -71,6 +72,7 @@ fun pvpFighter(f: Fighter): Fighter = f.copy(
     bleed = 0,
     dazed = false,
     kit = kitFromIds(f.id, f.level, listOf(f.kit.light.id, f.kit.heavy.id, f.kit.special.id)),
+    status = null,
 )
 
 /** The dice for turn [turn] of the room seeded [seed]: the same on both apps, and fresh each turn. */

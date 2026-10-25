@@ -40,6 +40,7 @@ import team.superfun.horrorpets.game.pantry.CookResult
 import team.superfun.horrorpets.game.pantry.canEat
 import team.superfun.horrorpets.game.pantry.cook
 import team.superfun.horrorpets.game.pantry.feed
+import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.pantry.topUp
 import team.superfun.horrorpets.game.perform
 import team.superfun.horrorpets.game.training.applyTraining
@@ -640,7 +641,10 @@ class GameViewModel(
         _state.value = s.copy(screen = Screen.Switcher(SwitcherMode.OPPONENT))
     }
 
-    /** The VS card is done: the fight starts with the selected pet against the picked opponent (or the other player). */
+    /**
+     * The VS card is done: the fight starts with the selected pet against the picked opponent (or the other player).
+     * Against the CPU the pet brings its last meal's status; a PvP fight never has one.
+     */
     fun onVersusDone() {
         val s = _state.value
         val versus = s.screen as? Screen.Versus ?: return
@@ -653,7 +657,8 @@ class GameViewModel(
             return
         }
         val player = s.game.selected?.let { s.game.pets[it] } ?: return
-        _state.value = s.copy(screen = Screen.Fight(startFight(player, versus.opponent, rng), emptyList()))
+        val fight = startFight(player, versus.opponent, rng, mealStatusOf(player, clock.nowMs()))
+        _state.value = s.copy(screen = Screen.Fight(fight, emptyList()))
     }
 
     /**
