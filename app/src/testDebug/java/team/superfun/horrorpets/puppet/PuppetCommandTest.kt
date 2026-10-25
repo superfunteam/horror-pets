@@ -136,6 +136,19 @@ class PuppetCommandTest {
     }
 
     @Test
+    fun hourTakesAnHourOfTheDayOrOff() {
+        assertEquals(PuppetCommand.FakeHour(22), parseCommand("hour 22"))
+        assertEquals(PuppetCommand.FakeHour(0), parseCommand("hour 0"))
+        assertEquals(PuppetCommand.FakeHour(23), parseCommand("  HOUR   23 "))
+        assertEquals(PuppetCommand.FakeHour(null), parseCommand("hour off"))
+        assertEquals(PuppetCommand.FakeHour(null), parseCommand("hour OFF"))
+        assertEquals("a bare hour is the clock's own again", PuppetCommand.FakeHour(null), parseCommand("hour"))
+        for (bad in listOf("hour 24", "hour -1", "hour 5.5", "hour noon", "hour 5 6", "hour off 5")) {
+            assertInvalid(bad, "0 to 23")
+        }
+    }
+
+    @Test
     fun checkUpdateIsBare() {
         assertEquals(PuppetCommand.CheckUpdate, parseCommand("check_update"))
         assertEquals(PuppetCommand.CheckUpdate, parseCommand("CHECK_UPDATE"))

@@ -29,6 +29,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import java.util.TimeZone
 import kotlin.math.max
 import kotlin.random.Random
 import kotlinx.coroutines.delay
@@ -46,6 +47,7 @@ import team.superfun.horrorpets.data.OffsetClock
 import team.superfun.horrorpets.data.SaveRepository
 import team.superfun.horrorpets.data.WallClock
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.localHour
 import team.superfun.horrorpets.puppet.Puppet
 import team.superfun.horrorpets.pvp.HttpPvpRelay
 import team.superfun.horrorpets.pvp.nfc.NfcTapReader
@@ -79,6 +81,8 @@ class MainActivity : ComponentActivity() {
         // Locals, so the view model's lambdas hold the loader and the app context, never this Activity.
         val loader = loader
         val appContext = applicationContext
+        // Read once: the hours slept through and the hour Home is shown at come from the same clock.
+        val zone = TimeZone.getDefault()
         viewModelFactory {
             initializer {
                 GameViewModel(
@@ -93,6 +97,9 @@ class MainActivity : ComponentActivity() {
                     // A phone tapped against this one reads the room code this one is hosting (see TapCard).
                     onHostCode = { TapCard.shared.hosted = it },
                     uptimeMs = SystemClock::elapsedRealtime,
+                    zone = zone,
+                    // A debug build's puppet can fake the hour (hour), so Home can be seen at any time of day.
+                    hourOf = { Puppet.current.fakeHour ?: localHour(it, zone) },
                 )
             }
         }

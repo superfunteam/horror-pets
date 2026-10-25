@@ -2415,6 +2415,17 @@ class GameViewModelTest {
     }
 
     @Test
+    fun theScreensHourFollowsThePlayersClock() {
+        // UiState.hour is what Home's light is read at. T0 is 08:00 on the rig's UTC clock.
+        val rig = Rig(gameOf()).loaded()
+        assertEquals(8, rig.ui.hour)
+        rig.vm.onStart()
+        rig.clock.now += 15 * HOUR
+        rig.vm.tick()
+        assertEquals(23, rig.ui.hour)
+    }
+
+    @Test
     fun aStatusLeftOvernightIsGoneInTheMorningWithoutARestart() {
         val rig = pantryRig(SHELF + STEAK, pet = jason(hunger = 60.0))
         val session = rig.openPantry().session

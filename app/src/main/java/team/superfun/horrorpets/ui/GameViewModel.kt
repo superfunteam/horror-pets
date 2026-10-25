@@ -37,6 +37,7 @@ import team.superfun.horrorpets.game.Tuning
 import team.superfun.horrorpets.game.applyElapsed
 import team.superfun.horrorpets.game.canFight
 import team.superfun.horrorpets.game.canTrain
+import team.superfun.horrorpets.game.localHour
 import team.superfun.horrorpets.game.pantry.CookResult
 import team.superfun.horrorpets.game.pantry.canEat
 import team.superfun.horrorpets.game.pantry.cook
@@ -111,6 +112,11 @@ class GameViewModel(
     private val uptimeMs: () -> Long = { System.nanoTime() / 1_000_000 },
     /** The zone of the player's clock, which says which hours of a time away the killers slept through. */
     private val zone: TimeZone = TimeZone.getDefault(),
+    /**
+     * The hour of the player's day (0..23) at a reading of [clock], for [UiState.hour]: on the clock in [zone], unless
+     * a debug build's puppet says otherwise (`hour`).
+     */
+    private val hourOf: (Long) -> Int = { localHour(it, zone) },
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
 
@@ -162,7 +168,7 @@ class GameViewModel(
             val now = clock.nowMs()
             val (game, away) = applyElapsed(loaded, now, clockFloorMs, zone)
             pendingAway = away
-            _state.value = _state.value.copy(game = game, screen = Screen.Title, nowMs = now)
+            _state.value = _state.value.copy(game = game, screen = Screen.Title).at(now)
             persist(game)
         }
     }
@@ -220,13 +226,16 @@ class GameViewModel(
         val now = clock.nowMs()
         val (game, away) = applyElapsed(s.game, now, clockFloorMs, zone)
         if (game == s.game) {
-            _state.value = s.copy(nowMs = now) // nothing to save, but a meal's status still runs out on time
+            _state.value = s.at(now) // nothing to save, but a meal's status still runs out on time
             return
         }
-        val routed = s.copy(game = game, nowMs = now).routeHome()
+        val routed = s.copy(game = game).at(now).routeHome()
         _state.value = if (welcomeBack) routed.withAwayToast(away) else routed
         persist(game)
     }
+
+    /** This state as of the clock reading [now]: the screens' [UiState.nowMs], and the [UiState.hour] it falls in. */
+    private fun UiState.at(now: Long): UiState = copy(nowMs = now, hour = hourOf(now))
 
     /** Shows the welcome-back toast for [away] when Home is on screen and the absence is worth one (see [awayToast]). */
     private fun UiState.withAwayToast(away: AwaySummary): UiState {
@@ -480,7 +489,7 @@ class GameViewModel(
             status = outcome.status,
         )
         // The screens read the meal's status at the time it was stamped with, so it shows from this very frame.
-        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed), nowMs = now)
+        _state.value = s.copy(game = game, screen = pantry.copy(board = emptyList(), fed = fed)).at(now)
         persist(game)
     }
 
@@ -1317,8 +1326,7 @@ class GameViewModel(
         return copy(
             screen = Screen.Versus(opponent),
             voice = voice + listOf(player.soundName(), "versus", opponent.soundName()),
-            nowMs = clock.nowMs(),
-        )
+        ).at(clock.nowMs())
     }
 
     // ---- attacks: learning and equipping -------------------------------------------------------

@@ -251,6 +251,8 @@ data class PetAnimRequest(val anim: Anim, val token: Long, val gag: PlayGag? = n
  * - [stableOpen] is whether the stable menu is up over Home (Home takes no other input meanwhile).
  * - [nowMs] is the view model's clock as of its last look (the save's load, a resume, the minute's tick, a meal): what
  *   the screens read a meal's status at (`mealStatusOf`), on the clock that stamped the meal.
+ * - [hour] is the hour of the player's day (0..23) at [nowMs], read with it: what Home's light is chosen by
+ *   (`dayLightAt`). Noon, in the day's light, until the clock is first read.
  */
 data class UiState(
     val screen: Screen = Screen.Loading,
@@ -263,4 +265,5 @@ data class UiState(
     val voice: List<String> = emptyList(),
     val stableOpen: Boolean = false,
     val nowMs: Long = 0L,
+    val hour: Int = 12,
 )

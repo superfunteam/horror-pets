@@ -32,6 +32,7 @@ import team.superfun.horrorpets.fight.FightState
 import team.superfun.horrorpets.fight.Move
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.dayLightAt
 import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.eligibleGames
 import team.superfun.horrorpets.game.training.pickMate
@@ -114,6 +115,10 @@ internal object DebugPuppet : Puppet {
     /** `fake_version`'s version, kept for the process like [autoplay]: the update check reads it as it runs. */
     @Volatile
     override var fakeVersion: String? = null
+
+    /** `hour`'s hour, kept for the process like [autoplay]: the view model reads it each time it reads the clock. */
+    @Volatile
+    override var fakeHour: Int? = null
 
     private val checks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val updateChecks: Flow<Unit> = checks.asSharedFlow()
@@ -232,7 +237,7 @@ private class Session(
     private suspend fun execute(command: PuppetCommand): Outcome {
         val immediate = command is PuppetCommand.Autoplay || command is PuppetCommand.Hud || command is PuppetCommand.Status ||
             command is PuppetCommand.Wait || command is PuppetCommand.WaitHome || command is PuppetCommand.Invalid ||
-            command is PuppetCommand.FakeVersion || command is PuppetCommand.CheckUpdate
+            command is PuppetCommand.FakeVersion || command is PuppetCommand.FakeHour || command is PuppetCommand.CheckUpdate
         if (!immediate && !awaitIdle()) return Outcome.Refused("the game was still busy after ${IDLE_WAIT_MS / 1000} s")
         return when (command) {
             PuppetCommand.UnlockAll -> {
@@ -406,6 +411,15 @@ private class Session(
                 Outcome.Done(
                     if (command.version == null) "the update check uses this build's own version" else "the update check takes this build for ${command.version}",
                 )
+            }
+
+            is PuppetCommand.FakeHour -> {
+                DebugPuppet.fakeHour = command.hour
+                // The view model reads the hour only as it reads the clock: a tick now, so Home's light turns at once.
+                vm.tick()
+                val hour = state().hour
+                val light = dayLightAt(hour).name.lowercase()
+                Outcome.Done(if (command.hour == null) "the hour is the clock's own: $hour, $light" else "the game takes the hour for $hour: $light")
             }
 
             PuppetCommand.CheckUpdate -> {

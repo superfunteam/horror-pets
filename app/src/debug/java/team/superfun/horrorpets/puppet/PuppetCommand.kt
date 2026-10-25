@@ -76,6 +76,9 @@ sealed interface PuppetCommand {
     /** `fake_version <x.y.z>|off`: the update check takes this build to be [version] (null: its real one). */
     data class FakeVersion(val version: String?) : PuppetCommand
 
+    /** `hour <0..23>|off`: the game takes the hour of the day to be [hour] (null: the clock's own), for Home. */
+    data class FakeHour(val hour: Int?) : PuppetCommand
+
     /** `check_update`: checks GitHub for a newer release now, and offers it over the title. */
     data object CheckUpdate : PuppetCommand
 
@@ -90,7 +93,7 @@ const val MAX_WAIT_SECONDS = 600
 const val PUPPET_USAGE = "unlock_all, pet <killer>, level <n>, learn_all, fight <killer>, autoplay on|off, hud on|off, " +
     "move <strike|heavy|block|special|potion|run>, meter full, feed, play, train [<game>], score <n>, " +
     "stock <id>..., cook <id> <id>, serve <id>, home, " +
-    "wait <seconds>|home, status, fake_version <x.y.z>|off, check_update"
+    "wait <seconds>|home, status, fake_version <x.y.z>|off, hour <0..23>|off, check_update"
 
 /** The killers an error lists: never a secret one, whose name stays out of the log. [killerNamed] still finds it. */
 private val KILLERS = PetId.entries.filterNot { it.secret }.joinToString(", ") { it.name.lowercase() }
@@ -147,6 +150,12 @@ fun parseCommand(text: String): PuppetCommand {
             arg == "off" -> PuppetCommand.FakeVersion(null)
             arg != null && arg != DEV_VERSION_NAME && runCatching { versionCodeOf(arg) }.isSuccess -> PuppetCommand.FakeVersion(arg)
             else -> invalid("fake_version needs off or a release's MAJOR.MINOR.PATCH, such as 0.5.0")
+        }
+        "hour" -> {
+            // A bare `hour` is the clock's own again, as `hour off` is.
+            if (args.isEmpty() || arg == "off") return PuppetCommand.FakeHour(null)
+            val hour = arg?.toIntOrNull()?.takeIf { it in 0..23 }
+            if (hour == null) invalid("hour needs off or a whole hour from 0 to 23") else PuppetCommand.FakeHour(hour)
         }
         "pet", "fight" -> {
             val pet = arg?.let(::killerNamed) ?: return invalid("$name needs one killer: $KILLERS")

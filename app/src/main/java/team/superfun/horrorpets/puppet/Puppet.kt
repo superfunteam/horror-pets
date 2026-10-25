@@ -38,6 +38,12 @@ interface Puppet {
      */
     val fakeVersion: String? get() = null
 
+    /**
+     * The hour of the day (0..23) the game takes it to be, or null for the clock's own. Only a debug build told `hour`
+     * has one, so Home can be seen at any hour without waiting for it.
+     */
+    val fakeHour: Int? get() = null
+
     /** Update checks to run now (`check_update`), even after the launch's own check or a LATER. */
     val updateChecks: Flow<Unit> get() = emptyFlow()
 

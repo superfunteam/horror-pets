@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -81,6 +82,7 @@ import team.superfun.horrorpets.assets.spec
 import team.superfun.horrorpets.game.CareAction
 import team.superfun.horrorpets.game.RefuseReason
 import team.superfun.horrorpets.game.Tuning
+import team.superfun.horrorpets.game.dayLightAt
 import team.superfun.horrorpets.game.pantry.MealPerk
 import team.superfun.horrorpets.game.pantry.mealStatusOf
 import team.superfun.horrorpets.game.training.gamesStillToTrain
@@ -158,6 +160,9 @@ private val HOME_WARM_ANIMS = listOf(Anim.RUN_RIGHT, Anim.RUN_LEFT, Anim.ATTACK,
 
 private const val SCENE_TITLE_MS = 3_200L
 
+/** The light over the scene cross-fades over this long when the hour brings another part of the day. */
+private const val SCENE_LIGHT_FADE_MS = 2_000
+
 /**
  * Home: the selected pet standing in its current scene, with the stat card, scene dots, welcome toast
  * and the action bar over it (the spec's layout A).
@@ -197,7 +202,15 @@ fun HomeScreen(
     val sceneIndex = pet.sceneIndex.mod(scenes.size)
     val scene = scenes[sceneIndex]
     val manifest = remember(loader, petId) { loader.manifest(petId) }
-    val tint = remember(scene) { hexColor(scene.tint) }
+    val sceneTint = remember(scene) { hexColor(scene.tint) }
+    // The light of the player's hour over the scene (see sceneLightFor). Read only inside the backdrop's content, so a
+    // cross-fade redraws the scene and the killer, not the whole screen.
+    val hourLight = sceneLightFor(dayLightAt(state.hour))
+    val light by animateColorAsState(
+        targetValue = hourLight?.let { it.color.copy(alpha = it.alpha) } ?: Color.Transparent,
+        animationSpec = tween(SCENE_LIGHT_FADE_MS),
+        label = "sceneLight",
+    )
 
     val playFocus = remember { FocusRequester() }
     val badgeFocus = remember { FocusRequester() }
@@ -483,6 +496,10 @@ fun HomeScreen(
         }
 
         SceneBackdrop(loader = loader, scene = scene) { floorY ->
+            // The hour's light over the scene and under the killer; the bubble and the HUD come after it, unlit.
+            Spacer(Modifier.fillMaxSize().drawBehind { drawRect(light) })
+            // The killer, and a play's glove, stand in the same light.
+            val tint = litTint(sceneTint, light)
             SpriteView(
                 loader = loader,
                 pet = petId,
