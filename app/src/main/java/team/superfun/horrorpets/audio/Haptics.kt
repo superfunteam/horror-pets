@@ -11,8 +11,8 @@ import androidx.annotation.RequiresApi
 
 /**
  * The buzz a phone gives with the sound [sfx], as alternating buzz and pause lengths in ms, starting with a buzz, or
- * null for a sound that stays silent in the hand. A weapon's sound to come (`hit_<x>`, `heavy_<x>`) buzzes as the
- * plain `hit` or `heavy_hit` does.
+ * null for a sound that stays silent in the hand. A special (`special_<pet>`) buzzes as a crit does, and a weapon's
+ * sound to come (`hit_<x>`, `heavy_<x>`) as the plain `hit` or `heavy_hit` does.
  */
 fun hapticFor(sfx: String): LongArray? = when (sfx) {
     "hit" -> longArrayOf(15)
@@ -24,6 +24,7 @@ fun hapticFor(sfx: String): LongArray? = when (sfx) {
     "pantry_poof" -> longArrayOf(20)
     "levelup" -> longArrayOf(40, 60, 40)
     else -> when {
+        sfx.startsWith("special_") -> hapticFor("crit")
         sfx.startsWith("hit_") -> hapticFor("hit")
         sfx.startsWith("heavy_") -> hapticFor("heavy_hit")
         else -> null

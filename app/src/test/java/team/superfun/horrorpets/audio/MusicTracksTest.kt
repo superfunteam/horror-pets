@@ -5,7 +5,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Which switches pick the new track up where the old one is ([keepsPlace]), and how the two are brought in step. */
+/**
+ * Which switches pick the new track up where the old one is ([keepsPlace]), what a switch does with the two players
+ * ([musicSwitch]), and how the two are brought in step.
+ */
 class MusicTracksTest {
     @Test fun onlyTheFightTracksKeepTheirPlace() {
         assertTrue(keepsPlace("fight", "fight_intense"))
@@ -18,6 +21,48 @@ class MusicTracksTest {
         assertFalse(keepsPlace(null, "fight_intense"))
         assertFalse(keepsPlace("fight", null))
         assertFalse(keepsPlace(null, null))
+    }
+
+    /**
+     * What switching to [track] does with the active player on [active] and the other on [other] (null: nothing),
+     * keeping its place as the game would ([keepsPlace]); [fadingIn]: the active one is the quieter of the two.
+     */
+    private fun switchTo(
+        track: String,
+        active: String?,
+        other: String?,
+        fadingIn: Boolean = false,
+        keepPlace: Boolean = keepsPlace(active, track),
+    ) = musicSwitch(track, keepPlace, active, other, incomingIsActive = fadingIn)
+
+    @Test fun aSwitchToTheTrackTheActivePlayerHoldsLetsItPlayOn() {
+        // A join called off: the active one never stopped playing it.
+        assertEquals(MusicSwitch.PLAY_ON, switchTo("fight", "fight", "fight_intense"))
+        assertEquals(MusicSwitch.PLAY_ON, switchTo("switcher", "switcher", null))
+    }
+
+    @Test fun aSwitchCalledBackInTheFirstHalfOfItsCrossfadeSwapsThePlayersBack() {
+        // Hardening, then easing back while the intense track is still fading in under the plain one: the plain one
+        // comes back up where it is, not from its start. And the same the other way round.
+        assertEquals(MusicSwitch.SWAP_BACK, switchTo("fight", "fight_intense", "fight", fadingIn = true))
+        assertEquals(MusicSwitch.SWAP_BACK, switchTo("fight_intense", "fight", "fight_intense", fadingIn = true))
+        assertEquals("any track", MusicSwitch.SWAP_BACK, switchTo("switcher", "fight", "switcher", fadingIn = true))
+        // Past halfway the other one is the quieter and takes the track like any new one, in step.
+        assertEquals(MusicSwitch.JOIN_IN_STEP, switchTo("fight", "fight_intense", "fight"))
+    }
+
+    @Test fun aSwitchThatKeepsItsPlaceJoinsTheActivePlayerInStep() {
+        assertEquals(MusicSwitch.JOIN_IN_STEP, switchTo("fight_intense", "fight", null))
+        assertEquals(MusicSwitch.JOIN_IN_STEP, switchTo("fight", "fight_intense", "switcher"))
+    }
+
+    @Test fun anyOtherSwitchStartsTheTrackOver() {
+        assertEquals(MusicSwitch.START, switchTo("fight", "switcher", null))
+        assertEquals(MusicSwitch.START, switchTo("jason", null, "switcher"))
+        assertEquals("no place to keep", MusicSwitch.START, switchTo("fight", null, null, keepPlace = true))
+        // Still fading in under the other, which plays something else: the active one takes the new track itself.
+        assertEquals(MusicSwitch.START, switchTo("jason", "fight", "switcher", fadingIn = true))
+        assertEquals(MusicSwitch.START, switchTo("fight_intense", "fight", "switcher", fadingIn = true))
     }
 
     @Test fun theLagIsSignedAndTakesTheShortWayRoundTheLoop() {

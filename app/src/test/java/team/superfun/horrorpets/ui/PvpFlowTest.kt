@@ -250,14 +250,22 @@ class PvpFlowTest {
             assertEquals(Move.STRIKE, g.cpuMove)
             assertEquals("both apps played the same turn", h.fight.mirrored(), g.fight)
             assertEquals(mirroredEvents(h.lastEvents), g.lastEvents)
-            assertEquals("the music hardens on both apps at once", h.intense, g.intense)
-            assertEquals("once either killer is nearly done, and stays so", hardened || nearlyDone(h.fight), h.intense)
-            hardened = h.intense
+            assertEquals("the music waits for the turn to play out", hardened, h.intense)
+            assertEquals(hardened, g.intense)
             host.finishAnim()
             guest.finishAnim()
+            if (host.ui.screen is Screen.Fight) {
+                assertEquals("the music hardens on both apps at once", host.fight.intense, guest.fight.intense)
+                assertEquals(
+                    "once a turn that leaves either killer nearly done has played out, and stays so",
+                    hardened || nearlyDone(host.fight.fight),
+                    host.fight.intense,
+                )
+                hardened = host.fight.intense
+            }
             check(++turns < 30) { "the fight never ended" }
         }
-        assertTrue("the knockout, at the latest, hardens the music", hardened)
+        assertTrue("Freddy dropped under the line before the knockout, and the music hardened", hardened)
         val hostResults = host.ui.screen as Screen.Results
         val guestResults = guest.ui.screen as Screen.Results
         assertTrue("strong Jason's strikes cut off every HEAVY", hostResults.won)
@@ -268,6 +276,32 @@ class PvpFlowTest {
         assertEquals(listOf("you_win"), host.ui.voice.takeLast(1))
         host.pump(0)
         assertEquals("the room is left once the fight is over", Role.HOST, hub.rooms.single().left)
+    }
+
+    @Test
+    fun aKnockoutFromAboveTheLineEndsAPvpFightPlainOnBothApps() {
+        // Both swing HEAVY: Freddy goes from 64 to 24 (still above 30%), Jason from 95 to 55, then Freddy is knocked
+        // out. Nobody was nearly done while the fight went on.
+        val host = jasonApp()
+        val guest = freddyApp()
+        meet(host, guest)
+        host.vm.onVersusDone()
+        guest.vm.onVersusDone()
+        var turns = 0
+        while (host.ui.screen is Screen.Fight) {
+            host.vm.onMove(Move.HEAVY)
+            guest.vm.onMove(Move.HEAVY)
+            pumpBoth(host, guest)
+            pumpBoth(host, guest)
+            assertFalse(host.fight.intense)
+            assertFalse(guest.fight.intense)
+            host.finishAnim()
+            guest.finishAnim()
+            check(++turns < 30) { "the fight never ended" }
+        }
+        assertEquals(2, turns)
+        assertTrue((host.ui.screen as Screen.Results).won)
+        assertFalse((guest.ui.screen as Screen.Results).won)
     }
 
     @Test

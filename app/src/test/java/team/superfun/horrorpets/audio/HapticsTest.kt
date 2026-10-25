@@ -15,6 +15,11 @@ class HapticsTest {
         assertArrayEquals(longArrayOf(60), hapticFor("crit"))
     }
 
+    @Test fun aSpecialBuzzesAsACritDoes() {
+        assertArrayEquals(longArrayOf(60), hapticFor("special_jason"))
+        assertArrayEquals(longArrayOf(60), hapticFor("special_freddy"))
+    }
+
     @Test fun theKnockoutIsTheLongestBuzzWhicheverSoundCarriesIt() {
         assertArrayEquals(longArrayOf(120), hapticFor("ko"))
         assertArrayEquals(longArrayOf(120), hapticFor("ko_boom"))

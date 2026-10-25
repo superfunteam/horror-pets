@@ -38,7 +38,8 @@ internal fun impactSchedule(landMs: Long, stopMs: Long): ImpactSchedule =
 
 /**
  * Whether either fighter in [s] is nearly done: down to strictly under [FightTuning.NEARLY_DONE_SHARE] of its max HP.
- * The first turn that leaves one there turns the fight intense (`Screen.Fight.intense`), and the music hardens.
+ * The first turn that leaves one there, and not the fight's end, turns the fight intense (`Screen.Fight.intense`) once
+ * it has played out, and the music hardens.
  */
 internal fun nearlyDone(s: FightState): Boolean {
     val share = FightTuning.NEARLY_DONE_SHARE

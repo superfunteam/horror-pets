@@ -12,6 +12,44 @@ import kotlin.math.roundToLong
 fun keepsPlace(from: String?, to: String?): Boolean =
     (from == "fight" && to == "fight_intense") || (from == "fight_intense" && to == "fight")
 
+/** What switching the music to a new track does with its two players (see [musicSwitch]). */
+internal enum class MusicSwitch {
+    /** The active player already plays the track (a join just called off left it there): it plays on. */
+    PLAY_ON,
+
+    /**
+     * The active player is still fading in under the other, which still plays the very track asked for (a switch
+     * called back in the first half of its crossfade): the other comes back up where it is and the active one goes
+     * down.
+     */
+    SWAP_BACK,
+
+    /** The track comes in on the other player where the active one is, beat on beat (see `MusicSlot.joinInStep`). */
+    JOIN_IN_STEP,
+
+    /** The track starts over on the quieter player, crossfading from the active one. */
+    START,
+}
+
+/**
+ * What switching the music to [track] does ([keepPlace]: see [keepsPlace]), from the track the active player holds
+ * ([activeTrack], null with none active), the track the other one holds ([otherTrack]), and whether the player that
+ * takes a new track, the quieter of the two, is the active one itself ([incomingIsActive]), as it is while it still
+ * fades in under the other.
+ */
+internal fun musicSwitch(
+    track: String,
+    keepPlace: Boolean,
+    activeTrack: String?,
+    otherTrack: String?,
+    incomingIsActive: Boolean,
+): MusicSwitch = when {
+    activeTrack == track -> MusicSwitch.PLAY_ON
+    incomingIsActive && otherTrack == track -> MusicSwitch.SWAP_BACK
+    keepPlace && activeTrack != null && !incomingIsActive -> MusicSwitch.JOIN_IN_STEP
+    else -> MusicSwitch.START
+}
+
 /** How long a nudge (see [nudgeFor]) aims to take. */
 internal const val NUDGE_MS = 400f
 

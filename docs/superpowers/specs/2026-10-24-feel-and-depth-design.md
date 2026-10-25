@@ -4,7 +4,10 @@
 phases, each shipped as a release. Done: D, and E and F's phase-1 parts (hit-stop, the knockout, red specials with
 the riff, the intense track with its on-the-beat join, haptics, `ko_boom`, `special_riff`, `fight_intense`, the snore)
 in the fights-that-hit plan. Tuned by eye: the intense join matches the plain track by speed (a plain seek landed
-120–170 ms late) and the switch back after a fight keeps its place too; the intense track's tom fills every 4 bars.
+120–170 ms late) and the switch back after a fight keeps its place too; the intense track's tom fills every 4 bars;
+the knockout's slow motion holds the sprites and the stage's waits while the damage number and the marks keep their
+own pace (accepted after review); and the music hardens as the turn's playback ends, not as the move is picked, so a
+knockout from above 30% ends the fight on the plain track.
 
 ## Intent
 

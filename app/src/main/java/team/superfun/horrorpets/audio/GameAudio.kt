@@ -202,7 +202,9 @@ class GameAudio(context: Context) : SoundSink {
     /**
      * Plays [track] (`audio/music/<track>.ogg`) on a loop, crossfading from whatever is playing. The track
      * already playing is left alone; null fades the music out. With [keepPlace] (see [keepsPlace]) the new track
-     * comes in where the one playing is, beat on beat, not from its start (see `MusicSlot.joinInStep`).
+     * comes in where the one playing is, beat on beat, not from its start (see `MusicSlot.joinInStep`). Called back
+     * while a crossfade's new track is still the quieter, the track it is fading out comes back up where it is (see
+     * [musicSwitch]).
      */
     fun music(track: String?, keepPlace: Boolean = false) = onMain {
         Log.d(TAG, "music ${track ?: "none"}${if (keepPlace) ", keeping its place" else ""}")
@@ -220,25 +222,45 @@ class GameAudio(context: Context) : SoundSink {
             startTicking()
             return@onMain
         }
-        if (outgoing?.track == track) {
-            // Back to the track a join just called off was coming in over: it plays on, and the other one stops.
-            startTicking()
-            return@onMain
-        }
         val incoming = quieterSlot()
-        if (keepPlace && outgoing?.track != null && outgoing !== incoming) {
-            // The outgoing slot stays the active one, at full, until the incoming one comes in.
-            incoming.joinInStep(track, outgoing)
-            return@onMain
+        val other = if (outgoing === slotA) slotB else slotA
+        when (musicSwitch(track, keepPlace, outgoing?.track, other?.track, incomingIsActive = incoming === outgoing)) {
+            MusicSwitch.PLAY_ON -> {
+                // Back to the track a join just called off was coming in over: it plays on, and the other one stops.
+                startTicking()
+            }
+
+            MusicSwitch.SWAP_BACK -> {
+                // The active slot is still fading in under the other, which still plays this track: the other comes
+                // back up where it is, and the active one goes back down. Nothing starts over.
+                val fade = if (keepPlace) INTENSE_CROSSFADE_MS else CROSSFADE_MS
+                Log.d(TAG, "music back to $track on the slot fading it out: crossfading over ${fade.toInt()}ms")
+                incoming.fadeMs = fade
+                incoming.target = 0f
+                other?.apply {
+                    fadeMs = fade
+                    target = 1f
+                }
+                activeSlot = other
+                startTicking()
+            }
+
+            MusicSwitch.JOIN_IN_STEP -> {
+                // The outgoing slot stays the active one, at full, until the incoming one comes in.
+                if (outgoing != null) incoming.joinInStep(track, outgoing)
+            }
+
+            MusicSwitch.START -> {
+                if (outgoing != null && outgoing !== incoming) {
+                    outgoing.fadeMs = CROSSFADE_MS
+                    outgoing.target = 0f
+                }
+                incoming.fadeMs = CROSSFADE_MS
+                incoming.start(track)
+                activeSlot = incoming
+                startTicking()
+            }
         }
-        if (outgoing != null && outgoing !== incoming) {
-            outgoing.fadeMs = CROSSFADE_MS
-            outgoing.target = 0f
-        }
-        incoming.fadeMs = CROSSFADE_MS
-        incoming.start(track)
-        activeSlot = incoming
-        startTicking()
     }
 
     /** The app went to the background: silence everything. Idempotent; [resume] undoes it. */

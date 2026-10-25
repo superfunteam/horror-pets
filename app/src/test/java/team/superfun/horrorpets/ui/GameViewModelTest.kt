@@ -2678,16 +2678,39 @@ class GameViewModelTest {
         rig.vm.onMove(Move.BLOCK)
         val hurt = rig.ui.screen as Screen.Fight
         assertEquals(12, hurt.fight.player.hp)
-        assertTrue(hurt.intense)
-        assertEquals("fight_intense", musicTrackFor(rig.ui))
+        assertFalse("the music waits for the blow to play out", hurt.intense)
+        assertEquals("fight", musicTrackFor(rig.ui))
         rig.finishAnim()
+        assertTrue("and hardens once it has", (rig.ui.screen as Screen.Fight).intense)
+        assertEquals("fight_intense", musicTrackFor(rig.ui))
 
         rig.vm.onMove(Move.POTION)
         val healed = rig.ui.screen as Screen.Fight
         assertEquals(53, healed.fight.player.hp)
         assertFalse("nobody is nearly done any more", nearlyDone(healed.fight))
         assertTrue("but the music stays hard to the end of the fight", healed.intense)
+        rig.finishAnim()
+        assertTrue("the potion played out too", (rig.ui.screen as Screen.Fight).intense)
         assertEquals("fight_intense", musicTrackFor(rig.ui))
+    }
+
+    @Test
+    fun aKnockoutFromAboveTheLineEndsTheFightOnThePlainMusic() {
+        // winningScript's fight: Freddy goes 62, 41, 20 (still above 30%), then Jason's third strike knocks him out
+        // and leaves Jason himself at 14 of 77. Nobody was nearly done while the fight went on.
+        val rig = Rig(strongJason(), rng = winningScript()).started()
+        rig.toFight(PetId.FREDDY)
+        var turns = 0
+        while (rig.ui.screen is Screen.Fight) {
+            rig.vm.onMove(Move.STRIKE)
+            assertFalse((rig.ui.screen as Screen.Fight).intense)
+            assertEquals("fight", musicTrackFor(rig.ui))
+            rig.finishAnim()
+            check(++turns < 20) { "the fight never ended" }
+        }
+        val results = rig.ui.screen as Screen.Results
+        assertTrue(results.won)
+        assertTrue("the last blow left Jason nearly done too", nearlyDone(results.fight!!))
     }
 
     @Test

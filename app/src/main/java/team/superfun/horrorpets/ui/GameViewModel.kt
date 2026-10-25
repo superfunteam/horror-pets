@@ -681,24 +681,25 @@ class GameViewModel(
         // Running ends the fight before the CPU acts, and the engine ignores the move it is handed.
         val cpuMove = if (m == Move.RUN) null else cpuPick(fight, rng)
         val turn = resolveTurn(fight, m, cpuMove ?: Move.BLOCK, rng)
-        // Once a fighter is nearly done the fight stays intense, even if a potion brings him back.
-        val intense = screen.intense || nearlyDone(turn.state)
+        // The music hardens only once the turn has played out (see playedOut), not before the blow that does it.
         _state.value = s.copy(
-            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuMove, intense = intense),
+            screen = Screen.Fight(turn.state, turn.events, playerMove = m, cpuMove = cpuMove, intense = screen.intense),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishTurn)
     }
 
     /**
-     * The turn's animation is over. A finished fight turns into its results and the pet is paid; beating a killer
-     * the player did not have unlocks it (it joins the stable at its defaults) and shows that before the results.
+     * The turn's animation is over. A fight that goes on may turn intense now (see [playedOut]). A finished fight
+     * turns into its results and the pet is paid; beating a killer the player did not have unlocks it (it joins the
+     * stable at its defaults) and shows that before the results.
      *
      * The stable's clock is brought up to now first (as the minute tick would), so the newcomer joins from this
      * moment and decays like the rest through the next absence, even one that starts before the next tick. Only
      * under a clock not yet trusted (no time can be applied) does it keep the fresh-join mark and wait for it.
      */
     private fun finishTurn(s: UiState): UiState {
-        val fight = (s.screen as? Screen.Fight)?.fight ?: return s
-        val winner = fight.winner ?: return s
+        val screen = s.screen as? Screen.Fight ?: return s
+        val fight = screen.fight
+        val winner = fight.winner ?: return s.copy(screen = screen.playedOut())
         val pet = s.game.pets[fight.player.id] ?: return s
         val reward = applyFightResult(pet, fight)
         val won = winner == Side.PLAYER
@@ -723,6 +724,14 @@ class GameViewModel(
             voice = s.voice + voice,
         )
     }
+
+    /**
+     * This fight screen once its turn has played out: intense from now on if the turn left either fighter nearly done
+     * (see `nearlyDone`), and still intense if it was already, even if a potion brought him back. Only a fight that
+     * goes on gets here: one the turn ended goes to its results, so a knockout from above the line never hardens the
+     * music. The same on both apps of a PvP fight.
+     */
+    private fun Screen.Fight.playedOut(): Screen.Fight = copy(intense = intense || nearlyDone(fight))
 
     /** The unlock has been shown: on to the fight's results. */
     fun onUnlockedDone() {
@@ -1095,8 +1104,7 @@ class GameViewModel(
         canonical = turn.state
         val mine = if (game.role == Role.HOST) host else guest
         val theirs = if (game.role == Role.HOST) guest else host
-        // As in onMove: once either fighter is nearly done, the fight stays intense.
-        val intense = s.screen.intense || nearlyDone(turn.state)
+        // As in onMove: the music hardens only once the turn has played out (see playedOut).
         _state.value = s.copy(
             screen = Screen.Fight(
                 game.view(turn.state),
@@ -1104,7 +1112,7 @@ class GameViewModel(
                 playerMove = mine,
                 cpuMove = theirs,
                 pvp = PvpView(),
-                intense = intense,
+                intense = s.screen.intense,
             ),
         ).beginAction(listOf(Anim.ATTACK), finish = ::finishPvpTurn)
     }
@@ -1136,15 +1144,17 @@ class GameViewModel(
     }
 
     /**
-     * A PvP turn's animation is over: the next turn's watch starts, or the fight is paid like any other (but
-     * unlocks no one: the other killer is someone else's) and the room is left.
+     * A PvP turn's animation is over: the next turn's watch starts (the fight may turn intense now, see
+     * [playedOut]), or the fight is paid like any other (but unlocks no one: the other killer is someone else's) and
+     * the room is left.
      */
     private fun finishPvpTurn(s: UiState): UiState {
-        val fight = (s.screen as? Screen.Fight)?.fight ?: return s
+        val screen = s.screen as? Screen.Fight ?: return s
+        val fight = screen.fight
         val winner = fight.winner
         if (winner == null) {
             watchTurn()
-            return s
+            return s.copy(screen = screen.playedOut())
         }
         val pet = s.game.pets[fight.player.id] ?: return s
         endMatch(leave = true)
