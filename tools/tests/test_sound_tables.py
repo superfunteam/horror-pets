@@ -1,7 +1,7 @@
 """Check that the sound tools' tables name every file the app loads (weapon impacts, Chucky's voice, the announcer's calls).
 
 Plain asserts, no pytest, no network and no key: importing the tools must not call the API.
-Run: tools/.venv/bin/python -I tools/test_sound_tables.py
+Run: tools/.venv/bin/python -I tools/tests/test_sound_tables.py (or pytest tools/tests -q)
 """
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # the tools dir
 import generate_announcer  # noqa: E402
 import generate_game_sfx  # noqa: E402
 import generate_killer_voice  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CHUCKY = [
     "chucky_idle_1", "chucky_idle_2", "chucky_idle_3", "chucky_feed_1", "chucky_feed_2", "chucky_play_1", "chucky_play_2",
     "chucky_attack_1", "chucky_attack_2", "chucky_heavy", "chucky_hurt_1", "chucky_hurt_2", "chucky_block", "chucky_special",
@@ -66,10 +66,12 @@ def test_the_announcer_has_the_big_calls() -> None:
         text = lines[name]
         assert text.startswith("[shouting] ") and text.endswith("!!!"), name
         assert text == text.upper().replace("[SHOUTING]", "[shouting]"), name  # capitals, like the others
-    # the transcript check hears words, so the bout numbers are spelled out and need no digit map
+    # the bout numbers are spelled out in the text; generate_announcer.NUMBERS maps the digits the speech-to-text may
+    # write, so the transcript check still matches "Bout 5!" to BOUT FIVE
     assert lines["bout_2"] == "[shouting] BOUT TWO!!!"
     assert lines["bout_7"] == "[shouting] BOUT SEVEN!!!"
     assert generate_announcer.match(lines["bout_5"], "Bout five!") == 1.0
+    assert generate_announcer.match(lines["bout_5"], "Bout 5!") == 1.0
 
 
 def main() -> int:
